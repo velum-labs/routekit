@@ -1,5 +1,5 @@
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
-import { randomId } from "@velum-labs/routekit-runtime";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
 import type { TelemetryCategory, TelemetryStatus } from "@velum-labs/routekit-telemetry-core";
 import type { Command } from "commander";
 import { runCliClient } from "../cli-client.js";

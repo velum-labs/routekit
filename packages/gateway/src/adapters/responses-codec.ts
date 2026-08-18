@@ -6,8 +6,8 @@
  */
 
 import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
-import { randomId } from "@velum-labs/routekit-runtime";
-import type { OpenAiChatResponse } from "../provider-protocol.js";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
+import type { OpenAiChatResponse } from "../providers/protocol.js";
 import { droppedField } from "./dropped.js";
 import {
   attachReasoningSelection,

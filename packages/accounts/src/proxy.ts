@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
 
-import { EffectResourceScope, routeKitError } from "@velum-labs/routekit-runtime/effect";
-import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
-import { Data, Effect } from "effect";
+import {
+  type RouteKitPlatform,
+  routeKitError,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Cause, Context, Data, Effect, Exit, Scope } from "effect";
 
 import type { CoordinatorResource } from "./account-set/types.js";
 import {
@@ -64,6 +67,94 @@ function generateToken(): string {
   return `rk-proxy-${randomBytes(24).toString("base64url")}`;
 }
 
+type AcquiredSubscriptionProxy = Omit<SubscriptionProxy, "close">;
+
+function addOwnedFinalizer(
+  scope: Scope.Closeable,
+  platform: Context.Context<RouteKitPlatform>,
+  closeErrors: unknown[],
+  finalizer: Effect.Effect<void, unknown, RouteKitPlatform>
+): Effect.Effect<void> {
+  return Scope.addFinalizer(
+    scope,
+    Effect.exit(finalizer.pipe(Effect.provide(platform))).pipe(
+      Effect.flatMap((closed) =>
+        Exit.isFailure(closed)
+          ? Effect.sync(() => {
+              closeErrors.push(Cause.squash(closed.cause));
+            })
+          : Effect.void
+      )
+    )
+  );
+}
+
+function proxyCloseError(closeErrors: readonly unknown[]): Error | undefined {
+  if (closeErrors.length === 0) return undefined;
+  return closeErrors.length === 1
+    ? toRouteKitFailure(closeErrors[0])
+    : new AggregateError(closeErrors, "subscription proxy cleanup failed");
+}
+
+const acquireSubscriptionProxy = Effect.fn("SubscriptionProxy.acquire")(function* (
+  options: StartSubscriptionProxyOptions,
+  scope: Scope.Closeable,
+  platform: Context.Context<RouteKitPlatform>,
+  closeErrors: unknown[]
+): Effect.fn.Return<AcquiredSubscriptionProxy, Error, RouteKitPlatform> {
+  const activityResource =
+    options.activity === undefined
+      ? yield* AccountActivityCoordinator.open()
+      : options.activity.resource;
+  if (options.activity === undefined || options.activity.ownership === "owned") {
+    yield* addOwnedFinalizer(
+      scope,
+      platform,
+      closeErrors,
+      accountActivityService(activityResource).close
+    );
+  }
+  const activity = accountActivityService(activityResource);
+  const { relays, accountSets } = yield* openSubscriptionRelays({
+    accounts: options.accounts,
+    activity: { resource: activity, ownership: "borrowed" }
+  });
+  yield* addOwnedFinalizer(scope, platform, closeErrors, closeSubscriptionAccountSets(accountSets));
+  const live = Object.entries(relays).filter(
+    (
+      entry
+    ): entry is [
+      SubscriptionRelayDialect,
+      NonNullable<(typeof relays)[SubscriptionRelayDialect]>
+    ] => entry[1] !== undefined
+  );
+  if (live.length === 0) {
+    return yield* new NoSubscriptionAccountsError();
+  }
+
+  const token = options.token ?? generateToken();
+  const gatewayOptions: SubscriptionGatewayOptions = {
+    backend: new RelayOnlyBackend(),
+    backendOwnership: "borrowed",
+    relayOwnership: "borrowed",
+    ...(options.host !== undefined ? { host: options.host } : {}),
+    ...(options.port !== undefined ? { port: options.port } : {}),
+    authToken: token,
+    providerRelays: relays,
+    usage: () => collectSubscriptionUsage(accountSets)
+  };
+  const gateway = yield* options.gatewayFactory(gatewayOptions);
+  yield* addOwnedFinalizer(scope, platform, closeErrors, gateway.close);
+
+  return {
+    url: () => gateway.url(),
+    port: () => gateway.port(),
+    token,
+    providers: live.map(([dialect]) => dialect),
+    usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.()))
+  } satisfies AcquiredSubscriptionProxy;
+});
+
 /**
  * Start a provider-native subscription proxy in one call: open the configured
  * account sets into relays, front them with a relay-only gateway, and return a
@@ -72,68 +163,32 @@ function generateToken(): string {
  */
 export function startSubscriptionProxy(options: StartSubscriptionProxyOptions) {
   return Effect.gen(function* () {
-    const startup = new EffectResourceScope();
-    const failedStartup = (error: unknown) =>
-      startup.dispose().pipe(
-        Effect.matchEffect({
-          onFailure: (cleanupError) =>
-            Effect.fail(
-              new AggregateError([error, cleanupError], "subscription proxy startup failed")
-            ),
-          onSuccess: () => Effect.fail(routeKitError(error))
-        })
-      );
-    const activityResource =
-      options.activity === undefined
-        ? yield* startup.own(yield* AccountActivityCoordinator.open(), {
-            finalizeEffect: (resource) => accountActivityService(resource).close
-          })
-        : options.activity.ownership === "owned"
-          ? yield* startup.own(options.activity.resource, {
-              finalizeEffect: (resource) => accountActivityService(resource).close
-            })
-          : yield* startup.borrow(options.activity.resource);
-    const activity = accountActivityService(activityResource);
-    const { relays, accountSets } = yield* openSubscriptionRelays({
-      accounts: options.accounts,
-      activity: { resource: activity, ownership: "borrowed" }
-    }).pipe(Effect.catch(failedStartup));
-    yield* startup.deferEffect(closeSubscriptionAccountSets(accountSets));
-    const live = Object.entries(relays).filter(
-      (
-        entry
-      ): entry is [
-        SubscriptionRelayDialect,
-        NonNullable<(typeof relays)[SubscriptionRelayDialect]>
-      ] => entry[1] !== undefined
+    const platform = yield* Effect.context<RouteKitPlatform>();
+    const scope = yield* Scope.make("sequential");
+    const closeErrors: unknown[] = [];
+    const opened = yield* Effect.exit(
+      acquireSubscriptionProxy(options, scope, platform, closeErrors)
     );
-    if (live.length === 0) {
-      return yield* failedStartup(new NoSubscriptionAccountsError());
+    if (Exit.isFailure(opened)) {
+      yield* Scope.close(scope, opened);
+      const startupError = Cause.squash(opened.cause);
+      return yield* Effect.fail(
+        closeErrors.length === 0
+          ? routeKitError(startupError)
+          : new AggregateError(
+              [routeKitError(startupError), ...closeErrors],
+              "subscription proxy startup failed and cleanup was incomplete"
+            )
+      );
     }
-
-    const token = options.token ?? generateToken();
-    const gatewayOptions: SubscriptionGatewayOptions = {
-      backend: new RelayOnlyBackend(),
-      ...(options.host !== undefined ? { host: options.host } : {}),
-      ...(options.port !== undefined ? { port: options.port } : {}),
-      authToken: token,
-      providerRelays: relays,
-      usage: () => collectSubscriptionUsage(accountSets)
-    };
-    const gateway = yield* options.gatewayFactory(gatewayOptions).pipe(Effect.catch(failedStartup));
-    yield* startup
-      .own(gateway, { finalizeEffect: (owned) => owned.close })
-      .pipe(Effect.catch(failedStartup));
-    const liveResources = new EffectResourceScope();
-    yield* startup.transferTo(liveResources);
-
-    return {
-      url: () => gateway.url(),
-      port: () => gateway.port(),
-      token,
-      providers: live.map(([dialect]) => dialect),
-      usage: () => snapshotsToUsage(live.map(([, ports]) => ports.request.snapshot?.())),
-      close: liveResources.dispose()
-    } satisfies SubscriptionProxy;
+    const close = Scope.close(scope, Exit.void).pipe(
+      Effect.andThen(
+        Effect.suspend(() => {
+          const error = proxyCloseError(closeErrors);
+          return error === undefined ? Effect.void : Effect.fail(error);
+        })
+      )
+    );
+    return { ...opened.value, close };
   });
 }

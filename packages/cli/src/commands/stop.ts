@@ -6,7 +6,7 @@ import {
   supervisorController,
   supervisorOperationTimeoutMs,
   waitForProcessExit
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/service";
 import type { Command } from "commander";
 import { runCliEffect } from "../cli-session.js";
 import { controlClientForRecord, daemonLifecycleLockPath, readDaemonRecord } from "../client.js";

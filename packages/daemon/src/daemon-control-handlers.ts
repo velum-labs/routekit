@@ -1,16 +1,16 @@
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
-import { AccountEnrollService } from "./account-enroll-service.js";
-import { AccountMutationService } from "./account-mutation-service.js";
-import { AccountQueryService } from "./account-query-service.js";
-import { DaemonLifecycleService } from "./daemon-lifecycle-service.js";
-import { DoctorApplicationService } from "./doctor-application-service.js";
-import { EvalRoutingApplicationService } from "./eval-routing-application-service.js";
-import { EvalSessionApplicationService } from "./eval-session-application-service.js";
-import { LauncherApplicationService } from "./launcher-application-service.js";
-import { ProviderQueryService } from "./provider-query-service.js";
-import { RouterGenerationService } from "./router-generation-service.js";
-import { TelemetryApplicationService } from "./telemetry-application-service.js";
-import { TokenApplicationService } from "./token-application-service.js";
+import { AccountEnrollService } from "./services/account-enroll/service.js";
+import { AccountMutationService } from "./services/account-mutation/service.js";
+import { AccountQueryService } from "./services/account-query/service.js";
+import { DaemonLifecycleService } from "./services/daemon-lifecycle/service.js";
+import { DoctorApplicationService } from "./services/doctor/service.js";
+import { EvalRoutingApplicationService } from "./services/eval-routing/service.js";
+import { EvalSessionApplicationService } from "./services/eval-session/service.js";
+import { LauncherApplicationService } from "./services/launcher/service.js";
+import { ProviderQueryService } from "./services/provider-query/service.js";
+import { RouterGenerationService } from "./services/router-generation/service.js";
+import { TelemetryApplicationService } from "./services/telemetry/service.js";
+import { TokenApplicationService } from "./services/tokens/service.js";
 
 /**
  * Composes owned application services into the daemon control handler map.

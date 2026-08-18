@@ -2,7 +2,7 @@ import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/rout
 import { type Command, Option } from "commander";
 
 import { runCliEffect } from "../cli-session.js";
-import { SetupRouteKit } from "../use-cases/setup.js";
+import { SetupRouteKit } from "../services/setup/service.js";
 
 export {
   credentialDescription,
@@ -10,7 +10,7 @@ export {
   preflightSetupApiProvider,
   SETUP_API_PROVIDER_IDS,
   setupCandidateConfig
-} from "../use-cases/setup.js";
+} from "../services/setup/service.js";
 
 export function registerSetup(program: Command, runtime: CliRuntime = processCliRuntime): void {
   const setupRouteKit = new SetupRouteKit();

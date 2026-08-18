@@ -34,6 +34,7 @@
     "@velum-labs/routekit-eval-contracts": "workspace:*",
     "@velum-labs/routekit-eval-engine": "workspace:*",
     "@velum-labs/routekit-eval-store": "workspace:*",
+    "@velum-labs/routekit-registry": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

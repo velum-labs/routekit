@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { mapStopReason } from "../adapters/anthropic-codec.js";
-import { openAiFinishReasonFromAnthropic } from "../anthropic-provider-codec.js";
+import { openAiFinishReasonFromAnthropic } from "../providers/anthropic-codec.js";
 
 /**
  * Core pairs that must round-trip. Inbound Claude Code (`mapStopReason`) and

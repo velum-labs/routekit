@@ -3,7 +3,7 @@ import type {
   ControlClientOptions,
   ControlHandler,
   ControlHandlerContext
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/control";
 /**
  * Typed, versioned RouteKit daemon control protocol.
  *
@@ -11,7 +11,7 @@ import type {
  * independent of Commander and UI rendering; the CLI and daemon can evolve
  * independently as long as they negotiate the same protocol capability.
  */
-import { ControlClient, ControlError } from "@velum-labs/routekit-runtime";
+import { ControlClient, ControlError } from "@velum-labs/routekit-runtime/control";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { IdempotencyStore } from "./idempotency-store.js";

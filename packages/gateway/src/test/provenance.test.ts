@@ -5,7 +5,7 @@ import {
   readProducerVersion,
   resolveProducerGitSha,
   UNKNOWN_GIT_SHA
-} from "../provenance.js";
+} from "../observability/provenance.js";
 
 const GIT_SHA = /^[a-f0-9]{40}$/;
 

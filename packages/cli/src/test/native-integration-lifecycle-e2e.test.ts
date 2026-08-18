@@ -17,7 +17,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { type NativeCredentialLocation, nativeCredentialLocation } from "../native-credentials.js";
+import { type NativeCredentialLocation, nativeCredentialLocation } from "../adapters/native-credentials.js";
 
 const execFileAsync = promisify(execFile);
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");

@@ -18,7 +18,7 @@ import {
   markNativeIntegrationTokenRevoked,
   nativeIntegrationsPath,
   putNativeIntegration
-} from "../native-integrations.js";
+} from "../adapters/native-integrations.js";
 import { routekitVersion } from "../state.js";
 
 async function withRouteKitHome(run: (home: string) => Promise<void>): Promise<void> {

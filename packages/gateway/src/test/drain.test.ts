@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
-import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
-import { startGateway } from "../server.js";
+import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../providers/backend.js";
+import { startGateway } from "../services/gateway/service.js";
 
 /**
  * Graceful drain: a draining gateway must report unhealthy and reject new

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { SERVICE_HOME_MODE } from "@velum-labs/routekit-runtime";
+import { SERVICE_HOME_MODE } from "@velum-labs/routekit-runtime/service";
 
 import { notifyIfUpdateAvailable } from "../update-notifier.js";
 

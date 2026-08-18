@@ -4,12 +4,12 @@ import {
   EVAL_ATTRIBUTION_HEADER,
   EVAL_POLICY_BYPASS_HEADER
 } from "@velum-labs/routekit-eval-contracts";
-import { ROUTEKIT_PRINCIPAL_HEADER } from "../auth.js";
+import { ROUTEKIT_PRINCIPAL_HEADER } from "../http/auth.js";
 import {
   evalAutoRouterRejection,
   evalPolicyBypassRequested,
   evalRequestAttribution
-} from "../eval-policy.js";
+} from "../routing/eval-policy.js";
 
 const evalHeaders = (allowedModels: readonly string[]) => ({
   [EVAL_POLICY_BYPASS_HEADER]: "1",

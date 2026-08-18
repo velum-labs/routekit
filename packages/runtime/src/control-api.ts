@@ -1,6 +1,6 @@
-export type { ControlClientOptions, ControlTransport } from "./service/control-protocol.js";
-export { HttpControlTransport } from "./service/control-client.js";
-export { ControlClient } from "./service/control-client.js";
+export type { ControlClientOptions, ControlTransport } from "./control/protocol.js";
+export { HttpControlTransport } from "./services/control-client/service.js";
+export { ControlClient } from "./services/control-client/service.js";
 export type {
   ControlErrorCode,
   ControlEvent,
@@ -13,12 +13,12 @@ export type {
   ControlServerErrorContext,
   ControlSuccess,
   RunningControlServer
-} from "./service/control-protocol.js";
+} from "./control/protocol.js";
 export {
   CONTROL_BODY_LIMIT_BYTES,
   CONTROL_PROTOCOL_VERSION,
   ControlError,
   controlTokenMatches,
   generateControlToken
-} from "./service/control-protocol.js";
-export { startControlServer } from "./service/control-server.js";
+} from "./control/protocol.js";
+export { startControlServer } from "./services/control-server/service.js";

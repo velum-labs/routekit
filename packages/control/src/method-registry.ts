@@ -1,4 +1,4 @@
-import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
+import type { ControlHandlerContext } from "@velum-labs/routekit-runtime/control";
 import type {
   RouteKitControlHandlers,
   RouteKitControlMethod,

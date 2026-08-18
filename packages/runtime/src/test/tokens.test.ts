@@ -4,11 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import {
-  createTokenStore,
-  decodeJoinCredential,
-  encodeJoinCredential
-} from "../tokens.js";
+import { createTokenStore, decodeJoinCredential, encodeJoinCredential } from "../tokens/store.js";
 
 test("token store issues, resolves, lists, and revokes admin tokens", () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-tokens-"));
@@ -122,10 +118,9 @@ test("join credential rejects bare secrets and malformed payloads", () => {
   assert.throws(
     () =>
       decodeJoinCredential(
-        `rk1_${Buffer.from(
-          JSON.stringify({ v: 1, p: "relative/path", t: "x" }),
-          "utf8"
-        ).toString("base64url")}`
+        `rk1_${Buffer.from(JSON.stringify({ v: 1, p: "relative/path", t: "x" }), "utf8").toString(
+          "base64url"
+        )}`
       ),
     /must be absolute/
   );

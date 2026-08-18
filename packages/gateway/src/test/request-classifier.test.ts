@@ -4,17 +4,15 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import {
-  RequestDecomposer,
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
   classifyRequestDimensions,
   extractClassifiableRequestText,
-  makeRequestDecomposerLayer,
   makeFakeRequestDecomposer,
   makeLanguageModelDimensionClassifier,
   parseDecompositionResult,
   validateDecompositionInput,
   validateDecompositionResult
-} from "../request-classifier.js";
+} from "../routing/classifier.js";
 
 const dimensions = [
   {
@@ -185,32 +183,28 @@ test("parseDecompositionResult rejects fences, prefixes, and trailing output", (
   }
 });
 
-test("dimension classifier protocol is provided as an Effect layer", async () => {
+test("dimension classifier protocol receives its adapter explicitly", async () => {
   const result = await runRouteKitEffect(
-    classifyRequestDimensions({
+    classifyRequestDimensions(makeFakeRequestDecomposer(areaResult), {
       request: "Fix routing evidence and an HTTP response translation bug",
       dimensions
-    }).pipe(
-      Effect.provide(makeRequestDecomposerLayer(makeFakeRequestDecomposer(areaResult)))
-    )
+    })
   );
   assert.deepEqual(result, areaResult);
 
   await assert.rejects(
     runRouteKitEffect(
-      classifyRequestDimensions({ request: "hello", dimensions }).pipe(
-        Effect.provide(
-          makeRequestDecomposerLayer({
-            classify: () => {
-              throw new Error("synchronous failure");
-            }
-          })
-        )
+      classifyRequestDimensions(
+        {
+          classify: () => {
+            throw new Error("synchronous failure");
+          }
+        },
+        { request: "hello", dimensions }
       )
     ),
     /dimension request classifier failed before returning an Effect/
   );
-  assert.equal(typeof RequestDecomposer, "function");
 });
 
 test("language-model dimension classifier sends only bounded dimension semantics and strict schema", async () => {
@@ -270,38 +264,7 @@ test("language-model dimension classifier sends only bounded dimension semantics
   );
 });
 
-test("language-model dimension classifier normalizes complete nonnegative model weights", async () => {
-  const classifier = makeLanguageModelDimensionClassifier({
-    model: "openai/gpt-5.6-luna",
-    complete: () =>
-      Effect.succeed(
-        Response.json({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  weights: {
-                    "gateway-protocol": 0.3,
-                    "eval-routing": 0.15,
-                    "provider-adapters": 0,
-                    "daemon-lifecycle": 0,
-                    "remote-enrollment": 0
-                  },
-                  unknownWeight: 0.05
-                })
-              }
-            }
-          ]
-        })
-      )
-  });
-  assert.deepEqual(
-    await runRouteKitEffect(classifier.classify({ request: "Route this", dimensions })),
-    areaResult
-  );
-});
-
-test("language-model dimension classifier fails closed on incomplete or invalid model output", async () => {
+test("language-model dimension classifier fails closed on incomplete, unnormalized, or all-unknown output", async () => {
   for (const content of [
     JSON.stringify({
       ...areaWireResult,
@@ -314,6 +277,20 @@ test("language-model dimension classifier fails closed on incomplete or invalid 
     JSON.stringify({
       weights: Object.fromEntries(dimensions.map((dimension) => [dimension.id, 0])),
       unknownWeight: 0
+    }),
+    JSON.stringify({
+      weights: {
+        "gateway-protocol": 0.3,
+        "eval-routing": 0.15,
+        "provider-adapters": 0,
+        "daemon-lifecycle": 0,
+        "remote-enrollment": 0
+      },
+      unknownWeight: 0.05
+    }),
+    JSON.stringify({
+      weights: Object.fromEntries(dimensions.map((dimension) => [dimension.id, 0])),
+      unknownWeight: 1
     }),
     `\`\`\`json\n${JSON.stringify(areaWireResult)}\n\`\`\``
   ]) {

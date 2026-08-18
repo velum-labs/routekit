@@ -5,20 +5,19 @@
  * children, readiness helpers, and port allocation.
  */
 export {
-  buildChildEnv,
-  freePort,
   runCliCapture,
   spawnLogged,
   terminate,
   waitForHttp,
-  waitForOutput,
-  withDeadline,
-  withTimeout
-} from "@velum-labs/routekit-runtime";
+  waitForOutput
+} from "@velum-labs/routekit-runtime/process";
+export { buildChildEnv } from "@velum-labs/routekit-runtime/environment";
+export { freePort } from "@velum-labs/routekit-runtime/ports";
+export { withDeadline, withTimeout } from "@velum-labs/routekit-runtime/timing";
 export type {
-  BuildChildEnvInput,
   CliCaptureOptions,
   CliCaptureResult,
   LoggedChild,
   LoggedSpawnOptions
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/process";
+export type { BuildChildEnvInput } from "@velum-labs/routekit-runtime/environment";

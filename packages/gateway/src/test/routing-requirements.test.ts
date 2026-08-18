@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { deriveRoutingRequirements } from "../routing-requirements.js";
+import { deriveRoutingRequirements } from "../routing/requirements.js";
 
 test("derives hard routing requirements from each supported request envelope", () => {
   assert.deepEqual(

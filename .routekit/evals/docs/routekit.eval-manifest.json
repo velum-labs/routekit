@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "profileId": "docs",
+  "candidateModels": [
+    "claude-code/claude-haiku-4-5-20251001",
+    "codex/gpt-5.4-mini"
+  ],
+  "judgeModel": "claude-code/claude-sonnet-4-5-20250929",
+  "caseCount": 3,
+  "caseIds": [
+    "readme-why-routekit",
+    "readme-quickstart",
+    "readme-what-you-can-connect"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 12
+}

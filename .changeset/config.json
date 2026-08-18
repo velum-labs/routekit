@@ -22,7 +22,6 @@
       "@velum-labs/routekit-gateway",
       "@velum-labs/routekit-harness-core",
       "@velum-labs/routekit-registry",
-      "@velum-labs/routekit-router",
       "@velum-labs/routekit-runtime",
       "@velum-labs/routekit-telemetry-core",
       "@velum-labs/routekit-testkit",

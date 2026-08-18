@@ -1,43 +1,32 @@
 import { AccountActivity, AccountAuth } from "@velum-labs/routekit-accounts/effect";
-import type { TokenStore } from "@velum-labs/routekit-runtime";
 import { RouteKitLive } from "@velum-labs/routekit-runtime/effect";
+import type { TokenStore } from "@velum-labs/routekit-runtime/tokens";
 import { Effect, Layer } from "effect";
 import type { AccountTransactionRecovery } from "../account-transaction.js";
 import type { CallAttributionStore } from "../call-attribution-store.js";
 import type { CliproxySidecar } from "../cliproxy-sidecar.js";
 import { createDaemonGenerationManager } from "../daemon-generations.js";
 import type { DaemonRuntimeState } from "../daemon-runtime-state.js";
-import type { EvalSessionManager } from "../eval-session-service.js";
-import {
-  AccountRecovery,
-  ActiveGateway,
-  CallAttributions,
-  DaemonEnv,
-  type DaemonEnvValue,
-  type DaemonGenerationHooks,
-  DaemonHost,
-  type DaemonHostValue,
-  DaemonPolicy,
-  type DaemonPolicyValue,
-  DaemonState,
-  DataPlane,
-  type DataPlaneValue,
-  EvalSessions,
-  Generations,
-  Leaderboard,
-  type LeaderboardValue,
-  Sidecar,
-  Telemetry,
-  type TelemetryServiceValue,
-  Tokens
-} from "./services.js";
+import { AccountRecovery } from "../services/account-recovery/service.js";
+import { ActiveGateway, type ActiveGatewayValue } from "../services/active-gateway/service.js";
+import { CallAttributions } from "../services/call-attributions/service.js";
+import { DaemonEnv, type DaemonEnvValue } from "../services/daemon-env/service.js";
+import { DaemonHost, type DaemonHostValue } from "../services/daemon-host/service.js";
+import { DaemonPolicy, type DaemonPolicyValue } from "../services/daemon-policy/service.js";
+import { DaemonState } from "../services/daemon-state/service.js";
+import { DataPlane, type DataPlaneValue } from "../services/data-plane/service.js";
+import { EvalSessions } from "../services/eval-session/service.js";
+import { type DaemonGenerationHooks, Generations } from "../services/generations/service.js";
+import { Leaderboard, type LeaderboardValue } from "../services/leaderboard-context/service.js";
+import { Sidecar } from "../services/sidecar/service.js";
+import { Telemetry, type TelemetryServiceValue } from "../services/telemetry/service.js";
+import { Tokens } from "../services/tokens/service.js";
 
 export type DaemonLiveOptions = {
   env: DaemonEnvValue;
   state: DaemonRuntimeState;
   sidecar: CliproxySidecar;
   tokens: TokenStore;
-  evalSessions: EvalSessionManager;
   telemetry: TelemetryServiceValue;
   activityPath: string;
   authPath: string;
@@ -81,7 +70,7 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
     DaemonState.layer(options.state),
     Layer.succeed(Sidecar, options.sidecar),
     Layer.succeed(Tokens, options.tokens),
-    Layer.succeed(EvalSessions, options.evalSessions),
+    EvalSessions.layer(),
     Layer.succeed(Telemetry, options.telemetry),
     Layer.succeed(DataPlane, options.dataPlane),
     Layer.succeed(AccountRecovery, options.accountRecovery),

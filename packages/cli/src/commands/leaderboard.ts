@@ -7,7 +7,7 @@ import {
 import { dim, renderTableLines } from "@velum-labs/routekit-cli-ui";
 import type { RouteKitLeaderboard } from "@velum-labs/routekit-control";
 import { formatUsd } from "@velum-labs/routekit-gateway";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import type { Command } from "commander";
 import { runCliClient } from "../cli-client.js";
 

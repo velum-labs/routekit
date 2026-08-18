@@ -48,7 +48,7 @@
         "How does the Responses API stream tool output?",
         "How do I enroll a second Codex subscription account?"
       ],
-      "sourceAnchors": ["packages/router", "packages/registry", "packages/config"]
+      "sourceAnchors": ["packages/daemon", "packages/registry", "packages/config"]
     },
     {
       "id": "subscription-pooling",

@@ -2,14 +2,39 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `ab74b0adb73183ebe34dbba205c251ceb4d6b6ca7fc273729f723f1a37825303`
+Declaration SHA-256: `62a76ad99b5e8f5abc17cefa05586d9a0438f2dda0940946b2e002042fb8244f`
 
 ## Root declarations
 
 ```ts
-export type { ActiveGatewayValue, DaemonAccountServices, DaemonEnvValue, DaemonGenerationHooks, DaemonHosted, DaemonHostValue, DaemonPolicyValue, DaemonStateService, DataPlaneValue, LeaderboardValue, TelemetryServiceValue } from "./effect/services.js";
+export type { ActiveGatewayValue } from "./services/active-gateway/service.js";
+export type { DaemonAccountServices } from "./services/account-services/service.js";
+export type { DaemonEnvValue, DaemonHosted } from "./services/daemon-env/service.js";
+export type { DaemonGenerationHooks } from "./services/generations/service.js";
+export type { DaemonHostValue } from "./services/daemon-host/service.js";
 export type { DaemonLive, DaemonLiveOptions } from "./effect/daemon-live.js";
-export { AccountRecovery, ActiveGateway, CallAttributions, DaemonEnv, DaemonHost, DaemonPolicy, DaemonState, DataPlane, daemonAccountServices, EvalSessions, Generations, Leaderboard, Sidecar, Telemetry, Tokens } from "./effect/services.js";
+export type { DaemonPolicyValue } from "./services/daemon-policy/service.js";
+export type { DaemonStateService } from "./services/daemon-state/service.js";
+export type { DataPlaneValue } from "./services/data-plane/service.js";
+export type { GatewayGenerationOptions, GatewayGenerationRedeemResetOptions, GatewayGenerationRedeemResetResponse, RunningGatewayGeneration } from "./services/gateway-generation/service.js";
+export type { LeaderboardValue } from "./services/leaderboard-context/service.js";
+export type { TelemetryServiceValue } from "./services/telemetry/service.js";
+export { AccountRecovery } from "./services/account-recovery/service.js";
+export { ActiveGateway } from "./services/active-gateway/service.js";
+export { CallAttributions } from "./services/call-attributions/service.js";
+export { DaemonEnv } from "./services/daemon-env/service.js";
+export { DaemonHost } from "./services/daemon-host/service.js";
+export { DaemonPolicy } from "./services/daemon-policy/service.js";
+export { DaemonState } from "./services/daemon-state/service.js";
+export { DataPlane } from "./services/data-plane/service.js";
+export { EvalSessions } from "./services/eval-session/service.js";
+export { Generations } from "./services/generations/service.js";
+export { Leaderboard } from "./services/leaderboard-context/service.js";
+export { Sidecar } from "./services/sidecar/service.js";
+export { Telemetry } from "./services/telemetry/service.js";
+export { Tokens } from "./services/tokens/service.js";
+export { daemonAccountServices } from "./services/account-services/service.js";
 export { daemonLive } from "./effect/daemon-live.js";
 export { runHostGenerationTransactionEffect } from "./host-generation-transaction.js";
+export { startGatewayGenerationEffect } from "./services/gateway-generation/service.js";
 ```

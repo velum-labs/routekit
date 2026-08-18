@@ -1,7 +1,7 @@
 export type {
   ObservedDecompositionResult,
   RequestDecomposerService
-} from "./request-classifier.js";
+} from "./routing/classifier.js";
 export {
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
   ClassificationError,
@@ -9,13 +9,11 @@ export {
   extractClassifiableRequestText,
   makeFakeRequestDecomposer,
   makeLanguageModelDimensionClassifier,
-  makeRequestDecomposerLayer,
   parseDecompositionResult,
-  RequestDecomposer,
   validateDecompositionInput,
   validateDecompositionResult
-} from "./request-classifier.js";
-export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
+} from "./routing/classifier.js";
+export type { CatalogModelInfo, RoutingBackendOptions } from "./routing/router.js";
 export {
   isSubscriptionProvider,
   modelPolicyAllowsModel,
@@ -23,8 +21,8 @@ export {
   NoModelAvailableError,
   RoutingBackend,
   UnknownModelError
-} from "./router.js";
-export type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
+} from "./routing/router.js";
+export type { ModelCatalogEntry, RoutePlan } from "./routing/core.js";
 export {
   BackendExecutor,
   ModelCatalog,
@@ -32,4 +30,4 @@ export {
   ProviderLifecycle,
   RoutePlanner,
   RoutePolicy
-} from "./routing-core.js";
+} from "./routing/core.js";

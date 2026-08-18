@@ -3,7 +3,7 @@ import {
   EFFORT_QUALIFIED_MODEL_CODEC,
   effortQualifiedClientModel
 } from "@velum-labs/routekit-contracts";
-import { normalizeApiBaseUrl } from "@velum-labs/routekit-runtime";
+import { normalizeApiBaseUrl } from "@velum-labs/routekit-runtime/network";
 import type { ToolLaunchContext } from "@velum-labs/routekit-tools";
 
 import { scaffoldCursorSubagents } from "./subagents.js";

@@ -6,7 +6,7 @@ import { parse as tomlParse, stringify as tomlStringify } from "smol-toml";
 
 import type { ModelReasoningCapabilities } from "@velum-labs/routekit-contracts";
 import { SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
-import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime";
+import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime/network";
 
 import {
   codexPersistentModelCatalogJson,
@@ -102,7 +102,9 @@ function selectedDefaultModel(input: CodexInstallInput): string {
   const model = input.defaultModel ?? input.models[0]?.modelId;
   if (model === undefined) throw new Error("at least one Codex catalog model is required");
   if (!input.models.some((profile) => profile.modelId === model)) {
-    throw new Error(`the Codex default model ${JSON.stringify(model)} is not in the RouteKit catalog`);
+    throw new Error(
+      `the Codex default model ${JSON.stringify(model)} is not in the RouteKit catalog`
+    );
   }
   return model;
 }
@@ -179,13 +181,22 @@ function ownedProfileFiles(
     .map((name) => join(codexHome, name));
 }
 
-function ownedCatalogFile(managed: string | undefined, codexHome: string, ownerId: string): string | undefined {
+function ownedCatalogFile(
+  managed: string | undefined,
+  codexHome: string,
+  ownerId: string
+): string | undefined {
   if (managed === undefined) return undefined;
   const prefix = catalogFileComment(ownerId);
   const line = managed.split("\n").find((entry) => entry.startsWith(prefix));
   if (line === undefined) return undefined;
   const file = line.slice(prefix.length).trim();
-  if (file.length === 0 || file.includes("/") || file.includes("\\") || file !== catalogFileName(ownerId)) {
+  if (
+    file.length === 0 ||
+    file.includes("/") ||
+    file.includes("\\") ||
+    file !== catalogFileName(ownerId)
+  ) {
     return undefined;
   }
   return join(codexHome, file);
@@ -324,10 +335,10 @@ export function installCodexIntegration(input: CodexInstallInput): CodexInstallR
   };
 }
 
-export function uninstallCodexIntegration(input: {
-  ownerId: string;
-  codexHome?: string;
-}): { configPath: string; removed: boolean } {
+export function uninstallCodexIntegration(input: { ownerId: string; codexHome?: string }): {
+  configPath: string;
+  removed: boolean;
+} {
   const configPath = codexIntegrationConfigPath(input.codexHome);
   if (!existsSync(configPath)) return { configPath, removed: false };
   const existing = readFileSync(configPath, "utf8");

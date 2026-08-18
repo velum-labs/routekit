@@ -134,10 +134,12 @@ export type SubscriptionGatewayRelayPorts = Readonly<{
 
 export type SubscriptionGatewayOptions = {
   backend: SubscriptionGatewayBackend;
+  backendOwnership?: "owned" | "borrowed";
   host?: string;
   port?: number;
   authToken?: string;
   providerRelays?: Partial<Record<SubscriptionGatewayRelayDialect, SubscriptionGatewayRelayPorts>>;
+  relayOwnership?: "owned" | "borrowed";
   usage?: () => Effect.Effect<unknown, Error, RouteKitPlatform>;
 };
 

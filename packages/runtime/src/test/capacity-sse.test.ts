@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { Effect } from "effect";
 
-import { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "../gateway-url.js";
+import { gatewayOpenAiBaseUrl, gatewayOrigin, gatewayPath } from "../network/gateway-url.js";
 import { CapacityPool, SseDecoder, SseParseError } from "../index.js";
 
 test("capacity pool exposes opaque members and exact-once lease release", () => {

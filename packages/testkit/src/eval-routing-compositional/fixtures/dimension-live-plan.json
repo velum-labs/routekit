@@ -22,7 +22,7 @@
       "sourceFiles": [
         "docs/model-catalog.md",
         "docs/configuration.md",
-        "packages/router/package.json"
+        "packages/daemon/package.json"
       ]
     },
     {

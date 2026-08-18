@@ -1,5 +1,5 @@
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { ResourceScope } from "@velum-labs/routekit-runtime";
+import { ResourceScope } from "@velum-labs/routekit-runtime/lifecycle";
 import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 

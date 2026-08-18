@@ -1,7 +1,9 @@
 import { type CompositionalRoutingConfig, parseRouterConfig } from "@velum-labs/routekit-config";
 import {
-  makeRoutingActivationStore
-} from "@velum-labs/routekit-eval-store/effect";
+  type RunningGatewayGeneration,
+  startGatewayGenerationEffect
+} from "@velum-labs/routekit-daemon/effect";
+import { makeRoutingActivationStore } from "@velum-labs/routekit-eval-store/effect";
 import type {
   CompositionalRoutingObservation,
   CompositionalRoutingPolicyReader,
@@ -9,8 +11,6 @@ import type {
   ProvenanceSink
 } from "@velum-labs/routekit-gateway";
 import { RoutingPolicyReadError } from "@velum-labs/routekit-gateway";
-import type { RunningRouter } from "@velum-labs/routekit-router";
-import { startRouterEffect } from "@velum-labs/routekit-router/effect";
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Context, Crypto, Effect, Layer, Ref } from "effect";
 
@@ -86,7 +86,7 @@ export const makeTestdriveEmbeddedRouterLayer = (options: {
             )
           )
       };
-      const running: RunningRouter = yield* startRouterEffect({
+      const running: RunningGatewayGeneration = yield* startGatewayGenerationEffect({
         config: parseRouterConfig({
           providers: { openai: {} },
           defaultModel: options.defaultModel,

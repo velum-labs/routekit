@@ -5,7 +5,7 @@ import {
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
 import type { ModelRouteInfo } from "@velum-labs/routekit-control";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import type { Command } from "commander";
 import { Effect } from "effect";
 import { fetchLiveCatalog } from "../catalog.js";

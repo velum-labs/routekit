@@ -2,9 +2,9 @@ import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import { cursorModelVariants } from "../adapters/cursor.js";
-import type { Backend } from "../backend.js";
+import type { Backend } from "../providers/backend.js";
 import { gatewayTryPromise } from "../effect/gateway.js";
-import { decodeModelCatalogPayload } from "../provider-protocol.js";
+import { decodeModelCatalogPayload } from "../providers/protocol.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,

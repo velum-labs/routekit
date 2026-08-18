@@ -6,7 +6,7 @@ import type {
   EvalRunCleanup,
   EvalRunTarget
 } from "@velum-labs/routekit-eval-setup";
-import { isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect, FileSystem, Redacted, Ref } from "effect";
 import type { HttpClient } from "effect/unstable/http";
@@ -29,11 +29,7 @@ export type QualificationTarget = {
   readonly target: EvalRunTarget;
   readonly inspectCall?: (
     callId: string
-  ) => Effect.Effect<
-    EvalClassifierObservation["measurement"],
-    Error,
-    HttpClient.HttpClient
-  >;
+  ) => Effect.Effect<EvalClassifierObservation["measurement"], Error, HttpClient.HttpClient>;
 };
 
 export type QualificationTargetInput = {
@@ -86,9 +82,7 @@ const readPrivateCredential = (
     const credential = (yield* fs
       .readFileString(path)
       .pipe(
-        Effect.mapError((cause) =>
-          failure("external eval token file could not be read", cause)
-        )
+        Effect.mapError((cause) => failure("external eval token file could not be read", cause))
       )).trim();
     if (credential.length === 0) {
       return yield* failure("external eval token file is empty");
@@ -96,12 +90,11 @@ const readPrivateCredential = (
     return Redacted.make(credential);
   });
 
-export const makeQualificationCleanupRef: Effect.Effect<
-  Ref.Ref<EvalRunCleanup>
-> = Ref.make<EvalRunCleanup>({
-  sessionOpened: false,
-  sessionClosed: false
-});
+export const makeQualificationCleanupRef: Effect.Effect<Ref.Ref<EvalRunCleanup>> =
+  Ref.make<EvalRunCleanup>({
+    sessionOpened: false,
+    sessionClosed: false
+  });
 
 export function withQualificationTarget<A, E, R>(
   input: QualificationTargetInput,
@@ -137,11 +130,7 @@ export function withQualificationTarget<A, E, R>(
     const remote = yield* cliTry(() => selectedRemoteMetadata());
     const client = yield* routekitClient;
     for (const model of [
-      ...new Set([
-        input.plan.classifierModel,
-        input.plan.judgeModel,
-        ...input.plan.candidateModels
-      ])
+      ...new Set([input.plan.classifierModel, input.plan.judgeModel, ...input.plan.candidateModels])
     ]) {
       yield* client.call("models.info", { model });
     }
@@ -161,10 +150,8 @@ export function withQualificationTarget<A, E, R>(
             ],
             limits: {
               calls: input.plan.expectedCallCount,
-              inputTokens:
-                input.plan.expectedCallCount * QUALIFICATION_PER_CALL_INPUT_BYTES,
-              outputTokens:
-                input.plan.expectedCallCount * input.plan.maximumOutputTokens,
+              inputTokens: input.plan.expectedCallCount * QUALIFICATION_PER_CALL_INPUT_BYTES,
+              outputTokens: input.plan.expectedCallCount * input.plan.maximumOutputTokens,
               perCallOutputTokens: input.plan.maximumOutputTokens,
               wallTimeMs: 2 * 60 * 60_000
             },
@@ -207,9 +194,7 @@ export function withQualificationTarget<A, E, R>(
                   ...(call.usage?.completion_tokens === undefined
                     ? {}
                     : { outputTokens: call.usage.completion_tokens }),
-                  ...(Number.isFinite(started) &&
-                  Number.isFinite(finished) &&
-                  finished >= started
+                  ...(Number.isFinite(started) && Number.isFinite(finished) && finished >= started
                     ? { durationMs: finished - started }
                     : {})
                 };

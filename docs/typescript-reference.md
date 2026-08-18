@@ -17,13 +17,11 @@ never its own root barrel.
 flowchart LR
   CLI["@velum-labs/routekit"] --> Daemon["@velum-labs/routekit-daemon"]
   CLI --> Control["@velum-labs/routekit-control"]
-  CLI --> Router["@velum-labs/routekit-router"]
   CLI --> Config["@velum-labs/routekit-config"]
   CLI --> ToolRegistry["@velum-labs/routekit-tool-registry"]
   Daemon --> Gateway["@velum-labs/routekit-gateway"]
+  Daemon --> Accounts["@velum-labs/routekit-accounts"]
   Daemon --> Control
-  Router --> Gateway
-  Router --> Accounts["@velum-labs/routekit-accounts"]
   Gateway --> Registry["@velum-labs/routekit-registry"]
   ToolRegistry --> Tools["@velum-labs/routekit-tools"]
   ToolRegistry --> Codex["@velum-labs/routekit-tool-codex"]
@@ -90,10 +88,6 @@ const gateway = await startGateway({ backend });
 
 `@velum-labs/routekit-accounts` owns subscription credentials, account sources, quota tracking, multi-account provider pools, per-model eligibility, provider relays, and proxy/client wire contracts. Selection supports sticky, round-robin, and capacity-weighted policies.
 
-## `@velum-labs/routekit-router`
-
-`@velum-labs/routekit-router` composes embedded RouteKit routing: account relays, gateway ownership, and reusable router construction for SDK consumers.
-
 ## `@velum-labs/routekit-config`
 
 `@velum-labs/routekit-config-core` owns the canonical `RouterConfig` schemas,
@@ -104,7 +98,7 @@ the gateway implementation.
 
 ## `@velum-labs/routekit-daemon` and `@velum-labs/routekit-control`
 
-`@velum-labs/routekit-daemon` owns the singleton service: a stable cluster host, shared control/data listeners, one rollable daemon worker, router generations, graceful drain, and supervisor integration. `@velum-labs/routekit-control` defines the authenticated `control.v2` RPC surface the CLI uses to manage accounts, config, tokens, usage, call attribution, and local worker rolls.
+`@velum-labs/routekit-daemon` owns the singleton service: a stable cluster host, shared control/data listeners, one rollable daemon worker, Effect-scoped gateway generations, graceful drain, and supervisor integration. `@velum-labs/routekit-control` defines the authenticated `control.v2` RPC surface the CLI uses to manage accounts, config, tokens, usage, call attribution, and local worker rolls.
 
 ## `@velum-labs/routekit-contracts`
 

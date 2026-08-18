@@ -1,4 +1,4 @@
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { z } from "zod";
 import type { ControlSchema } from "./method-registry.js";
 

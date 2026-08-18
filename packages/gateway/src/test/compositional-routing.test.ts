@@ -11,15 +11,15 @@ import {
 } from "@velum-labs/routekit-eval-contracts";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
-import { CompositionalRoutingError, routeCompositionalRequest } from "../compositional-routing.js";
+import { CompositionalRoutingError, routeCompositionalRequest } from "../routing/compositional.js";
 import {
   AutoRoutingUnavailableError,
   type CompositionalRoutingObservation,
   compositionalRoutingPolicyReaderFromSnapshot,
   resolveCompositionalAutoRoutingModel,
   resolveConfiguredAutoRoutingModel
-} from "../eval-policy.js";
-import { makeFakeRequestDecomposer } from "../request-classifier.js";
+} from "../routing/eval-policy.js";
+import { makeFakeRequestDecomposer } from "../routing/classifier.js";
 
 const dimensions = [
   "code-change",

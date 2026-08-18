@@ -11,7 +11,7 @@ import {
   splitNamespacedModel
 } from "@velum-labs/routekit-config";
 import { catalogDefaultModel } from "@velum-labs/routekit-registry";
-import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
+import { acquireLifecycleLock } from "@velum-labs/routekit-runtime/service";
 import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { type Command, Option } from "commander";
 import { Effect } from "effect";
@@ -27,7 +27,10 @@ import {
 } from "../client.js";
 import { DEFAULT_ROUTER_CONFIG, globalRouterConfigPath, writeRouterConfig } from "../config.js";
 import { missingServiceCredentialVariables } from "../daemon.js";
-import { configImportIdempotencyKey, ImportRouterConfig } from "../use-cases/config.js";
+import {
+  configImportIdempotencyKey,
+  ImportRouterConfig
+} from "../services/config-import/service.js";
 
 export const CONFIG_INIT_PROVIDER_IDS = ["openai", "anthropic", "openrouter", "bedrock"] as const;
 

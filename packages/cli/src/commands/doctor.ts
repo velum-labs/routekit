@@ -4,13 +4,13 @@ import {
   probeBinaryVersion,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import { commandOnPath } from "@velum-labs/routekit-runtime";
+import { commandOnPath } from "@velum-labs/routekit-runtime/environment";
 import type { Command } from "commander";
 import { Effect } from "effect";
 import { runCliClient } from "../cli-client.js";
 import { readDaemonRecord } from "../client.js";
 import { serviceEnvironmentContractInstalled } from "../daemon.js";
-import { routekitToolRegistry } from "../launch.js";
+import { routekitToolRegistry } from "../adapters/launch.js";
 import { isLaunchToolId } from "../launch-support.js";
 
 function installCommand(binary: string): string {

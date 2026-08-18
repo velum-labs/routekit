@@ -8,7 +8,6 @@
     { "path": "../runtime" },
     { "path": "../control" },
     { "path": "../config" },
-    { "path": "../router" },
     { "path": "../gateway" },
     { "path": "../eval-contracts" },
     { "path": "../eval-store" },

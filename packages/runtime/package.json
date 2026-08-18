@@ -19,9 +19,49 @@
       "types": "./dist/control-api.d.ts",
       "default": "./dist/control-api.js"
     },
+    "./args": {
+      "types": "./dist/args.d.ts",
+      "default": "./dist/args.js"
+    },
+    "./capacity": {
+      "types": "./dist/capacity-api.d.ts",
+      "default": "./dist/capacity-api.js"
+    },
+    "./environment": {
+      "types": "./dist/environment.d.ts",
+      "default": "./dist/environment.js"
+    },
+    "./filesystem": {
+      "types": "./dist/filesystem-api.d.ts",
+      "default": "./dist/filesystem-api.js"
+    },
+    "./formatting": {
+      "types": "./dist/runtime-formatting.d.ts",
+      "default": "./dist/runtime-formatting.js"
+    },
     "./lifecycle": {
       "types": "./dist/lifecycle-api.d.ts",
       "default": "./dist/lifecycle-api.js"
+    },
+    "./logging": {
+      "types": "./dist/logging.d.ts",
+      "default": "./dist/logging.js"
+    },
+    "./network": {
+      "types": "./dist/network-api.d.ts",
+      "default": "./dist/network-api.js"
+    },
+    "./ports": {
+      "types": "./dist/runtime-ports.d.ts",
+      "default": "./dist/runtime-ports.js"
+    },
+    "./process": {
+      "types": "./dist/process-api.d.ts",
+      "default": "./dist/process-api.js"
+    },
+    "./service": {
+      "types": "./dist/service-api.d.ts",
+      "default": "./dist/service-api.js"
     },
     "./effect": {
       "types": "./dist/effect-api.d.ts",
@@ -30,6 +70,14 @@
     "./sse": {
       "types": "./dist/sse-api.d.ts",
       "default": "./dist/sse-api.js"
+    },
+    "./tokens": {
+      "types": "./dist/tokens-api.d.ts",
+      "default": "./dist/tokens-api.js"
+    },
+    "./timing": {
+      "types": "./dist/runtime-timing.d.ts",
+      "default": "./dist/runtime-timing.js"
     }
   },
   "files": [

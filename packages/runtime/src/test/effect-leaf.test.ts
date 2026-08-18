@@ -9,7 +9,6 @@ import { TestClock } from "effect/testing";
 
 import {
   CapacityPool,
-  EffectResourceScope,
   EffectVersionedDocumentStore,
   ensureRunOutputDirEffect,
   makeSingleFlight,
@@ -21,78 +20,6 @@ import {
   tryAcquireFileLockEffect,
   writeFileAtomicEffect
 } from "../effect-api.js";
-import { ResourceDisposalTimeoutError } from "../resource-scope.js";
-
-test("EffectResourceScope disposes owned resources LIFO and aggregates failures", async () => {
-  const order: string[] = [];
-  const scope = new EffectResourceScope();
-  await Effect.runPromise(
-    scope.defer(() => {
-      order.push("first");
-    })
-  );
-  await Effect.runPromise(
-    scope.defer(() => {
-      order.push("failing");
-      throw new RouteKitFailure({ message: "failed" });
-    })
-  );
-  await Effect.runPromise(
-    scope.defer(() => {
-      order.push("last");
-    })
-  );
-
-  await assert.rejects(
-    runRouteKitEffect(scope.dispose()),
-    (error: unknown) =>
-      error instanceof AggregateError &&
-      error.errors.length === 1 &&
-      error.errors[0] instanceof Error &&
-      error.errors[0].message === "failed"
-  );
-  assert.deepEqual(order, ["last", "failing", "first"]);
-});
-
-test("EffectResourceScope skips borrowed resources and transfers ownership after startup", async () => {
-  let ownedCloses = 0;
-  let borrowedCloses = 0;
-  const startup = new EffectResourceScope();
-  const live = new EffectResourceScope();
-  await Effect.runPromise(startup.own({ close: () => ownedCloses++ }));
-  await Effect.runPromise(startup.borrow({ close: () => borrowedCloses++ }));
-  await Effect.runPromise(startup.transferTo(live));
-  await runRouteKitEffect(startup.dispose());
-  assert.equal(ownedCloses, 0);
-  await runRouteKitEffect(live.dispose());
-  assert.equal(ownedCloses, 1);
-  assert.equal(borrowedCloses, 0);
-});
-
-test("EffectResourceScope shutdown budgets still attempt later finalizers", async () => {
-  const order: string[] = [];
-  const scope = new EffectResourceScope({ shutdownBudgetMs: 10 });
-  await Effect.runPromise(
-    scope.defer(() => {
-      order.push("later");
-    })
-  );
-  await Effect.runPromise(
-    scope.deferEffect(
-      Effect.sync(() => {
-        order.push("hung");
-      }).pipe(Effect.andThen(Effect.never))
-    )
-  );
-
-  await assert.rejects(
-    runRouteKitEffect(scope.dispose()),
-    (error: unknown) =>
-      error instanceof AggregateError &&
-      error.errors.some((entry) => entry instanceof ResourceDisposalTimeoutError)
-  );
-  assert.deepEqual(order, ["hung", "later"]);
-});
 
 test("registerCleanupEffect runs LIFO and unregister removes a callback", async () => {
   const order: string[] = [];

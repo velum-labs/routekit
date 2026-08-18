@@ -8,7 +8,7 @@ import {
   type ModelReasoningCapabilities,
   reasoningEffortDescriptors
 } from "@velum-labs/routekit-contracts";
-import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime";
+import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime/network";
 import type { AgentProfile, ToolLaunchContext, ToolLaunchSpec } from "@velum-labs/routekit-tools";
 import { stringify as tomlStringify } from "smol-toml";
 
@@ -126,31 +126,29 @@ function catalogModels(
 ): ToolLaunchSpec["models"] {
   return spec.models.filter((model) => {
     const isDefault =
-      model.id === spec.defaultModel ||
-      model.aliases?.includes(spec.defaultModel) === true;
+      model.id === spec.defaultModel || model.aliases?.includes(spec.defaultModel) === true;
     if (spec.modelSelection === undefined) {
       return isDefault || isCodexPickerEligibleModel(model);
     }
     if (isDefault && spec.modelSelection !== "implicit") return true;
-    return codexCompatibility({
-      id: model.id,
-      ...(model.provider !== undefined ? { provider: model.provider } : {}),
-      ...(model.architecture !== undefined ? { architecture: model.architecture } : {}),
-      ...(model.supportedParameters !== undefined
-        ? { supportedParameters: model.supportedParameters }
-        : {}),
-      ...(model.features?.tools !== undefined
-        ? {
-            capabilities: {
-              tools:
-                model.features.tools === "full"
-                  ? "supported"
-                  : model.features.tools
+    return (
+      codexCompatibility({
+        id: model.id,
+        ...(model.provider !== undefined ? { provider: model.provider } : {}),
+        ...(model.architecture !== undefined ? { architecture: model.architecture } : {}),
+        ...(model.supportedParameters !== undefined
+          ? { supportedParameters: model.supportedParameters }
+          : {}),
+        ...(model.features?.tools !== undefined
+          ? {
+              capabilities: {
+                tools: model.features.tools === "full" ? "supported" : model.features.tools
+              }
             }
-          }
-        : {}),
-      ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {})
-    }).status === "compatible";
+          : {}),
+        ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {})
+      }).status === "compatible"
+    );
   });
 }
 

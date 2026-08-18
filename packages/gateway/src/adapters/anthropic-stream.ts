@@ -4,10 +4,10 @@
  */
 
 import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
-import { randomId } from "@velum-labs/routekit-runtime";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
-import type { OpenAiChatSseEvent } from "../provider-protocol.js";
-import { decodeOpenAiChatSseEvent } from "../provider-protocol.js";
+import type { OpenAiChatSseEvent } from "../providers/protocol.js";
+import { decodeOpenAiChatSseEvent } from "../providers/protocol.js";
 import { SseParseError } from "../sse/parse.js";
 import { mapStopReason } from "./anthropic-codec.js";
 import { anthropicReasoningDetailsOf, anthropicReasoningExtension } from "./openai-chat-wire.js";

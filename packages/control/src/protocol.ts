@@ -9,7 +9,13 @@ import type {
   UpstreamAuthState
 } from "@velum-labs/routekit-contracts";
 import type { PublishedRoutingActivation } from "@velum-labs/routekit-eval-contracts";
-import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
+import type { ControlHandlerContext } from "@velum-labs/routekit-runtime/control";
+import type {
+  IssuedToken,
+  TokenListEntry,
+  TokenPlane,
+  TokenRole
+} from "@velum-labs/routekit-runtime/tokens";
 import type {
   CommandCompletedProperties,
   TelemetryCategory,
@@ -18,27 +24,9 @@ import type {
 export const ROUTEKIT_CONTROL_CAPABILITY = "routekit.control.v2";
 export const ROUTEKIT_DAEMON_ROLL_CAPABILITY = "routekit.daemon-host.v1";
 
-export type TokenPlane = "data" | "control";
-export type TokenRole = "owner" | "admin";
+export type { TokenListEntry, TokenPlane, TokenRole };
 
-export type TokenListEntry = {
-  id: string;
-  label: string;
-  plane: TokenPlane;
-  role: TokenRole;
-  createdAt: string;
-  createdBy?: string;
-  lastUsedAt?: string;
-  revokedAt?: string;
-};
-
-export type IssuedTokenResult = {
-  id: string;
-  label: string;
-  plane: TokenPlane;
-  role: TokenRole;
-  /** Plaintext credential; shown once at issue time. */
-  token: string;
+export type IssuedTokenResult = IssuedToken & {
   /**
    * Self-describing peer enrollment credential (control plane only).
    * Encodes the owner's public-record path with the control secret so a peer

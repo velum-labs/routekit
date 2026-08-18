@@ -7,13 +7,8 @@ export const EVAL_POLICY_BYPASS_HEADER = "x-routekit-eval-policy-bypass";
 export const EVAL_ATTRIBUTION_HEADER = "x-routekit-eval-attribution";
 
 export const EVAL_CONTRACT_VERSION = 1 as const;
-export const ROUTING_SNAPSHOT_VERSION = 1 as const;
 export const COMPOSITIONAL_ROUTING_VERSION = 2 as const;
 export const EVAL_SETUP_VERSION = 1 as const;
-export const CLASSIFIABLE_PROFILE_LIMIT = 64;
-export const CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT = 1_024;
-export const CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT = 64;
-export const CLASSIFIABLE_PROFILE_FALLBACK_LIMIT = 32;
 export const CLASSIFIER_BASIS_TEXT_LIMIT = 64 * 1_024;
 export const ROUTING_BASIS_DIMENSION_MIN = 5;
 export const ROUTING_BASIS_DIMENSION_MAX = 10;
@@ -374,9 +369,7 @@ export function assertPublishedRoutingActivation(snapshot: PublishedRoutingActiv
     candidates.add(model);
   }
   const dimensionIds = new Set(snapshot.dimensions.map((dimension) => dimension.id));
-  for (const [dimensionId] of Object.entries(
-    snapshot.constraints?.minimumDimensionQuality ?? {}
-  )) {
+  for (const [dimensionId] of Object.entries(snapshot.constraints?.minimumDimensionQuality ?? {})) {
     if (!dimensionIds.has(dimensionId)) {
       throw new Error(
         `routing activation quality constraint refers to unknown dimension ${JSON.stringify(
@@ -604,32 +597,6 @@ export const EVAL_POLICY: EvalPolicy = {
   onlineRequestPathIsolated: true
 };
 
-export const EvalWorkerRequest = Schema.Struct({
-  version: EvalContractVersion,
-  type: Schema.Literal("run"),
-  id: Schema.String,
-  spec: EvalSuiteSpec,
-  gatewayUrl: Schema.String,
-  token: Schema.String
-});
-export type EvalWorkerRequest = typeof EvalWorkerRequest.Type;
-
-export const EvalWorkerResponse = Schema.Union([
-  Schema.Struct({
-    version: EvalContractVersion,
-    type: Schema.Literal("result"),
-    id: Schema.String,
-    result: EvalRunResult
-  }),
-  Schema.Struct({
-    version: EvalContractVersion,
-    type: Schema.Literal("error"),
-    id: Schema.String,
-    error: Schema.String
-  })
-]);
-export type EvalWorkerResponse = typeof EvalWorkerResponse.Type;
-
 export const RoutingObjective = Schema.Literals([
   "lowest-cost",
   "lowest-latency",
@@ -645,22 +612,6 @@ export const RoutingEligibility = Schema.Struct({
   maximumP95DurationMs: Schema.optionalKey(NonNegativeFinite)
 });
 export type RoutingEligibility = typeof RoutingEligibility.Type;
-
-/**
- * Authored input connecting an eval suite to the models and objective used to
- * compile an online routing decision.
- */
-export const RoutingProfile = Schema.Struct({
-  version: EvalContractVersion,
-  id: Schema.String,
-  suite: Schema.String,
-  candidates: Schema.Array(Schema.String),
-  judge: Schema.String,
-  eligibility: RoutingEligibility,
-  objective: RoutingObjective,
-  description: Schema.optionalKey(Schema.String)
-});
-export type RoutingProfile = typeof RoutingProfile.Type;
 
 export const EvalComparisonRequest = Schema.Struct({
   version: EvalContractVersion,
@@ -757,109 +708,6 @@ export const RoutingRejection = Schema.Struct({
 });
 export type RoutingRejection = typeof RoutingRejection.Type;
 
-export const CompiledRoutingPolicy = Schema.Struct({
-  version: Schema.Literal(ROUTING_SNAPSHOT_VERSION),
-  profileId: Schema.String,
-  selectedModel: Schema.String,
-  fallbackModels: Schema.Array(Schema.String),
-  objective: RoutingObjective,
-  suiteDigest: Schema.String,
-  evidenceDigest: Schema.String,
-  evidence: Schema.Array(ModelEvidence),
-  rejected: Schema.Array(RoutingRejection),
-  description: Schema.optionalKey(Schema.String)
-});
-export type CompiledRoutingPolicy = typeof CompiledRoutingPolicy.Type;
-
-/** Compact aggregate evidence retained in the legacy publication artifact. */
-export const PublishedModelEvidenceSummary = Schema.Struct({
-  model: Schema.String,
-  passRate: Schema.optionalKey(UnitInterval),
-  averageJudgeScore: Schema.optionalKey(UnitInterval),
-  averageCostUsd: Schema.optionalKey(NonNegativeFinite)
-});
-export type PublishedModelEvidenceSummary = typeof PublishedModelEvidenceSummary.Type;
-
-export const PublishedRoutingProfile = Schema.Struct({
-  selectedModel: Schema.String,
-  fallbackModels: Schema.Array(Schema.String),
-  objective: RoutingObjective,
-  suiteDigest: Schema.String,
-  evidenceDigest: Schema.String,
-  publishedAt: Schema.String,
-  description: Schema.optionalKey(Schema.String),
-  evidence: Schema.optionalKey(Schema.Array(PublishedModelEvidenceSummary))
-});
-export type PublishedRoutingProfile = typeof PublishedRoutingProfile.Type;
-
-/**
- * Compact online artifact. It includes profile winners and compact model
- * evidence for classification, and excludes raw cases, prompts, candidate
- * outputs, judge outputs, credentials, and authoring state.
- */
-export const PublishedRoutingSnapshot = Schema.Struct({
-  version: Schema.Literal(ROUTING_SNAPSHOT_VERSION),
-  generatedAt: Schema.String,
-  profiles: Schema.Record(Schema.String, PublishedRoutingProfile)
-});
-export type PublishedRoutingSnapshot = typeof PublishedRoutingSnapshot.Type;
-
-export function assertPublishedRoutingProfiles(
-  profiles: Readonly<Record<string, PublishedRoutingProfile>>
-): void {
-  const entries = Object.entries(profiles);
-  if (entries.length > CLASSIFIABLE_PROFILE_LIMIT) {
-    throw new Error(
-      `published routing basis exceeds ${String(CLASSIFIABLE_PROFILE_LIMIT)} profiles`
-    );
-  }
-  for (const [id, profile] of entries) {
-    if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(id)) {
-      throw new Error(`invalid published routing profile id ${JSON.stringify(id)}`);
-    }
-    if ((profile.description ?? id).trim().length > CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT) {
-      throw new Error(
-        `published routing profile ${JSON.stringify(id)} has an oversized description`
-      );
-    }
-    if (profile.fallbackModels.length > CLASSIFIABLE_PROFILE_FALLBACK_LIMIT) {
-      throw new Error(`published routing profile ${JSON.stringify(id)} has too many fallbacks`);
-    }
-    if ((profile.evidence?.length ?? 0) > CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT) {
-      throw new Error(`published routing profile ${JSON.stringify(id)} has too much evidence`);
-    }
-    assertExplicitEvalModel(profile.selectedModel, "candidate");
-    const ranked = new Set<string>([profile.selectedModel]);
-    for (const model of profile.fallbackModels) {
-      assertExplicitEvalModel(model, "candidate");
-      if (ranked.has(model)) {
-        throw new Error(`published routing profile ${JSON.stringify(id)} has duplicate models`);
-      }
-      ranked.add(model);
-    }
-    const evidenceModels = new Set<string>();
-    for (const evidence of profile.evidence ?? []) {
-      assertExplicitEvalModel(evidence.model, "candidate");
-      if (evidenceModels.has(evidence.model)) {
-        throw new Error(`published routing profile ${JSON.stringify(id)} has duplicate evidence`);
-      }
-      evidenceModels.add(evidence.model);
-    }
-  }
-  const projection = entries.map(([id, profile]) => ({
-    id,
-    description: profile.description?.trim() || id,
-    selectedModel: profile.selectedModel,
-    fallbackModels: profile.fallbackModels,
-    evidence: profile.evidence ?? []
-  }));
-  if (JSON.stringify(projection).length > CLASSIFIER_BASIS_TEXT_LIMIT) {
-    throw new Error(
-      `published routing basis exceeds ${String(CLASSIFIER_BASIS_TEXT_LIMIT)} characters`
-    );
-  }
-}
-
 export const EvalSetupStage = Schema.Literals([
   "surface",
   "data",
@@ -885,7 +733,6 @@ export const EvalSetupState = Schema.Struct({
   openQuestion: Schema.optionalKey(Schema.String),
   answers: Schema.Record(Schema.String, Schema.String),
   generatedEvalPath: Schema.optionalKey(Schema.String),
-  generatedProfilePath: Schema.optionalKey(Schema.String),
   runMode: Schema.optionalKey(EvalSetupRunMode),
   comparisonId: Schema.optionalKey(Schema.String),
   publishApproved: Schema.optionalKey(Schema.Boolean)
@@ -897,11 +744,6 @@ export const EvalSetupEvent = Schema.Union([
     type: Schema.Literal("question"),
     stage: EvalSetupStage,
     prompt: Schema.String
-  }),
-  Schema.Struct({
-    type: Schema.Literal("artifacts-generated"),
-    evalPath: Schema.String,
-    profilePath: Schema.String
   }),
   Schema.Struct({
     type: Schema.Literal("run-approved"),
@@ -939,63 +781,5 @@ export function assertExplicitEvalModel(
     throw new Error(
       `${role} model must be an explicit provider/model id, not ${JSON.stringify(model)}`
     );
-  }
-}
-
-export function assertRoutingProfile(profile: RoutingProfile): void {
-  if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(profile.id)) {
-    throw new Error(
-      "routing profile id must start with a lowercase letter or digit and contain only lowercase letters, digits, or hyphens"
-    );
-  }
-  if (profile.suite.trim().length === 0) throw new Error("routing profile suite must not be empty");
-  if (profile.candidates.length === 0) {
-    throw new Error("routing profile must include at least one candidate model");
-  }
-  const candidates = new Set<string>();
-  for (const model of profile.candidates) {
-    assertExplicitEvalModel(model, "candidate");
-    if (candidates.has(model))
-      throw new Error(`duplicate candidate model ${JSON.stringify(model)}`);
-    candidates.add(model);
-  }
-  assertExplicitEvalModel(profile.judge, "judge");
-  for (const [name, value] of Object.entries(profile.eligibility)) {
-    if (value === undefined || value < 0) {
-      if (value !== undefined) throw new Error(`${name} must be non-negative`);
-      continue;
-    }
-    if ((name === "minimumPassRate" || name === "maximumFailureRate") && value > 1) {
-      throw new Error(`${name} must be between 0 and 1`);
-    }
-  }
-}
-
-export function assertCompiledRoutingPolicy(policy: CompiledRoutingPolicy): void {
-  if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/u.test(policy.profileId)) {
-    throw new Error(`invalid compiled routing profile id ${JSON.stringify(policy.profileId)}`);
-  }
-  assertExplicitEvalModel(policy.selectedModel, "candidate");
-  const ranked = new Set<string>([policy.selectedModel]);
-  for (const model of policy.fallbackModels) {
-    assertExplicitEvalModel(model, "candidate");
-    if (ranked.has(model))
-      throw new Error(`duplicate compiled routing model ${JSON.stringify(model)}`);
-    ranked.add(model);
-  }
-  const evidenceModels = new Set<string>();
-  for (const evidence of policy.evidence) {
-    assertExplicitEvalModel(evidence.model, "candidate");
-    if (evidenceModels.has(evidence.model)) {
-      throw new Error(`duplicate model evidence ${JSON.stringify(evidence.model)}`);
-    }
-    evidenceModels.add(evidence.model);
-    const total =
-      evidence.passedCount + evidence.failedCount + evidence.unknownCount + evidence.cutoffCount;
-    if (total !== evidence.sampleCount) {
-      throw new Error(
-        `model evidence counts do not sum to sampleCount for ${JSON.stringify(evidence.model)}`
-      );
-    }
   }
 }

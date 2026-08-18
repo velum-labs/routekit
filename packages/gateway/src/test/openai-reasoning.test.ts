@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { openaiReasoningCapabilities } from "../openai-reasoning.js";
+import { openaiReasoningCapabilities } from "../providers/openai-reasoning.js";
 
 test("OpenAI source authors verified GPT-5.5 and GPT-5.6 reasoning controls", () => {
   assert.deepEqual(openaiReasoningCapabilities("gpt-5.6-sol"), {

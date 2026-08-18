@@ -12,7 +12,8 @@ import { arch as osArch, homedir, platform as osPlatform } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
-import { trimTrailingSlashes, writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import { parse as parseYaml } from "yaml";
 
 const execFileAsync = promisify(execFile);
@@ -295,7 +296,7 @@ export async function cliproxyStatus(
     if (response.status === 401 || response.status === 403) {
       status.keyRejected = true;
     } else if (response.ok) {
-      const body = await response.json() as { data?: unknown };
+      const body = (await response.json()) as { data?: unknown };
       status.models = Array.isArray(body.data) ? body.data.length : 0;
     }
   } catch {

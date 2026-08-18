@@ -14,5 +14,6 @@ worker serving traffic.
 tests. Production `routekit daemon run` uses `startRouteKitDaemonHost` in the
 primary and `runRouteKitDaemonWorker` in cluster workers.
 
-Applications normally use it through `@velum-labs/routekit`; embedders should keep
-using `@velum-labs/routekit-router` instead of claiming the singleton service record.
+Applications normally use it through `@velum-labs/routekit`. Tests and specialized
+hosts can acquire a scoped gateway generation from `@velum-labs/routekit-daemon/effect`
+without claiming the singleton service record.

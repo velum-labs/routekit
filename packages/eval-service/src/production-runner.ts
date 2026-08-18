@@ -3,6 +3,11 @@ import path from "node:path";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import {
+  type EvalComparisonRequest,
+  EvalRunManifest,
+  type EvalRunManifest as EvalRunManifestType
+} from "@velum-labs/routekit-eval-contracts";
+import {
   EvalEngineDiscoveryError,
   EvalEngineDryLoadError,
   EvalEngineExecutionError,
@@ -13,10 +18,10 @@ import {
   makeRouteKitEvalExecutionPortService
 } from "@velum-labs/routekit-eval-engine";
 import {
-  type EvalComparisonRequest,
-  type EvalRunManifest as EvalRunManifestType,
-  EvalRunManifest
-} from "@velum-labs/routekit-eval-contracts";
+  DEFAULT_MODEL_PRICING,
+  PRICING_ALIASES,
+  type RegistryModelPricing
+} from "@velum-labs/routekit-registry";
 import { Data, Effect, FileSystem, Layer, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
@@ -50,6 +55,16 @@ export class EvalComparisonRunnerManifestError extends Data.TaggedError(
   }
 }
 
+export class EvalComparisonRunnerSpendLimitError extends Data.TaggedError(
+  "EvalComparisonRunnerSpendLimitError"
+)<{
+  readonly detail: string;
+}> {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
 const unavailableExecution: EvalExecutionPortService = {
   execute: () =>
     Effect.fail(
@@ -68,20 +83,95 @@ const validateWithInspectionEngine = (
   EvalEngineValidation,
   EvalEngineDiscoveryError | EvalEngineDryLoadError | EvalEnginePortableImportError,
   never
-> =>
-  inspectionEngine.validate(suitePath);
+> => inspectionEngine.validate(suitePath);
 
 const sameStrings = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
+const MAXIMUM_INPUT_TOKENS_PER_CALL = 256 * 1024;
+
+function modelPricing(model: string): RegistryModelPricing | undefined {
+  const names = [model, model.includes("/") ? model.slice(model.indexOf("/") + 1) : model];
+  for (const name of names) {
+    const direct = Object.entries(DEFAULT_MODEL_PRICING).find(
+      ([candidate]) => candidate.toLowerCase() === name.toLowerCase()
+    )?.[1];
+    if (direct !== undefined) return direct;
+    const alias = Object.entries(PRICING_ALIASES).find(
+      ([candidate]) => candidate.toLowerCase() === name.toLowerCase()
+    )?.[1];
+    if (alias === undefined) continue;
+    const resolved = Object.entries(DEFAULT_MODEL_PRICING).find(
+      ([candidate]) => candidate.toLowerCase() === alias.toLowerCase()
+    )?.[1];
+    if (resolved !== undefined) return resolved;
+  }
+  return undefined;
+}
+
+function maximumCallCost(pricing: RegistryModelPricing, maximumOutputTokens: number): number {
+  return (
+    (MAXIMUM_INPUT_TOKENS_PER_CALL * pricing.inputPer1mTokens +
+      maximumOutputTokens * pricing.outputPer1mTokens) /
+    1_000_000
+  );
+}
+
+function estimateComparison(manifest: EvalRunManifestType) {
+  const candidatePrices = manifest.candidateModels.map(modelPricing);
+  const judgePrice = modelPricing(manifest.judgeModel);
+  if (candidatePrices.some((pricing) => pricing === undefined) || judgePrice === undefined) {
+    return {
+      callCount: manifest.expectedCallCount,
+      pricingKnown: false as const
+    };
+  }
+  const candidateCost = candidatePrices.reduce(
+    (total, pricing) =>
+      total + manifest.caseCount * maximumCallCost(pricing!, manifest.maxOutputTokens),
+    0
+  );
+  const judgeCost =
+    manifest.caseCount *
+    manifest.candidateModels.length *
+    maximumCallCost(judgePrice, manifest.maxOutputTokens);
+  return {
+    callCount: manifest.expectedCallCount,
+    maximumCostUsd: candidateCost + judgeCost,
+    pricingKnown: true as const
+  };
+}
+
+const enforceSpendLimit = (
+  request: EvalComparisonRequest,
+  manifest: EvalRunManifestType
+): Effect.Effect<void, EvalComparisonRunnerSpendLimitError> => {
+  if (request.spendLimitUsd === undefined) return Effect.void;
+  const estimate = estimateComparison(manifest);
+  if (!estimate.pricingKnown || estimate.maximumCostUsd === undefined) {
+    return Effect.fail(
+      new EvalComparisonRunnerSpendLimitError({
+        detail:
+          "RouteKit Eval cannot enforce spendLimitUsd because pricing is unknown for one or more manifest models."
+      })
+    );
+  }
+  if (estimate.maximumCostUsd > request.spendLimitUsd) {
+    return Effect.fail(
+      new EvalComparisonRunnerSpendLimitError({
+        detail:
+          `RouteKit Eval maximum estimated cost $${estimate.maximumCostUsd.toFixed(6)} ` +
+          `exceeds spendLimitUsd $${request.spendLimitUsd.toFixed(6)}.`
+      })
+    );
+  }
+  return Effect.void;
+};
+
 const loadExecutionManifest = (
   workingDirectory: string,
   request: EvalComparisonRequest
-): Effect.Effect<
-  EvalRunManifestType,
-  EvalComparisonRunnerManifestError,
-  FileSystem.FileSystem
-> =>
+): Effect.Effect<EvalRunManifestType, EvalComparisonRunnerManifestError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const manifests = yield* fs
@@ -203,25 +293,26 @@ export const makeEvalComparisonRunner = (
         httpClient
       );
       return Effect.flatMap(inspectComparisonSuite(request), (inspection) =>
-        makeEvalEngine(execution).runComparison({
-          ...request,
-          expectedCaseIds: [...inspection.manifest.caseIds],
-          expectedCallCount: inspection.manifest.expectedCallCount,
-          maxOutputTokens: inspection.manifest.maxOutputTokens,
-          suiteDigest: inspection.suiteDigest
-        })
+        enforceSpendLimit(request, inspection.manifest).pipe(
+          Effect.flatMap(
+            () =>
+              makeEvalEngine(execution).runComparison({
+                ...request,
+                expectedCaseIds: [...inspection.manifest.caseIds],
+                expectedCallCount: inspection.manifest.expectedCallCount,
+                maxOutputTokens: inspection.manifest.maxOutputTokens,
+                suiteDigest: inspection.suiteDigest
+              }) as ReturnType<EvalComparisonRunnerShape["runComparison"]>
+          )
+        )
       );
     };
     return {
-      validate: (suitePath) =>
-        validateWithInspectionEngine(suitePath).pipe(Effect.asVoid),
+      validate: (suitePath) => validateWithInspectionEngine(suitePath).pipe(Effect.asVoid),
       inspect: (request) => inspectComparisonSuite(request),
       estimate: (request) =>
         inspectComparisonSuite(request).pipe(
-          Effect.map((inspection) => ({
-            callCount: inspection.manifest.expectedCallCount,
-            pricingKnown: false as const
-          }))
+          Effect.map((inspection) => estimateComparison(inspection.manifest))
         ),
       runComparison
     } satisfies EvalComparisonRunnerShape;

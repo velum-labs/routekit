@@ -28,12 +28,12 @@ import {
   borrowedBackendPorts,
   ModelRoutedBackend,
   staticBackendModelPort
-} from "../backend.js";
-import { OpenAiBackend } from "../openai-backend.js";
-import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
-import { RoutingBackend } from "../router.js";
-import { startGateway } from "../server.js";
+} from "../providers/backend.js";
+import { OpenAiBackend } from "../providers/openai-backend.js";
+import { MODEL_CALL_ID_HEADER } from "../observability/provenance.js";
+import { AnthropicBackend, CodexResponsesBackend } from "../providers/backends.js";
+import { RoutingBackend } from "../routing/router.js";
+import { startGateway } from "../services/gateway/service.js";
 import { asTransport } from "./provider-backends-fixtures.js";
 import { testProviderSource } from "./provider-source-fixture.js";
 import {
@@ -557,7 +557,7 @@ test("Responses reasoning metadata validation fails closed and preserves valid i
   assert.equal(canonical?.includeEncryptedContent, true);
 
   let calls = 0;
-  const backend: import("../backend.js").Backend = {
+  const backend: import("../providers/backend.js").Backend = {
     defaultModel: "m",
     ports: borrowedBackendPorts("m"),
     chat: () => {
@@ -728,7 +728,7 @@ test("responsesToChat rejects orphan or boundary-crossing encrypted reasoning", 
   }
 
   let calls = 0;
-  const backend: import("../backend.js").Backend = {
+  const backend: import("../providers/backend.js").Backend = {
     defaultModel: "codex-model",
     ports: borrowedBackendPorts("codex-model"),
     chat: () => {
@@ -822,7 +822,7 @@ test("Responses forwards encrypted reasoning through a compound RouteKit envelop
     nativeModel: "codex-model"
   });
   let forwarded: Record<string, unknown> | undefined;
-  const backend: import("../backend.js").Backend = {
+  const backend: import("../providers/backend.js").Backend = {
     defaultModel: "fusion-mini",
     ports: borrowedBackendPorts("fusion-mini"),
     chat: (body) => {
@@ -900,7 +900,7 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
     })
   });
   let primaryCalls = 0;
-  const primary: import("../backend.js").Backend = {
+  const primary: import("../providers/backend.js").Backend = {
     defaultModel: "primary-model",
     ports: borrowedBackendPorts("primary-model"),
     chat: () => {
@@ -961,7 +961,7 @@ test("Responses follows ModelRoutedBackend reasoning wire capability", async () 
     assert.equal(primaryCalls, 1);
 
     assert.equal(backend.ports.models.reasoningWireShape("unknown-model"), "openai-chat");
-    const unknownPrimary: import("../backend.js").Backend = {
+    const unknownPrimary: import("../providers/backend.js").Backend = {
       defaultModel: undefined,
       ports: borrowedBackendPorts(undefined),
       chat: () => Effect.succeed(Response.json({})),
@@ -1213,7 +1213,7 @@ test("native Responses streaming wraps encrypted reasoning in incremental and te
 test("Responses drops legacy encrypted reasoning for unsupported destinations and continues", async () => {
   let calls = 0;
   let outbound: Record<string, unknown> | undefined;
-  const backend: import("../backend.js").Backend = {
+  const backend: import("../providers/backend.js").Backend = {
     defaultModel: "local-model",
     ports: borrowedBackendPorts("local-model"),
     chat: (body) => {

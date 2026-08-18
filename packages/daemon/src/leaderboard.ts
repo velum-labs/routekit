@@ -10,7 +10,7 @@ import type {
   RouteKitControlParams,
   RouteKitLeaderboard
 } from "@velum-labs/routekit-control";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
 export type LeaderboardDimension = RouteKitLeaderboard["by"];
 export type LeaderboardSort = RouteKitLeaderboard["sort"];

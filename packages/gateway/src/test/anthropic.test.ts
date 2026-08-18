@@ -19,11 +19,11 @@ import {
   type AnthropicNativeContentBlock,
   type AnthropicRequestMetadata
 } from "../adapters/openai-chat-wire.js";
-import { OpenAiBackend } from "../openai-backend.js";
-import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { RoutingBackend } from "../router.js";
-import type { RequestRelay } from "../server.js";
-import { startGateway } from "../server.js";
+import { OpenAiBackend } from "../providers/openai-backend.js";
+import { MODEL_CALL_ID_HEADER } from "../observability/provenance.js";
+import { RoutingBackend } from "../routing/router.js";
+import type { RequestRelay } from "../services/gateway/service.js";
+import { startGateway } from "../services/gateway/service.js";
 import { testProviderSource } from "./provider-source-fixture.js";
 
 /**

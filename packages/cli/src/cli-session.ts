@@ -10,8 +10,8 @@ import {
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import type { RemoteStores } from "./remote-stores.js";
-import { createRemoteStores } from "./remote-stores.js";
+import type { RemoteStores } from "./repositories/stores.js";
+import { createRemoteStores } from "./repositories/stores.js";
 
 export type TargetSelection = { local: boolean; remote?: string };
 export type ResolvedTelemetryTarget = {

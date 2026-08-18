@@ -1,4 +1,4 @@
-import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime";
+import { gatewayOpenAiBaseUrl } from "@velum-labs/routekit-runtime/network";
 import type { ToolIntegration } from "@velum-labs/routekit-tools";
 
 import { codexDriverConfigSchema, createCodexDriver } from "./driver.js";

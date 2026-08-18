@@ -41,27 +41,26 @@ import type {
 } from "@velum-labs/routekit-gateway";
 import { createWorkloadJwtVerifier, resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
 import { startSwitchingGatewayProxyEffect } from "@velum-labs/routekit-gateway/effect";
-import type { RunningRouter } from "@velum-labs/routekit-router";
-import type {
-  PortlessSession,
-  RunningControlServer,
-  ServiceRecord
-} from "@velum-labs/routekit-runtime";
+import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
 import {
   CONTROL_PROTOCOL_VERSION,
   ControlError,
-  createPortlessSession,
-  generateControlToken,
-  nextServiceGeneration,
-  processIdentity,
-  supervisorFromEnv
-} from "@velum-labs/routekit-runtime";
+  generateControlToken
+} from "@velum-labs/routekit-runtime/control";
 import {
   RouteKitFailure,
   runRouteKitEffect,
   startControlServerEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
+import type { PortlessSession } from "@velum-labs/routekit-runtime/network";
+import { createPortlessSession } from "@velum-labs/routekit-runtime/network";
+import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
+import {
+  nextServiceGeneration,
+  processIdentity,
+  supervisorFromEnv
+} from "@velum-labs/routekit-runtime/service";
 import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { CallAttributionStore, callInspection } from "./call-attribution-store.js";
@@ -93,11 +92,13 @@ import {
   writeSnapshot
 } from "./daemon-state.js";
 import { type DaemonLive, daemonLive } from "./effect/daemon-live.js";
-import { ActiveGateway, type ActiveGatewayValue, Generations } from "./effect/services.js";
 import { makeCompositionalRoutingPolicyReader } from "./eval-routing-policy.js";
-import { EvalSessionManager } from "./eval-session-service.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import { LeaderboardRollupStore } from "./leaderboard.js";
+import { ActiveGateway, type ActiveGatewayValue } from "./services/active-gateway/service.js";
+import { EvalSessions } from "./services/eval-session/service.js";
+import type { RunningGatewayGeneration } from "./services/gateway-generation/service.js";
+import { Generations } from "./services/generations/service.js";
 import {
   DaemonTelemetry,
   DEFAULT_TELEMETRY_HOST,
@@ -201,7 +202,7 @@ export async function bootstrapRouteKitDaemon(
   let proxy: SwitchingGatewayProxy | undefined;
   let portless: PortlessSession | undefined;
   let sidecarRef: ReturnType<typeof createCliproxySidecar> | undefined;
-  let activeRouter: RunningRouter | undefined;
+  let activeRouter: RunningGatewayGeneration | undefined;
   let activeGateway: ActiveGatewayValue | undefined;
   let accountActivity: AccountActivityService | undefined;
   let accountAuth: AccountAuthService | undefined;
@@ -318,7 +319,6 @@ export async function bootstrapRouteKitDaemon(
       return injected;
     };
     const compositionalPolicyReader = makeCompositionalRoutingPolicyReader(home);
-    const evalSessions = new EvalSessionManager();
     effectRuntime = ManagedRuntime.make(
       daemonLive({
         env: {
@@ -333,7 +333,6 @@ export async function bootstrapRouteKitDaemon(
         state: runtimeState,
         sidecar,
         tokens,
-        evalSessions,
         telemetry: {
           consent: telemetry,
           ...(daemonTelemetry !== undefined ? { daemon: daemonTelemetry } : {}),
@@ -383,6 +382,7 @@ export async function bootstrapRouteKitDaemon(
         yield* sidecar.reconcile(wantsCliproxySidecar(runtimeState.config));
         const generations = yield* Generations;
         const gateway = yield* ActiveGateway;
+        const evalSessions = yield* EvalSessions;
         activeGateway = gateway;
         const router = yield* generations.start(runtimeState.config);
         gateway.setRouter(router);

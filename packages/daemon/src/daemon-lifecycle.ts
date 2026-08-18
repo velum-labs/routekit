@@ -4,19 +4,19 @@ import type {
 } from "@velum-labs/routekit-accounts/effect";
 import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
-import type { RunningRouter } from "@velum-labs/routekit-router";
-import type { RunningControlServer } from "@velum-labs/routekit-runtime";
-import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
+import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime/lifecycle";
+import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
+import { ResourceDisposalTimeoutError } from "@velum-labs/routekit-runtime/lifecycle";
 import {
-  EffectResourceScope,
   type RouteKitPlatform,
   routeKitError,
   runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
-import { Deferred, Effect, type ManagedRuntime } from "effect";
+import { Cause, Deferred, Effect, Exit, type ManagedRuntime, Scope } from "effect";
 
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
+import type { RunningGatewayGeneration } from "./services/gateway-generation/service.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "./telemetry.js";
 
 type Supervisor = "systemd" | "launchd" | "detached" | "unknown";
@@ -28,7 +28,7 @@ export type DaemonLifecycleOptions = {
   packageVersion: string;
   supervisor: Supervisor;
   getProxy(): SwitchingGatewayProxy | undefined;
-  getActiveRouter(): RunningRouter | undefined;
+  getActiveRouter(): RunningGatewayGeneration | undefined;
   getControl(): RunningControlServer | undefined;
   accountActivity?: AccountActivityService;
   accountAuth?: AccountAuthService;
@@ -53,6 +53,66 @@ export function captureDaemonStarted(input: {
   });
 }
 
+type DaemonFinalizer = Effect.Effect<void, unknown, RouteKitPlatform>;
+
+function callbackFinalizer(run: () => unknown): Effect.Effect<void, Error> {
+  return Effect.tryPromise({
+    try: async () => {
+      await run();
+    },
+    catch: toRouteKitFailure
+  });
+}
+
+function closeDaemonResources(
+  finalizers: readonly DaemonFinalizer[],
+  shutdownBudgetMs?: number
+): Effect.Effect<void, Error, RouteKitPlatform> {
+  return Effect.gen(function* () {
+    const platform = yield* Effect.context<RouteKitPlatform>();
+    const scope = yield* Scope.make("sequential");
+    const errors: unknown[] = [];
+    const deadline =
+      shutdownBudgetMs === undefined ? undefined : Date.now() + shutdownBudgetMs;
+
+    for (const finalizer of finalizers) {
+      yield* Scope.addFinalizer(
+        scope,
+        Effect.suspend(() => {
+          const remaining =
+            deadline === undefined ? undefined : Math.max(0, deadline - Date.now());
+          const bounded =
+            remaining === undefined
+              ? finalizer
+              : finalizer.pipe(
+                  Effect.timeoutOrElse({
+                    duration: remaining,
+                    orElse: () =>
+                      Effect.fail(new ResourceDisposalTimeoutError(shutdownBudgetMs!))
+                  })
+                );
+          return Effect.exit(bounded.pipe(Effect.provide(platform))).pipe(
+            Effect.flatMap((closed) =>
+              Exit.isFailure(closed)
+                ? Effect.sync(() => {
+                    errors.push(Cause.squash(closed.cause));
+                  })
+                : Effect.void
+            )
+          );
+        })
+      );
+    }
+
+    yield* Scope.close(scope, Exit.void);
+    if (errors.length > 0) {
+      return yield* Effect.fail(
+        new AggregateError(errors, "one or more daemon resource finalizers failed")
+      );
+    }
+  });
+}
+
 export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
   close(): Effect.Effect<void, Error, RouteKitPlatform>;
   retire(graceMs?: number): Effect.Effect<void, Error, RouteKitPlatform>;
@@ -64,39 +124,38 @@ export function createDaemonLifecycle(options: DaemonLifecycleOptions): {
   const shutdownResources = (
     mode: "close" | "retire",
     graceMs: number
-  ): Effect.Effect<void, unknown, RouteKitPlatform> =>
-    Effect.gen(function* () {
-      const scope = new EffectResourceScope({ shutdownBudgetMs: graceMs + 10_000 });
-      // ResourceScope finalizers run in LIFO order. Stop ingress first, then
-      // drain the data plane before closing its router and supporting resources.
-      // Telemetry remains alive through operational shutdown and the service
-      // registration is removed only after every owned resource was attempted.
-      // The Effect runtime is registered first so it disposes last.
-      yield* scope.defer(async () => await options.effectRuntime?.dispose());
-      yield* scope.defer(() => options.cleanupRegistration());
-      yield* scope.defer(() => options.gatewayTelemetry?.close());
-      yield* scope.defer(async () => await options.daemonTelemetry?.shutdown());
-      yield* scope.deferEffect(options.closeSidecar());
-      if (options.accountAuth !== undefined) {
-        yield* scope.deferEffect(options.accountAuth.close as Effect.Effect<void, unknown>);
-      }
-      if (options.accountActivity !== undefined) {
-        yield* scope.deferEffect(options.accountActivity.close as Effect.Effect<void, unknown>);
-      }
-      const activeRouter = options.getActiveRouter();
-      if (activeRouter !== undefined) yield* scope.deferEffect(activeRouter.close);
-      const proxy = options.getProxy();
-      if (proxy !== undefined) {
-        yield* scope.deferEffect(mode === "retire" ? proxy.retire(graceMs) : proxy.drain(graceMs));
-      }
-      const control = options.getControl();
-      if (control !== undefined) {
-        yield* scope.deferEffect(
-          mode === "retire" ? control.retire(Math.min(graceMs, 2_000)) : control.close
-        );
-      }
-      yield* scope.dispose();
-    });
+  ): Effect.Effect<void, Error, RouteKitPlatform> => {
+    const finalizers: DaemonFinalizer[] = [
+      // Native Scope finalizers run in LIFO order. Register the Effect runtime
+      // first so it disposes last, after every Effect-owned resource.
+      callbackFinalizer(async () => await options.effectRuntime?.dispose()),
+      callbackFinalizer(() => options.cleanupRegistration()),
+      callbackFinalizer(() => options.gatewayTelemetry?.close()),
+      callbackFinalizer(async () => await options.daemonTelemetry?.shutdown()),
+      options.closeSidecar()
+    ];
+    if (options.accountAuth !== undefined) {
+      finalizers.push(options.accountAuth.close as Effect.Effect<void, unknown, RouteKitPlatform>);
+    }
+    if (options.accountActivity !== undefined) {
+      finalizers.push(
+        options.accountActivity.close as Effect.Effect<void, unknown, RouteKitPlatform>
+      );
+    }
+    const activeRouter = options.getActiveRouter();
+    if (activeRouter !== undefined) finalizers.push(activeRouter.close);
+    const proxy = options.getProxy();
+    if (proxy !== undefined) {
+      finalizers.push(mode === "retire" ? proxy.retire(graceMs) : proxy.drain(graceMs));
+    }
+    const control = options.getControl();
+    if (control !== undefined) {
+      finalizers.push(
+        mode === "retire" ? control.retire(Math.min(graceMs, 2_000)) : control.close
+      );
+    }
+    return closeDaemonResources(finalizers, graceMs + 10_000);
+  };
 
   let removeSighupListener = (): void => {};
   let shutdownLatch: Deferred.Deferred<void, Error> | undefined;
@@ -187,7 +246,7 @@ export function cleanupFailedDaemon(input: {
   gatewayTelemetry?: GatewayTelemetryAggregator;
   daemonTelemetry?: DaemonTelemetry;
   proxy?: SwitchingGatewayProxy;
-  activeRouter?: RunningRouter;
+  activeRouter?: RunningGatewayGeneration;
   accountActivity?: AccountActivityService;
   accountAuth?: AccountAuthService;
   closeSidecar(): Effect.Effect<void, Error>;
@@ -195,24 +254,25 @@ export function cleanupFailedDaemon(input: {
   cleanupRegistration(): void;
   effectRuntime?: ManagedRuntime.ManagedRuntime<any, never>;
 }): Effect.Effect<void, Error, RouteKitPlatform> {
-  return Effect.gen(function* () {
-    const scope = new EffectResourceScope();
-    yield* scope.defer(async () => await input.effectRuntime?.dispose());
-    yield* scope.defer(() => input.cleanupRegistration());
-    if (input.control !== undefined) yield* scope.deferEffect(input.control.close);
-    yield* scope.deferEffect(input.closeSidecar());
-    if (input.accountAuth !== undefined) {
-      yield* scope.deferEffect(input.accountAuth.close as Effect.Effect<void, unknown>);
-    }
-    if (input.accountActivity !== undefined) {
-      yield* scope.deferEffect(input.accountActivity.close as Effect.Effect<void, unknown>);
-    }
-    if (input.activeRouter !== undefined) yield* scope.deferEffect(input.activeRouter.close);
-    if (input.proxy !== undefined) yield* scope.deferEffect(input.proxy.close);
-    yield* scope.defer(async () => await input.daemonTelemetry?.shutdown());
-    yield* scope.defer(() => input.gatewayTelemetry?.close());
-    yield* scope.dispose().pipe(Effect.mapError((cause) => routeKitError(cause)));
-  });
+  const finalizers: DaemonFinalizer[] = [
+    callbackFinalizer(async () => await input.effectRuntime?.dispose()),
+    callbackFinalizer(() => input.cleanupRegistration())
+  ];
+  if (input.control !== undefined) finalizers.push(input.control.close);
+  finalizers.push(input.closeSidecar());
+  if (input.accountAuth !== undefined) {
+    finalizers.push(input.accountAuth.close as Effect.Effect<void, unknown, RouteKitPlatform>);
+  }
+  if (input.accountActivity !== undefined) {
+    finalizers.push(input.accountActivity.close as Effect.Effect<void, unknown, RouteKitPlatform>);
+  }
+  if (input.activeRouter !== undefined) finalizers.push(input.activeRouter.close);
+  if (input.proxy !== undefined) finalizers.push(input.proxy.close);
+  finalizers.push(
+    callbackFinalizer(async () => await input.daemonTelemetry?.shutdown()),
+    callbackFinalizer(() => input.gatewayTelemetry?.close())
+  );
+  return closeDaemonResources(finalizers);
 }
 
 function reload(handlers: RouteKitControlHandlers, requestId: string): Effect.Effect<void, Error> {

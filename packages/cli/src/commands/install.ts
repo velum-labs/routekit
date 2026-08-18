@@ -2,7 +2,7 @@ import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/rout
 import type { Command } from "commander";
 
 import { runCliEffect } from "../cli-session.js";
-import { InstallNativeIntegration, UninstallNativeIntegration } from "../use-cases/install.js";
+import { InstallNativeIntegration, UninstallNativeIntegration } from "../services/native-integration/service.js";
 
 function reportUninstall(
   context: ReturnType<typeof contextFor>,

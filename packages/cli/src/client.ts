@@ -15,21 +15,20 @@ import {
   routekitHome
 } from "@velum-labs/routekit-config";
 import { RouteKitControlClient } from "@velum-labs/routekit-control";
-import type { ServiceRecord, StartDaemonResult } from "@velum-labs/routekit-runtime";
+import type { ServiceRecord, StartDaemonResult } from "@velum-labs/routekit-runtime/service";
 import {
   acquireLifecycleLock,
-  ControlClient,
   createServiceRecordStore,
   detectSupervisor,
-  generateControlToken,
   serviceLogPath,
   startDaemon,
   stopDaemonProcess,
   supervisorController,
   supervisorOperationTimeoutMs,
-  waitForServiceReadyEffect,
-  writeFileAtomic
-} from "@velum-labs/routekit-runtime";
+  waitForServiceReadyEffect
+} from "@velum-labs/routekit-runtime/service";
+import { ControlClient, generateControlToken } from "@velum-labs/routekit-runtime/control";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import { executeWebRequest, RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
@@ -43,7 +42,7 @@ import {
 } from "./cli-session.js";
 import { daemonUnitSpec, missingServiceCredentialVariables, serviceEnvironment } from "./daemon.js";
 import { readDaemonPublicRecord, readPeerPointer } from "./peer.js";
-import { remoteControlClient } from "./ssh-control.js";
+import { remoteControlClient } from "./adapters/ssh-control.js";
 import { routekitVersion } from "./state.js";
 import { resolveTarget } from "./target.js";
 

@@ -17,7 +17,7 @@ import {
   PROVIDERS,
   resolveAccountConnector
 } from "@velum-labs/routekit-registry";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 
 export function canonicalConfigDocument(path = globalRouterConfigPath()): string {
   if (!existsSync(path)) {

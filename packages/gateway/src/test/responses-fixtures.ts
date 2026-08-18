@@ -22,12 +22,12 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import { type Backend, borrowedBackendPorts, ModelRoutedBackend } from "../backend.js";
-import { OpenAiBackend } from "../openai-backend.js";
-import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
-import { RoutingBackend } from "../router.js";
-import { startGateway } from "../server.js";
+import { type Backend, borrowedBackendPorts, ModelRoutedBackend } from "../providers/backend.js";
+import { OpenAiBackend } from "../providers/openai-backend.js";
+import { MODEL_CALL_ID_HEADER } from "../observability/provenance.js";
+import { AnthropicBackend, CodexResponsesBackend } from "../providers/backends.js";
+import { RoutingBackend } from "../routing/router.js";
+import { startGateway } from "../services/gateway/service.js";
 import { testProviderSource } from "./provider-source-fixture.js";
 
 /**

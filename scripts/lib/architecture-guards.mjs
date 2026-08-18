@@ -30,7 +30,6 @@ export const CANONICAL_SHARED_PACKAGES = new Map([
   ["packages/cli-core", "@velum-labs/routekit-cli-core"],
   ["packages/config-core", "@velum-labs/routekit-config-core"],
   ["packages/config", "@velum-labs/routekit-config"],
-  ["packages/router", "@velum-labs/routekit-router"],
   ["packages/telemetry-core", "@velum-labs/routekit-telemetry-core"],
   ["packages/harness-core", "@velum-labs/routekit-harness-core"],
   ["packages/tools", "@velum-labs/routekit-tools"],
@@ -194,6 +193,45 @@ export function polynomialTrailingSlashRegexViolations(file, source) {
   return [
     `${file} uses a polynomial trailing-slash regex; use @velum-labs/routekit-runtime slash helpers`
   ];
+}
+
+export function runtimeRootImportViolations(file, source) {
+  if (file.startsWith("packages/eval-engine/")) return [];
+  const rootImport =
+    /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']@velum-labs\/routekit-runtime["']/;
+  return rootImport.test(source)
+    ? [`${file} must import a named @velum-labs/routekit-runtime subpath`]
+    : [];
+}
+
+const RETIRED_ENG814_IDENTIFIERS = [
+  "RoutingProfile",
+  "CompiledRoutingPolicy",
+  "PublishedRoutingSnapshot",
+  "ROUTING_SNAPSHOT_VERSION",
+  "EvalWorkerRequest",
+  "generatedProfilePath",
+  "runEvalSuite"
+];
+
+export function retiredEng814SourceViolations(file, source) {
+  const violations = [];
+  for (const identifier of RETIRED_ENG814_IDENTIFIERS) {
+    if (new RegExp(`\\b${identifier}\\b`, "u").test(source)) {
+      violations.push(`${file} contains retired ENG-814 identifier ${identifier}`);
+    }
+  }
+  const spendLimitOwner =
+    file === "packages/eval-contracts/src/index.ts" ||
+    file === "packages/eval-service/src/production-runner.ts";
+  if (
+    !file.startsWith("packages/eval-engine/") &&
+    !spendLimitOwner &&
+    /\bspendLimitUsd\b/u.test(source)
+  ) {
+    violations.push(`${file} contains unenforced spendLimitUsd`);
+  }
+  return violations;
 }
 
 export function routekitSourceViolations(file, source) {

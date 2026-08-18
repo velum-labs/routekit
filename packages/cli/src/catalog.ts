@@ -3,7 +3,7 @@ import type {
   ModelReasoningCapabilities,
   ModelSelectionSignals
 } from "@velum-labs/routekit-contracts";
-import { gatewayPath } from "@velum-labs/routekit-runtime";
+import { gatewayPath } from "@velum-labs/routekit-runtime/network";
 import {
   executeWebRequest,
   RouteKitFailure,

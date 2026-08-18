@@ -6,7 +6,7 @@ import {
   type RouteKitControlMethod,
   type RouteKitControlParams
 } from "@velum-labs/routekit-control";
-import { ControlError, type ControlHandler } from "@velum-labs/routekit-runtime";
+import { ControlError, type ControlHandler } from "@velum-labs/routekit-runtime/control";
 import { durationBucket } from "@velum-labs/routekit-telemetry-core";
 import { createDaemonControlMethodRegistry } from "./application-services.js";
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";

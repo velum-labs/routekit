@@ -17,7 +17,7 @@ import type { Command } from "commander";
 import { Effect } from "effect";
 import { CliLive, runCliClient } from "../cli-client.js";
 import { runCliEffect } from "../cli-session.js";
-import { DaemonClient, type DaemonClientService } from "../effect/daemon-client.js";
+import { DaemonClient, type DaemonClientService } from "../services/daemon-client/service.js";
 import { watchEffect } from "../effect/watch.js";
 import {
   availableResetCredits,

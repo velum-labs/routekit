@@ -73,16 +73,51 @@ const makeLayer = (api: OriEvalAuthoringApi, publishes: { count: number }) =>
                   finishedAt: "2026-08-16T00:01:00.000Z",
                   models: []
                 },
-                proposal: {
-                  version: 1 as const,
-                  profileId: "support",
-                  selectedModel: "openai/cheap",
-                  fallbackModels: ["anthropic/strong"],
-                  objective: "lowest-cost" as const,
-                  suiteDigest: "suite",
+                activation: {
+                  version: 2 as const,
+                  generatedAt: "2026-08-16T00:01:00.000Z",
+                  basisDigest: "basis",
                   evidenceDigest: "evidence",
-                  evidence: [],
-                  rejected: []
+                  classifierModel: "openai/classifier",
+                  objective: { kind: "lowest-cost", minimumQuality: 0.8 },
+                  maximumUnknownWeight: 0.2,
+                  dimensions: [
+                    {
+                      id: "support",
+                      description: "Support requests",
+                      includes: ["support"],
+                      excludes: ["other"]
+                    }
+                  ],
+                  candidateModels: ["openai/cheap", "anthropic/strong"],
+                  evidence: [
+                    {
+                      model: "openai/cheap",
+                      dimensionId: "support",
+                      suiteDigest: "suite",
+                      evidenceDigest: "cheap-evidence",
+                      quality: {
+                        passRate: 1,
+                        lowerConfidenceBound: 0.8,
+                        sampleCount: 1
+                      },
+                      failureRate: 0,
+                      unpricedCalls: 1
+                    },
+                    {
+                      model: "anthropic/strong",
+                      dimensionId: "support",
+                      suiteDigest: "suite",
+                      evidenceDigest: "strong-evidence",
+                      quality: {
+                        passRate: 1,
+                        lowerConfidenceBound: 0.8,
+                        sampleCount: 1
+                      },
+                      failureRate: 0,
+                      unpricedCalls: 1
+                    }
+                  ]
                 }
               };
             })
@@ -160,6 +195,6 @@ test("publication requires a completed Ori run and runs exactly once", async () 
     }).pipe(Effect.provide(makeLayer(api, publishes)))
   );
   assert.equal(outcome.state.stage, "completed");
-  assert.equal(outcome.proposal?.selectedModel, "openai/cheap");
+  assert.deepEqual(outcome.activation?.candidateModels, ["openai/cheap", "anthropic/strong"]);
   assert.equal(publishes.count, 1);
 });

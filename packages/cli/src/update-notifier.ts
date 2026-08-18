@@ -2,7 +2,8 @@ import { chmodSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { createPresenter, isInteractive } from "@velum-labs/routekit-cli-ui";
-import { SERVICE_HOME_MODE, writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { SERVICE_HOME_MODE } from "@velum-labs/routekit-runtime/service";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import { runCliEffect } from "./cli-session.js";
 import { routekitHome } from "./config.js";
 import { fetchLatestRouteKitVersion } from "./install-version.js";

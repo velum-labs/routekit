@@ -12,6 +12,7 @@ import { Effect, Exit } from "effect";
 import {
   EvalComparisonRunnerCredentialError,
   EvalComparisonRunnerManifestError,
+  EvalComparisonRunnerSpendLimitError,
   makeEvalComparisonRunner
 } from "../production-runner.js";
 
@@ -59,14 +60,14 @@ test("production runner estimates the exact imported nested-loop testdrive suite
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-estimate-"));
   roots.push(root);
   const suite = path.join(root, "support.eval.ts");
-  const candidates = ["openai/luna", "openai/terra", "openai/sol"];
+  const candidates = ["openai/gpt-5.5", "openai/gpt-5.1", "openai/gpt-4.1-mini"];
   const caseIds = ["one", "two", "three", "four", "five"];
   await mkdir(path.join(root, "data"));
   await writeFile(
     path.join(root, "data", "cases.json"),
     `${JSON.stringify(caseIds.map((id) => ({ id, prompt: id })))}\n`
   );
-  await writeManifest(root, candidates, "openai/terra", caseIds);
+  await writeManifest(root, candidates, "openai/gpt-5.5", caseIds);
   await writeFile(
     suite,
     [
@@ -99,15 +100,16 @@ test("production runner estimates the exact imported nested-loop testdrive suite
         {
           ...requestFor(suite),
           candidateModels: candidates,
-          judgeModel: "openai/terra"
+          judgeModel: "openai/gpt-5.5"
         },
         "pilot"
       );
     }).pipe(Effect.provide(NodeHttpClient.layerUndici))
   );
 
-  assert.deepEqual(result, { callCount: 30, pricingKnown: false });
-  assert.equal("maximumCostUsd" in result, false);
+  assert.equal(result.callCount, 30);
+  assert.equal(result.pricingKnown, true);
+  assert.equal((result.maximumCostUsd ?? 0) > 0, true);
 });
 
 test("production runner rejects a manifest for a different profile", async () => {
@@ -155,6 +157,92 @@ test("production runner fails paid execution clearly when no credential was inje
   if (Exit.isFailure(exit)) {
     assert.match(String(exit.cause), /requires an injected bearer credential/u);
     assert.match(String(exit.cause), new RegExp(EvalComparisonRunnerCredentialError.name));
+  }
+});
+
+test("production runner enforces spendLimitUsd before live execution", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-spend-limit-"));
+  roots.push(root);
+  const suite = path.join(root, "support.eval.ts");
+  await writeFile(
+    suite,
+    [
+      'import { test } from "node:test";',
+      'import { setupAgent, setupJudge } from "routekit/eval";',
+      'const judge = setupJudge({ agent: setupAgent({ model: "openai/gpt-5.5" }) });',
+      'test("support case", async () => {',
+      '  const run = await setupAgent({ model: "openai/gpt-5.1" }).run("Help");',
+      "  run.toComplete();",
+      '  await judge.autoEvals({ criteria: "Helpful", prompt: "Help", run });',
+      "});"
+    ].join("\n")
+  );
+  await writeManifest(root, ["openai/gpt-5.1"], "openai/gpt-5.5", ["support-case"]);
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runner = yield* makeEvalComparisonRunner({
+        bearerCredential: "unused-token"
+      });
+      return yield* runner.runComparison(
+        {
+          ...requestFor(suite),
+          candidateModels: ["openai/gpt-5.1"],
+          judgeModel: "openai/gpt-5.5",
+          spendLimitUsd: 0
+        },
+        "pilot"
+      );
+    }).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+  );
+
+  assert.equal(Exit.isFailure(exit), true);
+  if (Exit.isFailure(exit)) {
+    assert.match(String(exit.cause), /exceeds spendLimitUsd/u);
+    assert.match(String(exit.cause), new RegExp(EvalComparisonRunnerSpendLimitError.name));
+  }
+});
+
+test("production runner fails closed when a spend limit has unknown pricing", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-spend-unknown-"));
+  roots.push(root);
+  const suite = path.join(root, "support.eval.ts");
+  await writeFile(
+    suite,
+    [
+      'import { test } from "node:test";',
+      'import { setupAgent, setupJudge } from "routekit/eval";',
+      'const judge = setupJudge({ agent: setupAgent({ model: "unknown/judge" }) });',
+      'test("support case", async () => {',
+      '  const run = await setupAgent({ model: "unknown/candidate" }).run("Help");',
+      "  run.toComplete();",
+      '  await judge.autoEvals({ criteria: "Helpful", prompt: "Help", run });',
+      "});"
+    ].join("\n")
+  );
+  await writeManifest(root, ["unknown/candidate"], "unknown/judge", ["support-case"]);
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runner = yield* makeEvalComparisonRunner({
+        bearerCredential: "unused-token"
+      });
+      return yield* runner.runComparison(
+        {
+          ...requestFor(suite),
+          candidateModels: ["unknown/candidate"],
+          judgeModel: "unknown/judge",
+          spendLimitUsd: 100
+        },
+        "pilot"
+      );
+    }).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+  );
+
+  assert.equal(Exit.isFailure(exit), true);
+  if (Exit.isFailure(exit)) {
+    assert.match(String(exit.cause), /pricing is unknown/u);
+    assert.match(String(exit.cause), new RegExp(EvalComparisonRunnerSpendLimitError.name));
   }
 });
 

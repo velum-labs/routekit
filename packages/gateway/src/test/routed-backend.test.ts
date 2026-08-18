@@ -8,7 +8,7 @@ import {
   borrowedBackendPorts,
   ModelRoutedBackend,
   staticBackendModelPort
-} from "../backend.js";
+} from "../providers/backend.js";
 
 function stubBackend(
   id: string,

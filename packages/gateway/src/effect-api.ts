@@ -1,3 +1,3 @@
 export { scopedGateway } from "./effect/scoped-gateway.js";
-export { startGatewayEffect } from "./server.js";
-export { startSwitchingGatewayProxyEffect } from "./switching-proxy.js";
+export { startGatewayEffect } from "./services/gateway/service.js";
+export { startSwitchingGatewayProxyEffect } from "./services/switching-proxy/service.js";

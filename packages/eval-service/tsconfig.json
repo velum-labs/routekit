@@ -9,6 +9,7 @@
     { "path": "../eval-contracts" },
     { "path": "../eval-core" },
     { "path": "../eval-setup" },
-    { "path": "../eval-store" }
+    { "path": "../eval-store" },
+    { "path": "../registry" }
   ]
 }

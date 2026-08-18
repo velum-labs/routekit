@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import {
   executeWebRequest,
   routeKitError,

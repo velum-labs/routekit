@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { RouterConfig } from "@velum-labs/routekit-config";
-import { ControlError } from "@velum-labs/routekit-runtime";
+import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { Deferred, Effect } from "effect";
 
 import type { RevisionState } from "./daemon-state.js";

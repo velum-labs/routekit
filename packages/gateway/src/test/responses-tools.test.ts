@@ -22,13 +22,13 @@ import {
   responsesToChat,
   responsesToolRegistry
 } from "../adapters/responses.js";
-import { type Backend, borrowedBackendPorts, ModelRoutedBackend } from "../backend.js";
-import { OpenAiBackend } from "../openai-backend.js";
-import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { AnthropicBackend, CodexResponsesBackend } from "../provider-backends.js";
-import { RoutingBackend } from "../router.js";
-import type { RequestRelay } from "../server.js";
-import { startGateway } from "../server.js";
+import { type Backend, borrowedBackendPorts, ModelRoutedBackend } from "../providers/backend.js";
+import { OpenAiBackend } from "../providers/openai-backend.js";
+import { MODEL_CALL_ID_HEADER } from "../observability/provenance.js";
+import { AnthropicBackend, CodexResponsesBackend } from "../providers/backends.js";
+import { RoutingBackend } from "../routing/router.js";
+import type { RequestRelay } from "../services/gateway/service.js";
+import { startGateway } from "../services/gateway/service.js";
 import { testProviderSource } from "./provider-source-fixture.js";
 import {
   chatChunk,
@@ -46,7 +46,7 @@ import {
 
 test("Responses rejects previous_response_id instead of dropping it", async () => {
   let calls = 0;
-  const backend: import("../backend.js").Backend = {
+  const backend: import("../providers/backend.js").Backend = {
     defaultModel: "local-model",
     ports: borrowedBackendPorts("local-model"),
     chat: () => {

@@ -7,8 +7,8 @@ import {
   EVAL_POLICY_BYPASS_HEADER
 } from "@velum-labs/routekit-eval-contracts";
 import { Effect } from "effect";
-import type { GatewayPrincipal } from "../auth.js";
-import { startSwitchingGatewayProxy } from "../switching-proxy.js";
+import type { GatewayPrincipal } from "../http/auth.js";
+import { startSwitchingGatewayProxy } from "../services/switching-proxy/service.js";
 
 async function recordingTarget() {
   const requests: Array<{ headers: Record<string, string | string[] | undefined>; body: unknown }> =

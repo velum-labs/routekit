@@ -12,7 +12,7 @@ import {
   ensureCliproxyConfig
 } from "@velum-labs/routekit-accounts";
 import { parseRouterConfig } from "@velum-labs/routekit-config";
-import { startRouter } from "@velum-labs/routekit-router";
+import { startGatewayGenerationEffect } from "@velum-labs/routekit-daemon/effect";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 async function upstream(): Promise<{ url: string; close(): Promise<void> }> {
@@ -62,14 +62,16 @@ test("serve exposes OpenAI, Anthropic, Responses, and Cursor dialects", async ()
     providers: { openai: {} },
     defaultModel: "openai/upstream-model"
   });
-  const router = await startRouter({
-    config,
-    port: 0,
-    env: {
-      OPENAI_API_KEY: "test",
-      OPENAI_BASE_URL: provider.url
-    }
-  });
+  const router = await runRouteKitEffect(
+    startGatewayGenerationEffect({
+      config,
+      port: 0,
+      env: {
+        OPENAI_API_KEY: "test",
+        OPENAI_BASE_URL: provider.url
+      }
+    })
+  );
   try {
     const models = await fetch(`${router.url}/v1/models`);
     assert.equal(models.status, 200);
@@ -152,14 +154,16 @@ test("serve resolves the managed cliproxy credential without printing or exporti
     providers: { cliproxy: {} },
     defaultModel: "cliproxy/upstream"
   });
-  const router = await startRouter({
-    config,
-    port: 0,
-    env: {
-      ROUTEKIT_HOME: stateHome,
-      ROUTEKIT_CLIPROXY_BASE_URL: `http://127.0.0.1:${port}`
-    }
-  });
+  const router = await runRouteKitEffect(
+    startGatewayGenerationEffect({
+      config,
+      port: 0,
+      env: {
+        ROUTEKIT_HOME: stateHome,
+        ROUTEKIT_CLIPROXY_BASE_URL: `http://127.0.0.1:${port}`
+      }
+    })
+  );
   try {
     await fetch(`${router.url}/v1/chat/completions`, {
       method: "POST",

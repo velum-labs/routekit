@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { superviseSpawn } from "../process.js";
+import { superviseSpawn } from "../process/process.js";
 
 function processAlive(pid: number): boolean {
   try {
@@ -97,7 +97,7 @@ test("child env goes through buildChildEnv by default: secrets do not leak", asy
   try {
     const spawned = superviseSpawn(process.execPath, [
       "-e",
-      'console.log(JSON.stringify({ secret: process.env.ROUTEKIT_TEST_SECRET_WS7 ?? null, path: process.env.PATH !== undefined }))'
+      "console.log(JSON.stringify({ secret: process.env.ROUTEKIT_TEST_SECRET_WS7 ?? null, path: process.env.PATH !== undefined }))"
     ]);
     let output = "";
     spawned.child.stdout?.on("data", (chunk: Buffer) => {

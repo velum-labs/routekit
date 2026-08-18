@@ -1,10 +1,9 @@
 import type {
-  CompiledRoutingPolicy,
   EvalComparisonResult,
   EvalSetupEvent,
   EvalSetupRunMode,
-  RoutingObjective,
-  RoutingProfile
+  PublishedRoutingActivation,
+  RoutingObjective
 } from "@velum-labs/routekit-eval-contracts";
 
 import type { OriEvalResult } from "./ori-result.js";
@@ -47,24 +46,6 @@ export type SetupEstimate = {
   readonly pricingKnown: boolean;
 };
 
-export type ScaffoldInput = {
-  readonly profileId: string;
-  readonly repositoryRoot: string;
-  readonly surface: string;
-  readonly dataSource: string;
-  readonly criteria: string;
-  readonly constraint: string;
-  readonly candidates: readonly string[];
-  readonly judgeModel: string;
-  readonly objective: RoutingObjective;
-};
-
-export type ScaffoldResult = {
-  readonly evalPath: string;
-  readonly profilePath: string;
-  readonly profile: RoutingProfile;
-};
-
 export type SetupStateView = {
   readonly profileId: string;
   readonly repositoryRoot: string;
@@ -89,7 +70,7 @@ export type SetupAnswerResult = SetupStatus & {
 
 export type SetupRunResult = SetupAnswerResult & {
   readonly comparison?: EvalComparisonResult;
-  readonly proposal?: CompiledRoutingPolicy;
+  readonly activation?: PublishedRoutingActivation;
 };
 
 export type EvalSetupRunnerShape = {
@@ -109,7 +90,7 @@ export type EvalSetupRunnerShape = {
   }) => import("effect").Effect.Effect<
     {
       readonly comparison: EvalComparisonResult;
-      readonly proposal: CompiledRoutingPolicy;
+      readonly activation: PublishedRoutingActivation;
     },
     import("./errors.js").EvalSetupRunnerError
   >;
@@ -117,7 +98,7 @@ export type EvalSetupRunnerShape = {
 
 export type EvalSetupRunCheckpoint = {
   readonly comparison: EvalComparisonResult;
-  readonly proposal: CompiledRoutingPolicy;
+  readonly activation: PublishedRoutingActivation;
 };
 
 export type { EvalSetupRunMode };

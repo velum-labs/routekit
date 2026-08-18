@@ -4,13 +4,13 @@ import {
   contextFor,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import type { ServiceRecord } from "@velum-labs/routekit-runtime";
+import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
 import {
   acquireLifecycleLock,
   supervisorOperationTimeoutMs,
   waitForProcessExit,
   waitForServiceReadyEffect
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/service";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
 import { Effect } from "effect";

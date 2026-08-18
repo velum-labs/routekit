@@ -9,18 +9,20 @@ import type {
   ProvenanceSink,
   SwitchingGatewayProxy
 } from "@velum-labs/routekit-gateway";
-import type { RunningRouter } from "@velum-labs/routekit-router";
-import { startRouterEffect } from "@velum-labs/routekit-router/effect";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
 import {
   RouteKitFailure,
   type RouteKitPlatform,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 import { Effect } from "effect";
 import type { CliproxySidecar } from "./cliproxy-sidecar.js";
 import type { RevisionState } from "./daemon-state.js";
 import { writeDaemonRevisions } from "./daemon-state.js";
+import {
+  type RunningGatewayGeneration,
+  startGatewayGenerationEffect
+} from "./services/gateway-generation/service.js";
 
 export type DaemonGenerationStage = "prepare" | "validate" | "persist" | "commit" | "retire";
 
@@ -50,8 +52,8 @@ export type DaemonGenerationManagerOptions = {
   setCurrentDocument(document: string): void;
   getRevisions(): RevisionState;
   setRevisions(revisions: RevisionState): void;
-  getActiveRouter(): RunningRouter | undefined;
-  setActiveRouter(router: RunningRouter): void;
+  getActiveRouter(): RunningGatewayGeneration | undefined;
+  setActiveRouter(router: RunningGatewayGeneration): void;
   getProxy(): SwitchingGatewayProxy | undefined;
   activeCredentialFingerprints(): Map<string, string>;
   /** Apply daemon-local configuration before the proxy publishes the candidate. */
@@ -60,7 +62,7 @@ export type DaemonGenerationManagerOptions = {
 };
 
 export type DaemonGenerationManager = {
-  start(config: RouterConfig): Effect.Effect<RunningRouter, Error, RouteKitPlatform>;
+  start(config: RouterConfig): Effect.Effect<RunningGatewayGeneration, Error, RouteKitPlatform>;
   replace(
     nextConfig: RouterConfig,
     nextDocument: string,
@@ -85,8 +87,10 @@ const collectRollback = (
 export function createDaemonGenerationManager(
   options: DaemonGenerationManagerOptions
 ): DaemonGenerationManager {
-  const start = (config: RouterConfig): Effect.Effect<RunningRouter, Error, RouteKitPlatform> =>
-    startRouterEffect({
+  const start = (
+    config: RouterConfig
+  ): Effect.Effect<RunningGatewayGeneration, Error, RouteKitPlatform> =>
+    startGatewayGenerationEffect({
       config,
       host: "127.0.0.1",
       port: 0,
@@ -114,7 +118,7 @@ export function createDaemonGenerationManager(
             message: "router generation cannot replace before daemon publication"
           });
         }
-        let candidate: RunningRouter | undefined;
+        let candidate: RunningGatewayGeneration | undefined;
         let published = false;
         yield* Effect.addFinalizer(() => {
           const unpublished = candidate;

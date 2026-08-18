@@ -15,12 +15,12 @@ import {
   wrapResponsesEncryptedContent
 } from "../adapters/openai-responses-wire.js";
 import { responsesToChat } from "../adapters/responses.js";
-import { OpenAiBackend } from "../openai-backend.js";
+import { OpenAiBackend } from "../providers/openai-backend.js";
 import {
   AnthropicBackend,
   CodexResponsesBackend,
   GoogleGenAiBackend
-} from "../provider-backends.js";
+} from "../providers/backends.js";
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseDecoder, SseParseError } from "../sse/parse.js";
 

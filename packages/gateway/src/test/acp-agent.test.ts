@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import { test } from "node:test";
-import type { AcpRunner } from "../acp-agent.js";
-import { runAcpAgent } from "../acp-agent.js";
+import type { AcpRunner } from "../acp/agent.js";
+import { runAcpAgent } from "../acp/agent.js";
 
 type JsonRpcOut = {
   id?: number | string;

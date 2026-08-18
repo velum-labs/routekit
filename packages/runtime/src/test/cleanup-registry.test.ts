@@ -15,9 +15,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { registerCleanup, runCleanups } from "../cleanup.js";
+import { registerCleanup, runCleanups } from "../lifecycle/cleanup.js";
 
-const CLEANUP_MODULE = fileURLToPath(new URL("../cleanup.js", import.meta.url));
+const CLEANUP_MODULE = fileURLToPath(new URL("../lifecycle/cleanup.js", import.meta.url));
 
 function fixture(dir: string, body: string): string {
   const script = join(dir, "fixture.mjs");

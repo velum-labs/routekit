@@ -5,9 +5,9 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
-import { type Backend, borrowedBackendPorts } from "../backend.js";
+import { type Backend, borrowedBackendPorts } from "../providers/backend.js";
 import { scopedGateway } from "../effect-api.js";
-import { startGateway } from "../server.js";
+import { startGateway } from "../services/gateway/service.js";
 
 function emptyBackend(): Backend {
   return {

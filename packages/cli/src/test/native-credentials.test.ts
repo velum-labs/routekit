@@ -6,13 +6,13 @@ import test from "node:test";
 import {
   nativeCredentialHelper,
   nativeCredentialShellCommand
-} from "../native-credential-helper.js";
+} from "../adapters/native-credential-helper.js";
 import {
   deleteNativeCredential,
   nativeCredentialPath,
   readNativeCredential,
   writeNativeCredential
-} from "../native-credentials.js";
+} from "../adapters/native-credentials.js";
 
 test("native credentials use a private file fallback and clean up", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-native-credential-"));

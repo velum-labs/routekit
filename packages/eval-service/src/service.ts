@@ -7,10 +7,7 @@ import type {
   RoutingBasis,
   RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
-import {
-  assertExplicitEvalModel,
-  assertRoutingBasis
-} from "@velum-labs/routekit-eval-contracts";
+import { assertExplicitEvalModel, assertRoutingBasis } from "@velum-labs/routekit-eval-contracts";
 import { makeRoutingActivationStore } from "@velum-labs/routekit-eval-store";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 
@@ -66,7 +63,6 @@ export class EvalComparisonRunner extends Context.Service<
 export type EvalRunConfiguration = {
   readonly concurrency?: number;
   readonly timeoutMs?: number;
-  readonly spendLimitUsd?: number;
 };
 
 export type EvalServiceConfiguration = {
@@ -140,7 +136,6 @@ const validateConfiguration = (configuration: EvalServiceConfiguration): void =>
   }
   validatePositiveOption("full.concurrency", configuration.full?.concurrency);
   validatePositiveOption("full.timeoutMs", configuration.full?.timeoutMs);
-  validatePositiveOption("full.spendLimitUsd", configuration.full?.spendLimitUsd, true);
 };
 
 const sameStrings = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
@@ -175,7 +170,9 @@ const validateDimensionMatrixInput = (
       );
     }
     if (entry.suitePath.trim().length === 0) {
-      throw new Error(`dimension matrix suite path is empty for ${JSON.stringify(entry.dimensionId)}`);
+      throw new Error(
+        `dimension matrix suite path is empty for ${JSON.stringify(entry.dimensionId)}`
+      );
     }
     suites.set(entry.dimensionId, entry);
   }
@@ -203,10 +200,7 @@ const comparisonRequest = (
     : { concurrency: configuration.full.concurrency }),
   ...(configuration.full?.timeoutMs === undefined
     ? {}
-    : { timeoutMs: configuration.full.timeoutMs }),
-  ...(configuration.full?.spendLimitUsd === undefined
-    ? {}
-    : { spendLimitUsd: configuration.full.spendLimitUsd })
+    : { timeoutMs: configuration.full.timeoutMs })
 });
 
 export const makeEvalService = (

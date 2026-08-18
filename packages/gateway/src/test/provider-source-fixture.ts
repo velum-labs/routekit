@@ -1,8 +1,8 @@
 import { type RouteKitPlatform, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
-import type { BackendRequest, BackendRequestOptions } from "../backend.js";
+import type { BackendRequest, BackendRequestOptions } from "../providers/backend.js";
 import type { DiscoveredModel, ProviderId, ProviderSource } from "../index.js";
-import { openaiReasoningCapabilities } from "../openai-reasoning.js";
+import { openaiReasoningCapabilities } from "../providers/openai-reasoning.js";
 
 type TestProviderSourceOptions = {
   readonly sourceId: ProviderId;

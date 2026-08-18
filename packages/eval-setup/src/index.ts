@@ -44,14 +44,14 @@ export {
   selectProjectAuthoringSourceFiles
 } from "./project-authoring.js";
 export type {
-  EvalDimensionCase,
-  EvalDimensionSuite,
-  EvalDecompositionBenchmark,
-  EvalDecompositionBenchmarkCase,
+  EvalClassifierObservation,
   EvalCompositionCase,
   EvalCompositionCaseResult,
   EvalCompositionSuite,
-  EvalClassifierObservation,
+  EvalDecompositionBenchmark,
+  EvalDecompositionBenchmarkCase,
+  EvalDimensionCase,
+  EvalDimensionSuite,
   EvalEvaluationProposal,
   EvalExecutionPlan,
   EvalPlanScope,
@@ -59,17 +59,17 @@ export type {
   EvalProjectStatus,
   EvalRunCleanup,
   EvalRunLedger,
-  EvalRunReport,
   EvalRunQualification,
+  EvalRunReport,
   EvalRunTarget
 } from "./project-contracts.js";
 export {
   EVAL_PROJECT_VERSION,
   EvalArtifactApproval,
+  EvalCompositionSuite as EvalCompositionSuiteSchema,
+  EvalDecompositionBenchmark as EvalDecompositionBenchmarkSchema,
   EvalDimensionCase as EvalDimensionCaseSchema,
   EvalDimensionSuite as EvalDimensionSuiteSchema,
-  EvalDecompositionBenchmark as EvalDecompositionBenchmarkSchema,
-  EvalCompositionSuite as EvalCompositionSuiteSchema,
   EvalEvaluationProposal as EvalEvaluationProposalSchema,
   EvalExecutionPlan as EvalExecutionPlanSchema,
   EvalPlanScope as EvalPlanScopeSchema,
@@ -99,11 +99,6 @@ export {
 } from "./project-workflow.js";
 export { questionForStage, withOpenQuestion } from "./questions.js";
 export { EvalSetupRunner, EvalSetupRunnerNoop } from "./runner.js";
-export {
-  EvalSetupScaffolder,
-  EvalSetupScaffolderLive,
-  scaffoldEvalRoutingProfile
-} from "./scaffold.js";
 export type { EvalSetupError, EvalSetupShape } from "./service.js";
 export { EvalSetup, EvalSetupLive, makeEvalSetup } from "./service.js";
 export {
@@ -118,8 +113,6 @@ export type {
   RepositoryInspection,
   RepositoryMaterial,
   RepositorySurface,
-  ScaffoldInput,
-  ScaffoldResult,
   SetupAnswerResult,
   SetupEstimate,
   SetupQuestion,

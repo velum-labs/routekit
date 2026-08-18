@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -348,7 +356,11 @@ test("systemd controller install writes the unit and drives systemctl", async ()
   const calls: string[][] = [];
   const runner: CommandRunner = async (command, args) => {
     calls.push([command, ...args]);
-    return { exitCode: 0, stdout: command === "systemctl" && args.includes("is-active") ? "active" : "running", stderr: "" };
+    return {
+      exitCode: 0,
+      stdout: command === "systemctl" && args.includes("is-active") ? "active" : "running",
+      stderr: ""
+    };
   };
   try {
     const controller = await detectSupervisor("routekit", "gateway", {

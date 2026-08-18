@@ -10,7 +10,7 @@ import {
   resolvePrincipal,
   timingSafeStringEqual,
   verifyBearerToken
-} from "../auth.js";
+} from "../http/auth.js";
 
 function jwt(
   privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],

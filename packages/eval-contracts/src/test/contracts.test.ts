@@ -11,7 +11,6 @@ import {
   assertRequestDecomposition,
   assertRoutingBasis,
   assertRoutingObjectivePolicy,
-  assertRoutingProfile,
   COMPOSITIONAL_ROUTING_VERSION,
   DecompositionResult,
   EVAL_POLICY,
@@ -21,11 +20,9 @@ import {
   isForbiddenEvalModel,
   ModelEvidence,
   PublishedRoutingActivation,
-  PublishedRoutingSnapshot,
   RequestDecomposition,
   RoutingBasis,
-  RoutingObjectivePolicy,
-  RoutingProfile
+  RoutingObjectivePolicy
 } from "../index.js";
 
 const routingAreas = [
@@ -117,65 +114,6 @@ test("eval suite schema rejects malformed documents", () => {
     cases: [{ id: "c1", prompt: "hi" }]
   });
   assert.equal(spec.cases.length, 1);
-});
-
-test("routing profile contract freezes explicit candidate, judge, and objective inputs", () => {
-  const profile = Schema.decodeSync(RoutingProfile)({
-    version: 1,
-    id: "support",
-    suite: ".routekit/evals/support/support.eval.ts",
-    candidates: ["openai/cheap", "anthropic/strong"],
-    judge: "openai/judge",
-    eligibility: { minimumPassRate: 0.9 },
-    objective: "lowest-cost"
-  });
-  assert.doesNotThrow(() => assertRoutingProfile(profile));
-  assert.throws(
-    () => assertRoutingProfile({ ...profile, candidates: ["auto"] }),
-    /explicit provider\/model/
-  );
-  assert.throws(
-    () => assertRoutingProfile({ ...profile, candidates: ["openai/cheap", "openai/cheap"] }),
-    /duplicate candidate/
-  );
-  assert.throws(
-    () => assertRoutingProfile({ ...profile, id: "Support profile" }),
-    /routing profile id must start/
-  );
-  const described = Schema.decodeSync(RoutingProfile)({
-    ...profile,
-    description: "Support replies grounded in product policy"
-  });
-  assert.equal(described.description, "Support replies grounded in product policy");
-});
-
-test("published routing snapshots contain compact online decisions", () => {
-  const snapshot = Schema.decodeSync(PublishedRoutingSnapshot)({
-    version: 1,
-    generatedAt: "2026-08-15T00:00:00.000Z",
-    profiles: {
-      support: {
-        selectedModel: "openai/cheap",
-        fallbackModels: ["anthropic/strong"],
-        objective: "lowest-cost",
-        suiteDigest: "suite-digest",
-        evidenceDigest: "evidence-digest",
-        publishedAt: "2026-08-15T00:00:00.000Z",
-        description: "Support replies",
-        evidence: [
-          {
-            model: "openai/cheap",
-            passRate: 1,
-            averageJudgeScore: 0.9
-          }
-        ]
-      }
-    }
-  });
-  assert.equal(snapshot.profiles.support?.selectedModel, "openai/cheap");
-  assert.equal(snapshot.profiles.support?.description, "Support replies");
-  assert.equal(snapshot.profiles.support?.evidence?.[0]?.passRate, 1);
-  assert.equal("token" in snapshot, false);
 });
 
 test("v2 dimension catalogs require bounded, unique, reviewable definitions", () => {

@@ -56,7 +56,7 @@
     "adapter"
   ],
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -p tsconfig.json",
     "clean": "tsc -b --clean",
     "test": "node --test \"dist/test/*.test.js\""
   }

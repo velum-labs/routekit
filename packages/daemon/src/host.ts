@@ -6,21 +6,22 @@ import { isAbsolute, join } from "node:path";
 
 import { routekitHome } from "@velum-labs/routekit-config";
 import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
-import type { PortlessSession, ServiceRecord } from "@velum-labs/routekit-runtime";
+import type { PortlessSession } from "@velum-labs/routekit-runtime/network";
+import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
 import {
   acquireLifecycleLock,
-  CONTROL_PROTOCOL_VERSION,
-  ControlError,
-  createPortlessSession,
   createServiceRecordStore,
-  extendCleanupGrace,
-  gatewayPath,
-  generateControlToken,
   nextServiceGeneration,
   processIdentity,
-  registerCleanup,
   supervisorFromEnv
-} from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/service";
+import {
+  CONTROL_PROTOCOL_VERSION,
+  ControlError,
+  generateControlToken
+} from "@velum-labs/routekit-runtime/control";
+import { createPortlessSession, gatewayPath } from "@velum-labs/routekit-runtime/network";
+import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime/lifecycle";
 import {
   executeWebRequest,
   makeRouteKitRuntime,

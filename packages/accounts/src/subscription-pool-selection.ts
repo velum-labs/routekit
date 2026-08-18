@@ -1,6 +1,6 @@
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { type CapacityLease, CapacityPool } from "@velum-labs/routekit-runtime";
+import { type CapacityLease, CapacityPool } from "@velum-labs/routekit-runtime/capacity";
 import {
   type RouteKitPlatform,
   routeKitError,

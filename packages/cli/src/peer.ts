@@ -9,7 +9,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs"
 import { dirname, join } from "node:path";
 
 import { routekitHome } from "@velum-labs/routekit-config";
-import { writeFileAtomic } from "@velum-labs/routekit-runtime";
+import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
 export type PeerPointer = {
   version: 1;

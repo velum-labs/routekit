@@ -50,7 +50,6 @@
     "@velum-labs/routekit-eval-core": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
-    "@velum-labs/routekit-tracing": "workspace:*",
     "effect": "catalog:"
   },
   "keywords": [

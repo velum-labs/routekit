@@ -45,10 +45,7 @@ test("runCliCapture kills the whole process tree on abort", async () => {
   assert.equal(result.abortReason, "straggler_abandoned");
   assert.equal(result.exitCode, 130);
   assert.ok(grandchildPid !== undefined, "grandchild pid was reported");
-  assert.ok(
-    await waitForExit(grandchildPid, 5_000),
-    "grandchild must die with the process group"
-  );
+  assert.ok(await waitForExit(grandchildPid, 5_000), "grandchild must die with the process group");
 });
 
 test("runCliCapture kills the whole process tree on timeout", async () => {
@@ -64,10 +61,7 @@ test("runCliCapture kills the whole process tree on timeout", async () => {
   assert.equal(result.timedOut, true);
   assert.equal(result.exitCode, 124);
   assert.ok(grandchildPid !== undefined, "grandchild pid was reported");
-  assert.ok(
-    await waitForExit(grandchildPid, 5_000),
-    "grandchild must die with the process group"
-  );
+  assert.ok(await waitForExit(grandchildPid, 5_000), "grandchild must die with the process group");
 });
 
 test("runCliCapture short-circuits on an already-aborted signal", async () => {

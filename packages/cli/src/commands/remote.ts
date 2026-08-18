@@ -4,12 +4,12 @@ import {
   contextFor,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import { decodeJoinCredential } from "@velum-labs/routekit-runtime";
+import { decodeJoinCredential } from "@velum-labs/routekit-runtime/tokens";
 import type { Command } from "commander";
 import { Effect } from "effect";
 import { type CliSession, cliTryPromise, runCliEffect } from "../cli-session.js";
 import { resolveCredentialArgument } from "../credentials.js";
-import { gatewayHealthy } from "../gateway-probe.js";
+import { gatewayHealthy } from "../adapters/gateway-probe.js";
 import { PEER_ADD_SCRIPT } from "../generated/shell-scripts.js";
 import {
   type ProvisionStepId,
@@ -22,16 +22,16 @@ import {
   validateRemoteName,
   validateSshHost
 } from "../remotes.js";
-import { remoteControlClient } from "../ssh-control.js";
+import { remoteControlClient } from "../adapters/ssh-control.js";
 import {
   classifySshFailure,
   redactSensitiveText,
   remoteShellArgv,
   runSshCommand,
   sshExitError
-} from "../ssh-exec.js";
+} from "../adapters/ssh-exec.js";
 import { routekitVersion } from "../state.js";
-import { EnrollRemote, ProvisionRemote, RemoveRemote } from "../use-cases/remote.js";
+import { EnrollRemote, ProvisionRemote, RemoveRemote } from "../services/remote/service.js";
 
 /**
  * Enroll the SSH account as a peer of the shared daemon before remote

@@ -9,7 +9,7 @@ import {
   launchToolWithIntegration,
   resolveCodexLaunchSelection,
   routekitToolRegistry
-} from "../launch.js";
+} from "../adapters/launch.js";
 
 const config = parseRouterConfig({
   providers: { openai: {}, codex: {} },

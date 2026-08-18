@@ -49,9 +49,6 @@
       "path": "../gateway"
     },
     {
-      "path": "../router"
-    },
-    {
       "path": "../registry"
     },
     {
