@@ -1,6 +1,6 @@
 import {
   assertCompiledRoutingPolicy,
-  assertPublishedRoutingCatalog,
+  assertPublishedRoutingProfiles,
   CompiledRoutingPolicy,
   PublishedRoutingSnapshot,
   ROUTING_SNAPSHOT_VERSION
@@ -121,10 +121,10 @@ export class RoutingSnapshotStore {
         }
       };
       yield* Effect.try({
-        try: () => assertPublishedRoutingCatalog(snapshot.profiles),
+        try: () => assertPublishedRoutingProfiles(snapshot.profiles),
         catch: (cause) =>
           new RouteKitFailure({
-            message: `published routing catalog is invalid: ${cause instanceof Error ? cause.message : String(cause)}`
+            message: `published routing profiles are invalid: ${cause instanceof Error ? cause.message : String(cause)}`
           })
       });
       yield* writeFileAtomicEffect(path, `${JSON.stringify(snapshot, null, 2)}\n`, {

@@ -2,9 +2,10 @@ export {
   makeRoutingSnapshotStore,
   RoutingSnapshotStore
 } from "./routing-snapshot.js";
-export type { RoutingSnapshotV2Publication } from "./routing-snapshot-v2.js";
+export type { RoutingActivationPublication } from "./routing-activation.js";
 export {
-  makeRoutingSnapshotStoreV2,
-  RoutingSnapshotStoreV2
-} from "./routing-snapshot-v2.js";
+  makeRoutingActivationStore,
+  RoutingActivationConflictError,
+  RoutingActivationStore
+} from "./routing-activation.js";
 export { EvalStore, makeEvalStore } from "./store.js";

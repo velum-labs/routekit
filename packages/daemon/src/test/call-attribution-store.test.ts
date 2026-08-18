@@ -32,11 +32,11 @@ function modelCall(callId: string, seat = "seat_0123456789abcdef"): ModelCallRec
         account: { seat },
         compositional_routing: {
           version: 2,
-          definition_set_digest: "definitions-v2",
+          basis_digest: "definitions-v2",
           evidence_digest: "evidence-v2",
           weights: [
-            { area_id: "gateway-protocols", weight: 0.7 },
-            { area_id: "eval-driven-routing", weight: 0.2 }
+            { dimension_id: "gateway-protocols", weight: 0.7 },
+            { dimension_id: "eval-driven-routing", weight: 0.2 }
           ],
           unknown_weight: 0.1,
           requirements: {
@@ -110,11 +110,11 @@ test("call inspection exposes attribution while dropping sensitive metadata", ()
   assert.equal(inspection.cost.estimateUsd, 0.001);
   assert.deepEqual(inspection.compositionalRouting, {
     version: 2,
-    definitionSetDigest: "definitions-v2",
+    basisDigest: "definitions-v2",
     evidenceDigest: "evidence-v2",
     weights: [
-      { areaId: "gateway-protocols", weight: 0.7 },
-      { areaId: "eval-driven-routing", weight: 0.2 }
+      { dimensionId: "gateway-protocols", weight: 0.7 },
+      { dimensionId: "eval-driven-routing", weight: 0.2 }
     ],
     unknownWeight: 0.1,
     requirements: {

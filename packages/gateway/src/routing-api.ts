@@ -1,19 +1,19 @@
 export type {
-  AreaRequestClassifierService,
-  ObservedAreaClassificationResult
+  ObservedDecompositionResult,
+  RequestDecomposerService
 } from "./request-classifier.js";
 export {
-  AreaRequestClassifier,
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
   ClassificationError,
-  classifyRequestAreas,
+  classifyRequestDimensions,
   extractClassifiableRequestText,
-  makeAreaRequestClassifierLayer,
-  makeFakeAreaRequestClassifier,
-  makeLanguageModelAreaClassifier,
-  parseAreaClassificationResult,
-  validateAreaClassificationInput,
-  validateAreaClassificationResult
+  makeFakeRequestDecomposer,
+  makeLanguageModelDimensionClassifier,
+  makeRequestDecomposerLayer,
+  parseDecompositionResult,
+  RequestDecomposer,
+  validateDecompositionInput,
+  validateDecompositionResult
 } from "./request-classifier.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
 export {

@@ -85,6 +85,7 @@ export {
 export type { WebSearchDialect, WebSearchExecutor } from "./adapters/web-search.js";
 export { MAX_WEB_SEARCHES_PER_TURN, resolveWebSearchExecutor } from "./adapters/web-search.js";
 export type {
+  EvalSessionAdmission,
   GatewayPrincipal,
   WorkloadJwtPrincipalPolicy,
   WorkloadJwtVerifierOptions
@@ -254,21 +255,21 @@ export {
   SUBSCRIPTION_PROVIDER_IDS
 } from "./provider-source.js";
 export type {
-  AreaRequestClassifierService,
-  ObservedAreaClassificationResult
+  ObservedDecompositionResult,
+  RequestDecomposerService
 } from "./request-classifier.js";
 export {
-  AreaRequestClassifier,
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
   ClassificationError,
-  classifyRequestAreas,
+  classifyRequestDimensions,
   extractClassifiableRequestText,
-  makeAreaRequestClassifierLayer,
-  makeFakeAreaRequestClassifier,
-  makeLanguageModelAreaClassifier,
-  parseAreaClassificationResult,
-  validateAreaClassificationInput,
-  validateAreaClassificationResult
+  makeFakeRequestDecomposer,
+  makeLanguageModelDimensionClassifier,
+  makeRequestDecomposerLayer,
+  parseDecompositionResult,
+  RequestDecomposer,
+  validateDecompositionInput,
+  validateDecompositionResult
 } from "./request-classifier.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
 export {

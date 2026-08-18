@@ -313,11 +313,11 @@ export function buildModelCallRecord(
               ? {
                   compositional_routing: {
                     version: 2,
-                    definition_set_digest:
-                      context.attribution.compositional_routing.definition_set_digest,
+                    basis_digest:
+                      context.attribution.compositional_routing.basis_digest,
                     evidence_digest: context.attribution.compositional_routing.evidence_digest,
                     weights: context.attribution.compositional_routing.weights.map((entry) => ({
-                      area_id: entry.area_id,
+                      dimension_id: entry.dimension_id,
                       weight: entry.weight
                     })),
                     unknown_weight: context.attribution.compositional_routing.unknown_weight,

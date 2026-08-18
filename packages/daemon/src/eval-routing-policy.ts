@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { makeRoutingSnapshotStoreV2 } from "@velum-labs/routekit-eval-store/effect";
+import { makeRoutingActivationStore } from "@velum-labs/routekit-eval-store/effect";
 import {
   type CompositionalRoutingPolicyReader,
   RoutingPolicyReadError
@@ -19,7 +19,7 @@ export function evalRoutingSnapshotDirectory(routekitHome: string): string {
 export function makeCompositionalRoutingPolicyReader(
   routekitHome: string
 ): CompositionalRoutingPolicyReader {
-  const snapshots = makeRoutingSnapshotStoreV2(evalRoutingSnapshotDirectory(routekitHome));
+  const snapshots = makeRoutingActivationStore(evalRoutingSnapshotDirectory(routekitHome));
   return {
     getSnapshot: () =>
       snapshots.read().pipe(

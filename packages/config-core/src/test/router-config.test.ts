@@ -128,7 +128,7 @@ test("router config validates compositional routing policy and defaults", () => 
         minimumQuality: 0.8,
         weights: { quality: 0.6, cost: 0.25, latency: 0.15 }
       },
-      minimumAreaQuality: {
+      minimumDimensionQuality: {
         "gateway-protocols": 0.75
       },
       maximumFailureRate: 0.2

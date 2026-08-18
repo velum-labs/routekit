@@ -3,15 +3,15 @@ export {
   OriAuthoredProfileExecutionError
 } from "./authored-profile-executor.js";
 export type {
-  AreaComparisonEvidenceInput,
-  CompileAreaEvidenceMatrixInput,
-  CompiledAreaEvidenceMatrix
-} from "./area-evidence.js";
+  CompileDimensionEvidenceMatrixInput,
+  CompiledDimensionEvidenceMatrix,
+  DimensionComparisonEvidenceInput
+} from "./dimension-evidence.js";
 export {
-  AreaEvidenceCompilationError,
-  compileAreaEvidenceMatrix,
+  compileDimensionEvidenceMatrix,
+  DimensionEvidenceCompilationError,
   wilsonLowerBound95
-} from "./area-evidence.js";
+} from "./dimension-evidence.js";
 export {
   EvalServiceComparisonError,
   EvalServiceConfigurationError,
@@ -51,9 +51,9 @@ export {
   makeRouteKitEvalSetupLayer
 } from "./production-runner.js";
 export type {
-  AreaMatrixQualificationInput,
-  AreaMatrixQualificationResult,
-  AreaMatrixSuite,
+  DimensionMatrixQualificationInput,
+  DimensionMatrixQualificationResult,
+  DimensionMatrixSuite,
   EvalComparisonMode,
   EvalComparisonRunnerShape,
   EvalRunConfiguration,

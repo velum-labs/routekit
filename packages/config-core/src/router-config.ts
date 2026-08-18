@@ -183,7 +183,7 @@ export const compositionalRoutingConfigSchema = z
   .object({
     maximumUnknownWeight: unitIntervalSchema.default(DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT),
     objective: routingObjectivePolicySchema.default({ kind: "highest-quality" }),
-    minimumAreaQuality: z
+    minimumDimensionQuality: z
       .record(z.string().regex(/^[a-z0-9](?:[a-z0-9-]{0,62})$/u), unitIntervalSchema)
       .optional(),
     maximumFailureRate: unitIntervalSchema.optional()

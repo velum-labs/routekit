@@ -5,9 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 
 import type {
-  RoutingAreaDefinition
+  WorkloadDimension
 } from "@velum-labs/routekit-eval-contracts";
-import { makeRoutingSnapshotStoreV2 } from "@velum-labs/routekit-eval-store/effect";
+import { makeRoutingActivationStore } from "@velum-labs/routekit-eval-store/effect";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
 import {
@@ -17,7 +17,7 @@ import {
 
 test("daemon compositional reader observes publications and falls back to previous", async () => {
   const home = mkdtempSync(join(tmpdir(), "routekit-daemon-compositional-policy-"));
-  const areas: RoutingAreaDefinition[] = [
+  const dimensions: WorkloadDimension[] = [
     "code-change",
     "repository-navigation",
     "verification-debugging",
@@ -30,15 +30,18 @@ test("daemon compositional reader observes publications and falls back to previo
     excludes: [`Excludes work outside ${id}`]
   }));
   const publication = (evidenceDigest: string) => ({
-    definitionSetDigest: "definitions-v2",
+    basisDigest: "definitions-v2",
     evidenceDigest,
-    areas,
+    classifierModel: "openai/classifier",
+    objective: { kind: "highest-quality" as const },
+    maximumUnknownWeight: 0.2,
+    dimensions,
     candidateModels: ["openai/model"],
-    evidence: areas.map((area) => ({
+    evidence: dimensions.map((dimension) => ({
       model: "openai/model",
-      areaId: area.id,
-      suiteDigest: `suite-${area.id}`,
-      evidenceDigest: `${evidenceDigest}-${area.id}`,
+      dimensionId: dimension.id,
+      suiteDigest: `suite-${dimension.id}`,
+      evidenceDigest: `${evidenceDigest}-${dimension.id}`,
       quality: { passRate: 1, lowerConfidenceBound: 0.8, sampleCount: 5 },
       failureRate: 0,
       p95DurationMs: 100,
@@ -48,13 +51,13 @@ test("daemon compositional reader observes publications and falls back to previo
   try {
     const reader = makeCompositionalRoutingPolicyReader(home);
     assert.equal(await runRouteKitEffect(reader.getSnapshot()), undefined);
-    const store = makeRoutingSnapshotStoreV2(evalRoutingSnapshotDirectory(home));
+    const store = makeRoutingActivationStore(evalRoutingSnapshotDirectory(home));
     await runRouteKitEffect(store.publish(publication("first")));
     await runRouteKitEffect(store.publish(publication("second")));
     assert.equal((await runRouteKitEffect(reader.getSnapshot()))?.evidenceDigest, "second");
 
     writeFileSync(
-      join(evalRoutingSnapshotDirectory(home), "published-routing.v2.json"),
+      join(evalRoutingSnapshotDirectory(home), "published-routing.json"),
       '{"version":2}'
     );
     assert.equal((await runRouteKitEffect(reader.getSnapshot()))?.evidenceDigest, "first");

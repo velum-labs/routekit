@@ -4,12 +4,12 @@ import { test } from "node:test";
 import type {
   EvalComparisonCase,
   EvalComparisonResult,
-  RoutingAreaCatalog
+  RoutingBasis
 } from "@velum-labs/routekit-eval-contracts";
 
-import { compileAreaEvidenceMatrix, wilsonLowerBound95 } from "../area-evidence.js";
+import { compileDimensionEvidenceMatrix, wilsonLowerBound95 } from "../dimension-evidence.js";
 
-const areaIds = [
+const dimensionIds = [
   "gateway-protocol",
   "eval-routing",
   "account-pooling",
@@ -32,10 +32,10 @@ function mutable<T>(value: T): Mutable<T> {
   return structuredClone(value) as Mutable<T>;
 }
 
-const catalog: RoutingAreaCatalog = {
+const basis: RoutingBasis = {
   version: 2,
-  definitionSetDigest: "definition-set-v2",
-  areas: areaIds.map((id) => ({
+  basisDigest: "definition-set-v2",
+  dimensions: dimensionIds.map((id) => ({
     id,
     description: `Requests about ${id}`,
     includes: [`Tasks specifically involving ${id}`],
@@ -66,12 +66,12 @@ function cases(
   });
 }
 
-function comparison(areaId: string): EvalComparisonResult {
+function comparison(dimensionId: string): EvalComparisonResult {
   return {
     version: 1,
-    comparisonId: `comparison-${areaId}`,
-    profileId: areaId,
-    suiteDigest: `suite-${areaId}`,
+    comparisonId: `comparison-${dimensionId}`,
+    profileId: dimensionId,
+    suiteDigest: `suite-${dimensionId}`,
     judgeModel,
     startedAt: "2026-08-17T00:00:00.000Z",
     finishedAt: "2026-08-17T00:01:00.000Z",
@@ -81,34 +81,34 @@ function comparison(areaId: string): EvalComparisonResult {
 
 function input() {
   return mutable({
-    catalog,
+    basis,
     candidateModels: models,
-    comparisons: areaIds.map((areaId) => ({
-      areaId,
-      suiteDigest: `suite-${areaId}`,
+    comparisons: dimensionIds.map((dimensionId) => ({
+      dimensionId,
+      suiteDigest: `suite-${dimensionId}`,
       judgeModel,
       expectedCaseIds: caseIds,
-      comparison: comparison(areaId)
+      comparison: comparison(dimensionId)
     }))
   });
 }
 
-test("complete comparison results compile into a deterministic model-area matrix", () => {
-  const first = compileAreaEvidenceMatrix(input());
+test("complete comparison results compile into a deterministic model-dimension matrix", () => {
+  const first = compileDimensionEvidenceMatrix(input());
   const secondInput = input();
   secondInput.comparisons.reverse();
   secondInput.comparisons.forEach((entry) => {
     entry.comparison.models.reverse();
     entry.comparison.models.forEach((model) => model.cases.reverse());
   });
-  const second = compileAreaEvidenceMatrix(secondInput);
+  const second = compileDimensionEvidenceMatrix(secondInput);
 
-  assert.equal(first.evidence.length, areaIds.length * models.length);
+  assert.equal(first.evidence.length, dimensionIds.length * models.length);
   assert.match(first.evidenceDigest, /^[a-f0-9]{64}$/u);
   assert.equal(first.evidenceDigest, second.evidenceDigest);
   assert.deepEqual(first.evidence, second.evidence);
   const cell = first.evidence.find(
-    (entry) => entry.areaId === "gateway-protocol" && entry.model === "openai/model-a"
+    (entry) => entry.dimensionId === "gateway-protocol" && entry.model === "openai/model-a"
   );
   assert.equal(cell?.quality.sampleCount, 5);
   assert.equal(cell?.quality.passRate, 1);
@@ -126,8 +126,8 @@ test("partial pricing is explicit and never converted into a known average", () 
   value.comparisons[0]!.comparison.models[0]!.cases = cases({
     unpriced: new Set(["case-4", "case-5"])
   });
-  const cell = compileAreaEvidenceMatrix(value).evidence.find(
-    (entry) => entry.areaId === areaIds[0] && entry.model === models[0]
+  const cell = compileDimensionEvidenceMatrix(value).evidence.find(
+    (entry) => entry.dimensionId === dimensionIds[0] && entry.model === models[0]
   );
   assert.equal(cell?.unpricedCalls, 2);
   assert.equal(cell?.averageCostUsd, undefined);
@@ -138,61 +138,61 @@ test("partial duration measurements do not produce a misleading percentile", () 
   value.comparisons[0]!.comparison.models[0]!.cases = cases({
     missingDuration: new Set(["case-5"])
   });
-  const cell = compileAreaEvidenceMatrix(value).evidence.find(
-    (entry) => entry.areaId === areaIds[0] && entry.model === models[0]
+  const cell = compileDimensionEvidenceMatrix(value).evidence.find(
+    (entry) => entry.dimensionId === dimensionIds[0] && entry.model === models[0]
   );
   assert.equal(cell?.p95DurationMs, undefined);
 });
 
-test("matrix compilation rejects missing and duplicate areas or candidates", () => {
-  const missingArea = input();
-  missingArea.comparisons.pop();
-  assert.throws(() => compileAreaEvidenceMatrix(missingArea), /missing area/);
+test("matrix compilation rejects missing and duplicate dimensions or candidates", () => {
+  const missingDimension = input();
+  missingDimension.comparisons.pop();
+  assert.throws(() => compileDimensionEvidenceMatrix(missingDimension), /missing dimension/);
 
-  const duplicateArea = input();
-  duplicateArea.comparisons[1] = duplicateArea.comparisons[0]!;
-  assert.throws(() => compileAreaEvidenceMatrix(duplicateArea), /duplicate area/);
+  const duplicateDimension = input();
+  duplicateDimension.comparisons[1] = duplicateDimension.comparisons[0]!;
+  assert.throws(() => compileDimensionEvidenceMatrix(duplicateDimension), /duplicate dimension/);
 
   const missingCandidate = input();
   missingCandidate.comparisons[0]!.comparison.models.pop();
-  assert.throws(() => compileAreaEvidenceMatrix(missingCandidate), /missing candidate/);
+  assert.throws(() => compileDimensionEvidenceMatrix(missingCandidate), /missing candidate/);
 
   const unexpectedCandidate = input();
   unexpectedCandidate.comparisons[0]!.comparison.models[0]!.model = "openai/unexpected";
-  assert.throws(() => compileAreaEvidenceMatrix(unexpectedCandidate), /unexpected candidate/);
+  assert.throws(() => compileDimensionEvidenceMatrix(unexpectedCandidate), /unexpected candidate/);
 });
 
 test("matrix compilation rejects incomplete or ambiguous case evidence", () => {
   const missingCase = input();
   missingCase.comparisons[0]!.comparison.models[0]!.cases.pop();
-  assert.throws(() => compileAreaEvidenceMatrix(missingCase), /has 4 cases; expected 5/);
+  assert.throws(() => compileDimensionEvidenceMatrix(missingCase), /has 4 cases; expected 5/);
 
   const duplicateCase = input();
   duplicateCase.comparisons[0]!.comparison.models[0]!.cases[4] =
     duplicateCase.comparisons[0]!.comparison.models[0]!.cases[0]!;
-  assert.throws(() => compileAreaEvidenceMatrix(duplicateCase), /duplicate case/);
+  assert.throws(() => compileDimensionEvidenceMatrix(duplicateCase), /duplicate case/);
 
   const missingJudgeScore = input();
   delete missingJudgeScore.comparisons[0]!.comparison.models[0]!.cases[0]!.measurement.judgeScore;
-  assert.throws(() => compileAreaEvidenceMatrix(missingJudgeScore), /missing a judge score/);
+  assert.throws(() => compileDimensionEvidenceMatrix(missingJudgeScore), /missing a judge score/);
 
   const cutoff = input();
   cutoff.comparisons[0]!.comparison.models[0]!.cases[0]!.outcome = "cutoff";
-  assert.throws(() => compileAreaEvidenceMatrix(cutoff), /non-terminal case/);
+  assert.throws(() => compileDimensionEvidenceMatrix(cutoff), /non-terminal case/);
 });
 
 test("matrix compilation binds profile, suite digest, and judge", () => {
   const wrongProfile = input();
   wrongProfile.comparisons[0]!.comparison.profileId = "wrong";
-  assert.throws(() => compileAreaEvidenceMatrix(wrongProfile), /does not match area/);
+  assert.throws(() => compileDimensionEvidenceMatrix(wrongProfile), /does not match dimension/);
 
   const wrongDigest = input();
   wrongDigest.comparisons[0]!.comparison.suiteDigest = "wrong";
-  assert.throws(() => compileAreaEvidenceMatrix(wrongDigest), /suite digest does not match/);
+  assert.throws(() => compileDimensionEvidenceMatrix(wrongDigest), /suite digest does not match/);
 
   const wrongJudge = input();
   wrongJudge.comparisons[0]!.comparison.judgeModel = "openai/wrong";
-  assert.throws(() => compileAreaEvidenceMatrix(wrongJudge), /comparison judge does not match/);
+  assert.throws(() => compileDimensionEvidenceMatrix(wrongJudge), /comparison judge does not match/);
 });
 
 test("Wilson lower confidence bounds are conservative and validate counts", () => {

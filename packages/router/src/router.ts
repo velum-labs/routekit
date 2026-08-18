@@ -29,20 +29,20 @@ import {
   resolveCompositionalRoutingConfig
 } from "@velum-labs/routekit-config";
 import type {
-  AreaRequestClassifierService,
   CatalogModelInfo,
   CompositionalRoutingObservation,
   CompositionalRoutingPolicyReader,
   Gateway,
   ProvenanceSink,
-  ProviderSource
+  ProviderSource,
+  RequestDecomposerService
 } from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackend,
   ClassificationError,
   CodexResponsesBackend,
   invokeObservedModelCall,
-  makeLanguageModelAreaClassifier,
+  makeLanguageModelDimensionClassifier,
   RoutingBackend,
   routingModelAvailability
 } from "@velum-labs/routekit-gateway";
@@ -69,10 +69,10 @@ export type StartRouterOptions = {
   env?: NodeJS.ProcessEnv;
   sources?: Partial<Record<ProviderId, ProviderSource>>;
   provenance?: ProvenanceSink;
-  /** Published model-by-area evidence used by automatic routing. */
+  /** Published model-by-dimension evidence used by automatic routing. */
   compositionalPolicyReader?: CompositionalRoutingPolicyReader;
-  /** Override the default small-LM semantic area classifier. */
-  areaClassifier?: AreaRequestClassifierService;
+  /** Override the default small-LM semantic dimension classifier. */
+  requestDecomposer?: RequestDecomposerService;
   /** Receives sanitized automatic-routing decisions and failures. */
   onCompositionalRoutingObservation?(observation: CompositionalRoutingObservation): void;
   /**
@@ -289,26 +289,26 @@ export function startRouterEffect(
         })
       );
     const compositionalConfig = resolveCompositionalRoutingConfig(options.config);
-    const areaClassifier =
-      options.areaClassifier ??
+    const requestDecomposer =
+      options.requestDecomposer ??
       (backend.ports.models.serves(classifierModel)
-        ? makeLanguageModelAreaClassifier({
+        ? makeLanguageModelDimensionClassifier({
             model: classifierModel,
-            complete: classifierComplete("area-request-classifier")
+            complete: classifierComplete("dimension-request-classifier")
           })
         : { classify: unavailableClassifier });
     const compositionalRouting = {
       policyReader: options.compositionalPolicyReader,
-      classifier: areaClassifier,
+      classifier: requestDecomposer,
       availableModels: routingModelAvailability(backend),
       objective: compositionalConfig.objective,
       maximumUnknownWeight: compositionalConfig.maximumUnknownWeight,
-      ...((compositionalConfig.minimumAreaQuality !== undefined ||
+      ...((compositionalConfig.minimumDimensionQuality !== undefined ||
         compositionalConfig.maximumFailureRate !== undefined) && {
         constraints: {
-          ...(compositionalConfig.minimumAreaQuality === undefined
+          ...(compositionalConfig.minimumDimensionQuality === undefined
             ? {}
-            : { minimumAreaQuality: compositionalConfig.minimumAreaQuality }),
+            : { minimumDimensionQuality: compositionalConfig.minimumDimensionQuality }),
           ...(compositionalConfig.maximumFailureRate === undefined
             ? {}
             : { maximumFailureRate: compositionalConfig.maximumFailureRate })

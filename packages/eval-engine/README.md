@@ -6,16 +6,15 @@ distribution used as the migration baseline, while its supported RouteKit entry
 point is the package API described here—not a standalone executable or command
 protocol.
 
-RouteKit Eval is the offline measurement component of the eval-driven router
-MVP:
+RouteKit Eval is the offline measurement component of compositional routing:
 
 ```text
-setup skill
-→ routekit/eval suite + routing profile
+reviewed routing basis
+→ dimension suites
 → candidate/judge comparison
-→ deterministic policy compilation
-→ published routing snapshot
-→ model: auto → classify → profile winner
+→ complete model-by-dimension evidence matrix
+→ atomic routing activation
+→ model: auto → request decomposition → deterministic model selection
 ```
 
 The neighboring packages own the other stages:
@@ -23,12 +22,12 @@ The neighboring packages own the other stages:
 - `@velum-labs/routekit-eval-setup` provides the durable, one-question-at-a-time
   setup workflow and `setup-eval-routing` skill;
 - `@velum-labs/routekit-eval-service` validates approvals and composes an
-  injected comparison runner with policy compilation;
-- `@velum-labs/routekit-eval-core` compiles comparison evidence into a
-  deterministic policy;
-- `@velum-labs/routekit-eval-store` publishes compact routing snapshots;
-- the RouteKit daemon and router classify `model: auto` requests against
-  those snapshots, then route to the selected profile's winning model.
+  injected comparison runner with evidence compilation;
+- `@velum-labs/routekit-eval-core` performs deterministic scoring from request
+  decompositions and measured evidence;
+- `@velum-labs/routekit-eval-store` publishes compact routing activations;
+- the RouteKit daemon decomposes `model: auto` requests against the reviewed
+  routing basis, then selects a model deterministically from the activation.
 
 Publication remains an explicit action. Running an eval does not silently alter
 online routing.

@@ -3,26 +3,25 @@ import type {
   EvalComparisonRequest,
   EvalComparisonResult,
   EvalRunManifest,
+  PublishedRoutingActivation,
   PublishedRoutingSnapshot,
-  PublishedRoutingSnapshotV2,
-  RoutingAreaCatalog
+  RoutingBasis,
+  RoutingActivationConstraints,
+  RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
-import {
-  assertRoutingAreaCatalog,
-  assertRoutingProfile
-} from "@velum-labs/routekit-eval-contracts";
+import { assertRoutingBasis, assertRoutingProfile } from "@velum-labs/routekit-eval-contracts";
 import { compileRoutingPolicy } from "@velum-labs/routekit-eval-core";
 import { type ScaffoldResult, type SetupEstimate } from "@velum-labs/routekit-eval-setup";
 import {
   makeRoutingSnapshotStore,
-  makeRoutingSnapshotStoreV2
+  makeRoutingActivationStore
 } from "@velum-labs/routekit-eval-store";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 
 import {
-  type AreaComparisonEvidenceInput,
-  compileAreaEvidenceMatrix
-} from "./area-evidence.js";
+  compileDimensionEvidenceMatrix,
+  type DimensionComparisonEvidenceInput
+} from "./dimension-evidence.js";
 import {
   EvalServiceComparisonError,
   EvalServiceConfigurationError,
@@ -43,9 +42,7 @@ export type EvalComparisonRunnerShape = {
   /** Validate/dry-load the suite without executing its test bodies. */
   readonly validate: (suitePath: string) => Effect.Effect<void, unknown>;
   /** Read the authoritative manifest and bind it to the validated suite digest. */
-  readonly inspect: (
-    request: EvalComparisonRequest
-  ) => Effect.Effect<EvalSuiteInspection, unknown>;
+  readonly inspect: (request: EvalComparisonRequest) => Effect.Effect<EvalSuiteInspection, unknown>;
   /** Estimate calls and spend without making candidate or judge calls. */
   readonly estimate: (
     request: EvalComparisonRequest,
@@ -61,7 +58,7 @@ export type EvalComparisonRunnerShape = {
 /**
  * RouteKit-Effect boundary around the copied eval engine. The adapter may bridge
  * the engine's temporary Effect beta internally, but every operation exposed to
- * this package uses RouteKit's catalog-pinned Effect.
+ * this package uses RouteKit's basis-pinned Effect.
  */
 export class EvalComparisonRunner extends Context.Service<
   EvalComparisonRunner,
@@ -85,21 +82,25 @@ export type EvalServiceConfiguration = {
   readonly full?: EvalRunConfiguration;
 };
 
-export type AreaMatrixSuite = {
-  readonly areaId: string;
+export type DimensionMatrixSuite = {
+  readonly dimensionId: string;
   readonly scaffold: ScaffoldResult;
 };
 
-export type AreaMatrixQualificationInput = {
-  readonly catalog: RoutingAreaCatalog;
+export type DimensionMatrixQualificationInput = {
+  readonly basis: RoutingBasis;
   readonly candidateModels: ReadonlyArray<string>;
+  readonly classifierModel: string;
   readonly judgeModel: string;
-  readonly suites: ReadonlyArray<AreaMatrixSuite>;
+  readonly objective: RoutingObjectivePolicy;
+  readonly maximumUnknownWeight: number;
+  readonly constraints?: RoutingActivationConstraints;
+  readonly suites: ReadonlyArray<DimensionMatrixSuite>;
 };
 
-export type AreaMatrixQualificationResult = {
+export type DimensionMatrixQualificationResult = {
   readonly comparisons: ReadonlyArray<EvalComparisonResult>;
-  readonly snapshot: PublishedRoutingSnapshotV2;
+  readonly snapshot: PublishedRoutingActivation;
 };
 
 export type EvalServiceError =
@@ -144,9 +145,9 @@ export type EvalServiceShape = {
   readonly publish: (
     policy: CompiledRoutingPolicy
   ) => Effect.Effect<PublishedRoutingSnapshot, EvalServicePublicationError>;
-  readonly qualifyAreaMatrix: (
-    input: AreaMatrixQualificationInput
-  ) => Effect.Effect<AreaMatrixQualificationResult, EvalServiceError>;
+  readonly qualifyDimensionMatrix: (
+    input: DimensionMatrixQualificationInput
+  ) => Effect.Effect<DimensionMatrixQualificationResult, EvalServiceError>;
 };
 
 export class EvalService extends Context.Service<EvalService, EvalServiceShape>()(
@@ -255,51 +256,59 @@ const validateComparison = (input: ScaffoldResult, comparison: EvalComparisonRes
 const sameStrings = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
-const validateAreaMatrixInput = (
+const validateDimensionMatrixInput = (
   configuration: EvalServiceConfiguration,
-  input: AreaMatrixQualificationInput
+  input: DimensionMatrixQualificationInput
 ): Map<string, ScaffoldResult> => {
   validateConfiguration(configuration);
-  assertRoutingAreaCatalog(input.catalog);
+  assertRoutingBasis(input.basis);
   if (input.candidateModels.length === 0) {
-    throw new Error("area matrix candidate model list must not be empty");
+    throw new Error("dimension matrix candidate model list must not be empty");
   }
   if (input.judgeModel.trim().length === 0) {
-    throw new Error("area matrix judge model must not be empty");
+    throw new Error("dimension matrix judge model must not be empty");
   }
-  const expectedAreas = new Set(input.catalog.areas.map((area) => area.id));
+  const expectedAreas = new Set(input.basis.dimensions.map((dimension) => dimension.id));
   const suites = new Map<string, ScaffoldResult>();
   for (const entry of input.suites) {
     assertRoutingProfile(entry.scaffold.profile);
     if (entry.scaffold.evalPath.trim().length === 0) {
-      throw new Error(`area matrix suite path is empty for ${JSON.stringify(entry.areaId)}`);
-    }
-    if (!expectedAreas.has(entry.areaId)) {
-      throw new Error(`area matrix contains unknown area ${JSON.stringify(entry.areaId)}`);
-    }
-    if (suites.has(entry.areaId)) {
-      throw new Error(`area matrix contains duplicate area ${JSON.stringify(entry.areaId)}`);
-    }
-    if (entry.scaffold.profile.id !== entry.areaId) {
       throw new Error(
-        `area matrix suite profile ${JSON.stringify(
+        `dimension matrix suite path is empty for ${JSON.stringify(entry.dimensionId)}`
+      );
+    }
+    if (!expectedAreas.has(entry.dimensionId)) {
+      throw new Error(
+        `dimension matrix contains unknown dimension ${JSON.stringify(entry.dimensionId)}`
+      );
+    }
+    if (suites.has(entry.dimensionId)) {
+      throw new Error(
+        `dimension matrix contains duplicate dimension ${JSON.stringify(entry.dimensionId)}`
+      );
+    }
+    if (entry.scaffold.profile.id !== entry.dimensionId) {
+      throw new Error(
+        `dimension matrix suite profile ${JSON.stringify(
           entry.scaffold.profile.id
-        )} does not match area ${JSON.stringify(entry.areaId)}`
+        )} does not match dimension ${JSON.stringify(entry.dimensionId)}`
       );
     }
     if (!sameStrings(entry.scaffold.profile.candidates, input.candidateModels)) {
       throw new Error(
-        `area matrix candidates do not match area ${JSON.stringify(entry.areaId)}`
+        `dimension matrix candidates do not match dimension ${JSON.stringify(entry.dimensionId)}`
       );
     }
     if (entry.scaffold.profile.judge !== input.judgeModel) {
-      throw new Error(`area matrix judge does not match area ${JSON.stringify(entry.areaId)}`);
+      throw new Error(
+        `dimension matrix judge does not match dimension ${JSON.stringify(entry.dimensionId)}`
+      );
     }
-    suites.set(entry.areaId, entry.scaffold);
+    suites.set(entry.dimensionId, entry.scaffold);
   }
-  for (const areaId of expectedAreas) {
-    if (!suites.has(areaId)) {
-      throw new Error(`area matrix is missing area ${JSON.stringify(areaId)}`);
+  for (const dimensionId of expectedAreas) {
+    if (!suites.has(dimensionId)) {
+      throw new Error(`dimension matrix is missing dimension ${JSON.stringify(dimensionId)}`);
     }
   }
   return suites;
@@ -317,7 +326,7 @@ export const makeEvalService = (
     const fs = yield* FileSystem.FileSystem;
     const paths = yield* Path.Path;
     const snapshotStore = makeRoutingSnapshotStore(configuration.snapshotRoot);
-    const snapshotStoreV2 = makeRoutingSnapshotStoreV2(configuration.snapshotRoot);
+    const snapshotStoreV2 = makeRoutingActivationStore(configuration.snapshotRoot);
 
     const validate: EvalServiceShape["validate"] = (input) =>
       validateInput(configuration, input).pipe(
@@ -425,42 +434,42 @@ export const makeEvalService = (
         )
       );
 
-    const qualifyAreaMatrix: EvalServiceShape["qualifyAreaMatrix"] = (input) =>
+    const qualifyDimensionMatrix: EvalServiceShape["qualifyDimensionMatrix"] = (input) =>
       Effect.gen(function* () {
         const suites = yield* Effect.try({
-          try: () => validateAreaMatrixInput(configuration, input),
+          try: () => validateDimensionMatrixInput(configuration, input),
           catch: (cause) =>
             new EvalServiceConfigurationError({
-              operation: "validate the area matrix qualification",
+              operation: "validate the dimension matrix qualification",
               detail: detailOf(cause),
               cause
             })
         });
         const comparisons: EvalComparisonResult[] = [];
-        const evidenceInputs: AreaComparisonEvidenceInput[] = [];
+        const evidenceInputs: DimensionComparisonEvidenceInput[] = [];
         const inspections = new Map<string, EvalSuiteInspection>();
-        for (const area of input.catalog.areas) {
-          const scaffold = suites.get(area.id)!;
+        for (const dimension of input.basis.dimensions) {
+          const scaffold = suites.get(dimension.id)!;
           const inspection = yield* inspect(scaffold, "full");
           if (
-            inspection.manifest.profileId !== area.id ||
+            inspection.manifest.profileId !== dimension.id ||
             inspection.manifest.judgeModel !== input.judgeModel ||
             !sameStrings(inspection.manifest.candidateModels, input.candidateModels)
           ) {
             return yield* new EvalServiceValidationError({
               operation: "inspect the full comparison manifest",
-              detail: `authoritative manifest does not match area ${JSON.stringify(area.id)}`
+              detail: `authoritative manifest does not match dimension ${JSON.stringify(dimension.id)}`
             });
           }
-          inspections.set(area.id, inspection);
+          inspections.set(dimension.id, inspection);
         }
-        for (const area of input.catalog.areas) {
-          const scaffold = suites.get(area.id)!;
-          const inspection = inspections.get(area.id)!;
+        for (const dimension of input.basis.dimensions) {
+          const scaffold = suites.get(dimension.id)!;
+          const inspection = inspections.get(dimension.id)!;
           const comparison = yield* run(scaffold, "full");
           comparisons.push(comparison);
           evidenceInputs.push({
-            areaId: area.id,
+            dimensionId: dimension.id,
             suiteDigest: inspection.suiteDigest,
             judgeModel: inspection.manifest.judgeModel,
             expectedCaseIds: inspection.manifest.caseIds,
@@ -469,23 +478,27 @@ export const makeEvalService = (
         }
         const compiled = yield* Effect.try({
           try: () =>
-            compileAreaEvidenceMatrix({
-              catalog: input.catalog,
+            compileDimensionEvidenceMatrix({
+              basis: input.basis,
               candidateModels: input.candidateModels,
               comparisons: evidenceInputs
             }),
           catch: (cause) =>
             new EvalServicePolicyError({
-              operation: "compile the area evidence matrix",
+              operation: "compile the dimension evidence matrix",
               detail: detailOf(cause),
               cause
             })
         });
         const snapshot = yield* snapshotStoreV2
           .publish({
-            definitionSetDigest: input.catalog.definitionSetDigest,
+            basisDigest: input.basis.basisDigest,
             evidenceDigest: compiled.evidenceDigest,
-            areas: [...input.catalog.areas],
+            classifierModel: input.classifierModel,
+            objective: input.objective,
+            maximumUnknownWeight: input.maximumUnknownWeight,
+            ...(input.constraints === undefined ? {} : { constraints: input.constraints }),
+            dimensions: [...input.basis.dimensions],
             candidateModels: [...input.candidateModels],
             evidence: [...compiled.evidence]
           })
@@ -495,7 +508,7 @@ export const makeEvalService = (
             Effect.mapError(
               (cause) =>
                 new EvalServicePublicationError({
-                  operation: "publish the area evidence snapshot",
+                  operation: "publish the dimension evidence snapshot",
                   detail: detailOf(cause),
                   cause
                 })
@@ -512,7 +525,7 @@ export const makeEvalService = (
       runFull: (input) => run(input, "full"),
       propose,
       publish,
-      qualifyAreaMatrix
+      qualifyDimensionMatrix
     });
   });
 

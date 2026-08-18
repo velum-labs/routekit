@@ -8,7 +8,7 @@ import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import type {
   EvalComparisonRequest,
   EvalComparisonResult,
-  RoutingAreaCatalog
+  RoutingBasis
 } from "@velum-labs/routekit-eval-contracts";
 import { Effect, Layer } from "effect";
 
@@ -286,7 +286,7 @@ test("mismatched comparison results are typed failures and cannot be proposed", 
   );
 });
 
-const matrixAreaIds = [
+const matrixDimensionIds = [
   "gateway-protocol",
   "eval-routing",
   "account-pooling",
@@ -294,10 +294,10 @@ const matrixAreaIds = [
   "release-operations"
 ] as const;
 
-const matrixCatalog: RoutingAreaCatalog = {
+const matrixCatalog: RoutingBasis = {
   version: 2,
-  definitionSetDigest: "matrix-definition-set",
-  areas: matrixAreaIds.map((id) => ({
+  basisDigest: "matrix-definition-set",
+  dimensions: matrixDimensionIds.map((id) => ({
     id,
     description: `Requests about ${id}`,
     includes: [`Tasks specifically involving ${id}`],
@@ -306,15 +306,15 @@ const matrixCatalog: RoutingAreaCatalog = {
 };
 
 const matrixScaffolds = (root: string) =>
-  matrixAreaIds.map((areaId) => ({
-    areaId,
+  matrixDimensionIds.map((dimensionId) => ({
+    dimensionId,
     scaffold: {
-      evalPath: path.join(root, `${areaId}.eval.ts`),
-      profilePath: path.join(root, `${areaId}.yaml`),
+      evalPath: path.join(root, `${dimensionId}.eval.ts`),
+      profilePath: path.join(root, `${dimensionId}.yaml`),
       profile: {
         version: 1 as const,
-        id: areaId,
-        suite: `${areaId}.eval.ts`,
+        id: dimensionId,
+        suite: `${dimensionId}.eval.ts`,
         candidates: ["openai/cheap", "anthropic/strong"],
         judge: "openai/judge",
         eligibility: {},
@@ -323,8 +323,8 @@ const matrixScaffolds = (root: string) =>
     }
   }));
 
-test("area matrix qualification inspects every manifest before compiling one v2 snapshot", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-area-matrix-"));
+test("dimension matrix qualification inspects every manifest before compiling one v2 snapshot", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-dimension-matrix-"));
   roots.push(root);
   const events: string[] = [];
   const snapshotRoot = path.join(root, "snapshots");
@@ -365,10 +365,13 @@ test("area matrix qualification inspects every manifest before compiling one v2 
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
-      return yield* (yield* EvalService).qualifyAreaMatrix({
-        catalog: matrixCatalog,
+      return yield* (yield* EvalService).qualifyDimensionMatrix({
+        basis: matrixCatalog,
         candidateModels: ["openai/cheap", "anthropic/strong"],
+        classifierModel: "openai/classifier",
         judgeModel: "openai/judge",
+        objective: { kind: "highest-quality" },
+        maximumUnknownWeight: 0.2,
         suites: matrixScaffolds(root)
       });
     }).pipe(Effect.provide(layer))
@@ -379,18 +382,18 @@ test("area matrix qualification inspects every manifest before compiling one v2 
   assert.deepEqual(
     events,
     [
-      ...matrixAreaIds.map((areaId) => `inspect:${areaId}`),
-      ...matrixAreaIds.map((areaId) => `run:${areaId}`)
+      ...matrixDimensionIds.map((dimensionId) => `inspect:${dimensionId}`),
+      ...matrixDimensionIds.map((dimensionId) => `run:${dimensionId}`)
     ]
   );
   const persisted = JSON.parse(
-    await readFile(path.join(snapshotRoot, "published-routing.v2.json"), "utf8")
+    await readFile(path.join(snapshotRoot, "published-routing.json"), "utf8")
   ) as { evidenceDigest?: string };
   assert.equal(persisted.evidenceDigest, result.snapshot.evidenceDigest);
 });
 
-test("area matrix qualification never publishes incomplete comparison evidence", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-area-matrix-incomplete-"));
+test("dimension matrix qualification never publishes incomplete comparison evidence", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-dimension-matrix-incomplete-"));
   roots.push(root);
   const snapshotRoot = path.join(root, "snapshots");
   const runner = EvalComparisonRunner.layer({
@@ -424,10 +427,13 @@ test("area matrix qualification never publishes incomplete comparison evidence",
 
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
-      return yield* (yield* EvalService).qualifyAreaMatrix({
-        catalog: matrixCatalog,
+      return yield* (yield* EvalService).qualifyDimensionMatrix({
+        basis: matrixCatalog,
         candidateModels: ["openai/cheap", "anthropic/strong"],
+        classifierModel: "openai/classifier",
         judgeModel: "openai/judge",
+        objective: { kind: "highest-quality" },
+        maximumUnknownWeight: 0.2,
         suites: matrixScaffolds(root)
       });
     }).pipe(Effect.provide(layer))
@@ -435,7 +441,7 @@ test("area matrix qualification never publishes incomplete comparison evidence",
 
   assert.equal(exit._tag, "Failure");
   await assert.rejects(
-    readFile(path.join(snapshotRoot, "published-routing.v2.json"), "utf8"),
+    readFile(path.join(snapshotRoot, "published-routing.json"), "utf8"),
     /ENOENT/u
   );
 });

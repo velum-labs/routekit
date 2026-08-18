@@ -2,12 +2,12 @@ import type { IncomingHttpHeaders } from "node:http";
 
 import type { RequestAttribution } from "@velum-labs/routekit-contracts";
 import {
-  type AutoRoutingDecisionV2,
+  type AutoRoutingDecision,
   COMPOSITIONAL_ROUTING_VERSION,
   EVAL_ATTRIBUTION_HEADER,
   EVAL_POLICY_BYPASS_HEADER,
   isForbiddenEvalModel,
-  type PublishedRoutingSnapshotV2,
+  type PublishedRoutingActivation,
   type RequestRoutingRequirements,
   type RoutingCandidateDecision,
   type RoutingObjectivePolicy
@@ -19,12 +19,13 @@ import type {
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Data, Effect } from "effect";
 
+import { parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "./auth.js";
 import { CompositionalRoutingError, routeCompositionalRequest } from "./compositional-routing.js";
 import {
-  AreaRequestClassifier,
-  type AreaRequestClassifierService,
-  classifyRequestAreas,
-  validateAreaClassificationResult
+  classifyRequestDimensions,
+  RequestDecomposer,
+  type RequestDecomposerService,
+  validateDecompositionResult
 } from "./request-classifier.js";
 
 export class RoutingPolicyReadError extends Data.TaggedError("RoutingPolicyReadError")<{
@@ -36,14 +37,14 @@ export class RoutingPolicyReadError extends Data.TaggedError("RoutingPolicyReadE
 /** Read-only online projection of the published routing snapshot. */
 export type CompositionalRoutingPolicyReader = Readonly<{
   getSnapshot(): Effect.Effect<
-    PublishedRoutingSnapshotV2 | undefined,
+    PublishedRoutingActivation | undefined,
     RoutingPolicyReadError,
     RouteKitPlatform
   >;
 }>;
 
 export function compositionalRoutingPolicyReaderFromSnapshot(
-  snapshot: PublishedRoutingSnapshotV2 | undefined
+  snapshot: PublishedRoutingActivation | undefined
 ): CompositionalRoutingPolicyReader {
   return {
     getSnapshot: () => Effect.succeed(snapshot)
@@ -65,7 +66,7 @@ export class EvalAutoRoutingForbiddenError extends Data.TaggedError(
 export type CompositionalRoutingObservation =
   | Readonly<{
       status: "decided";
-      decision: AutoRoutingDecisionV2;
+      decision: AutoRoutingDecision;
       classifierCallId?: string;
     }>
   | Readonly<{
@@ -76,7 +77,7 @@ export type CompositionalRoutingObservation =
 
 export type CompositionalRoutingRuntime = Readonly<{
   policyReader?: CompositionalRoutingPolicyReader;
-  classifier?: AreaRequestClassifierService;
+  classifier?: RequestDecomposerService;
   availableModels: readonly RoutingModelAvailability[];
   objective: RoutingObjectivePolicy;
   maximumUnknownWeight: number;
@@ -109,10 +110,10 @@ export function compositionalRoutingAttribution(
             };
   return {
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definition_set_digest: decision.decomposition.definitionSetDigest,
+    basis_digest: decision.decomposition.basisDigest,
     evidence_digest: decision.evidenceDigest,
     weights: decision.decomposition.weights.map((entry) => ({
-      area_id: entry.areaId,
+      dimension_id: entry.dimensionId,
       weight: entry.weight
     })),
     unknown_weight: decision.decomposition.unknownWeight,
@@ -161,7 +162,13 @@ function firstHeader(headers: IncomingHttpHeaders, name: string): string | undef
 
 export function evalPolicyBypassRequested(headers: IncomingHttpHeaders): boolean {
   const raw = firstHeader(headers, EVAL_POLICY_BYPASS_HEADER);
-  return raw === "1" || raw?.toLowerCase() === "true";
+  if (raw !== "1" && raw?.toLowerCase() !== "true") return false;
+  return evalSessionPrincipal(headers) !== undefined;
+}
+
+function evalSessionPrincipal(headers: IncomingHttpHeaders) {
+  const principal = parsePrincipalHeader(firstHeader(headers, ROUTEKIT_PRINCIPAL_HEADER));
+  return principal?.role === "eval" ? principal : undefined;
 }
 
 export function evalRequestAttribution(
@@ -177,7 +184,10 @@ export function evalRequestAttribution(
     const caseId = typeof value.caseId === "string" ? value.caseId.trim() : undefined;
     if (
       value.purpose !== "eval" ||
-      (role !== "author" && role !== "candidate" && role !== "judge") ||
+      (role !== "author" &&
+        role !== "classifier" &&
+        role !== "candidate" &&
+        role !== "judge") ||
       runId.length === 0 ||
       runId.length > 128 ||
       (caseId !== undefined && (caseId.length === 0 || caseId.length > 256))
@@ -205,11 +215,15 @@ export function evalAutoRouterRejection(
   if (typeof model !== "string" || isForbiddenEvalModel(model)) {
     return "eval requests must name an explicit provider/model id";
   }
+  const principal = evalSessionPrincipal(headers);
+  if (principal === undefined || !principal.evalSession?.allowedModels.includes(model)) {
+    return "eval request model is not authorized for this session";
+  }
   return undefined;
 }
 
 /**
- * Resolve `model: "auto"` against the model-by-area evidence matrix.
+ * Resolve `model: "auto"` against the model-by-dimension evidence matrix.
  */
 export function resolveCompositionalAutoRoutingModel(
   options: Readonly<{
@@ -218,12 +232,12 @@ export function resolveCompositionalAutoRoutingModel(
     requestText?: string;
     requirements: RequestRoutingRequirements;
     policyReader?: CompositionalRoutingPolicyReader;
-    classifier?: AreaRequestClassifierService;
+    classifier?: RequestDecomposerService;
     availableModels: readonly RoutingModelAvailability[];
     objective: RoutingObjectivePolicy;
     maximumUnknownWeight: number;
     constraints?: RoutingScoreConstraints;
-    onDecision?(decision: AutoRoutingDecisionV2, classifierCallId?: string): void;
+    onDecision?(decision: AutoRoutingDecision, classifierCallId?: string): void;
   }>
 ): Effect.Effect<
   string | undefined,
@@ -286,12 +300,20 @@ export function resolveCompositionalAutoRoutingModel(
         message: "no compositional routing snapshot is available"
       });
     }
+    if (classifier.model !== undefined && classifier.model !== snapshot.classifierModel) {
+      return yield* new AutoRoutingUnavailableError({
+        profileId: undefined,
+        message: `published routing activation requires classifier ${JSON.stringify(
+          snapshot.classifierModel
+        )}, but the running router is bound to ${JSON.stringify(classifier.model)}`
+      });
+    }
 
-    const classified = yield* classifyRequestAreas({
+    const classified = yield* classifyRequestDimensions({
       request: requestText,
-      areas: snapshot.areas
+      dimensions: snapshot.dimensions
     }).pipe(
-      Effect.provideService(AreaRequestClassifier, AreaRequestClassifier.of(classifier)),
+      Effect.provideService(RequestDecomposer, RequestDecomposer.of(classifier)),
       Effect.mapError(
         (error) =>
           new AutoRoutingUnavailableError({
@@ -301,10 +323,10 @@ export function resolveCompositionalAutoRoutingModel(
           })
       )
     );
-    const validated = yield* validateAreaClassificationResult(classified, {
+    const validated = yield* validateDecompositionResult(classified, {
       version: COMPOSITIONAL_ROUTING_VERSION,
-      definitionSetDigest: snapshot.definitionSetDigest,
-      areas: snapshot.areas
+      basisDigest: snapshot.basisDigest,
+      dimensions: snapshot.dimensions
     }).pipe(
       Effect.mapError(
         (error) =>
@@ -322,15 +344,15 @@ export function resolveCompositionalAutoRoutingModel(
           snapshot,
           decomposition: {
             version: COMPOSITIONAL_ROUTING_VERSION,
-            definitionSetDigest: snapshot.definitionSetDigest,
+            basisDigest: snapshot.basisDigest,
             weights: validated.weights,
             unknownWeight: validated.unknownWeight
           },
           requirements: options.requirements,
-          objective: options.objective,
+          objective: snapshot.objective,
           availableModels: options.availableModels,
-          maximumUnknownWeight: options.maximumUnknownWeight,
-          ...(options.constraints === undefined ? {} : { constraints: options.constraints })
+          maximumUnknownWeight: snapshot.maximumUnknownWeight,
+          ...(snapshot.constraints === undefined ? {} : { constraints: snapshot.constraints })
         }),
       catch: (cause) =>
         new AutoRoutingUnavailableError({
@@ -347,7 +369,7 @@ export function resolveCompositionalAutoRoutingModel(
   });
 }
 
-/** Apply the sole area-decomposition and evidence-matrix auto-router. */
+/** Apply the sole dimension-decomposition and evidence-matrix auto-router. */
 export function resolveConfiguredAutoRoutingModel(
   options: Readonly<{
     headers: IncomingHttpHeaders;

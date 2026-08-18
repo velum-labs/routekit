@@ -46,7 +46,7 @@ export type GatewayOptions = {
   authToken?: string;
   /** Optional observation sink for model calls. */
   provenance?: ProvenanceSink;
-  /** Area-decomposition and evidence-matrix runtime used by `model: "auto"`. */
+  /** Dimension-decomposition and evidence-matrix runtime used by `model: "auto"`. */
   compositionalRouting?: CompositionalRoutingRuntime;
   /** Optional client-authenticated Responses relay. */
   codexRelay?: ProviderRelayPorts;

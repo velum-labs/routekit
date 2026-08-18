@@ -12,8 +12,31 @@ export const ROUTEKIT_PRINCIPAL_HEADER = "x-routekit-principal";
 export type GatewayPrincipal = {
   id: string;
   label: string;
-  role: "owner" | "admin";
+  role: "owner" | "admin" | "eval";
+  evalSession?: {
+    sessionId: string;
+    allowedModels: readonly string[];
+    expiresAt: string;
+    perCallOutputTokens?: number;
+    admit?: (
+      model: string,
+      inputTokenUpperBound: number,
+      requestedOutputTokens: number
+    ) => EvalSessionAdmission;
+  };
 };
+
+export type EvalSessionAdmission =
+  | { readonly admitted: true }
+  | {
+      readonly admitted: false;
+      readonly reason:
+        | "closed"
+        | "expired"
+        | "call_limit"
+        | "input_limit"
+        | "output_limit";
+    };
 
 export type WorkloadJwtPrincipalPolicy = {
   /** Exact AWS workload identity subject accepted by the broker. */
@@ -238,11 +261,41 @@ export function parsePrincipalHeader(value: string | undefined): GatewayPrincipa
     if (
       typeof parsed.id !== "string" ||
       typeof parsed.label !== "string" ||
-      (parsed.role !== "owner" && parsed.role !== "admin")
+      (parsed.role !== "owner" && parsed.role !== "admin" && parsed.role !== "eval")
     ) {
       return undefined;
     }
-    return { id: parsed.id, label: parsed.label, role: parsed.role };
+    const evalSession =
+      parsed.role === "eval" &&
+      parsed.evalSession !== undefined &&
+      typeof parsed.evalSession === "object" &&
+      parsed.evalSession !== null &&
+      typeof parsed.evalSession.sessionId === "string" &&
+      parsed.evalSession.sessionId.length > 0 &&
+      Array.isArray(parsed.evalSession.allowedModels) &&
+      parsed.evalSession.allowedModels.length > 0 &&
+      parsed.evalSession.allowedModels.every(
+        (model) => typeof model === "string" && model.length > 0
+      ) &&
+      typeof parsed.evalSession.expiresAt === "string"
+        ? {
+            sessionId: parsed.evalSession.sessionId,
+            allowedModels: [...parsed.evalSession.allowedModels],
+            expiresAt: parsed.evalSession.expiresAt,
+            ...(typeof parsed.evalSession.perCallOutputTokens === "number" &&
+            Number.isSafeInteger(parsed.evalSession.perCallOutputTokens) &&
+            parsed.evalSession.perCallOutputTokens > 0
+              ? { perCallOutputTokens: parsed.evalSession.perCallOutputTokens }
+              : {})
+          }
+        : undefined;
+    if (parsed.role === "eval" && evalSession === undefined) return undefined;
+    return {
+      id: parsed.id,
+      label: parsed.label,
+      role: parsed.role,
+      ...(evalSession === undefined ? {} : { evalSession })
+    };
   } catch {
     return undefined;
   }

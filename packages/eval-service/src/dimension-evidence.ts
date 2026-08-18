@@ -3,94 +3,97 @@ import { createHash } from "node:crypto";
 import type {
   EvalComparisonCase,
   EvalComparisonResult,
-  ModelAreaEvidence,
-  RoutingAreaCatalog
+  ModelDimensionEvidence,
+  RoutingBasis
 } from "@velum-labs/routekit-eval-contracts";
 import {
   assertExplicitEvalModel,
-  assertPublishedRoutingSnapshotV2,
-  assertRoutingAreaCatalog,
+  assertPublishedRoutingActivation,
+  assertRoutingBasis,
   COMPOSITIONAL_ROUTING_VERSION
 } from "@velum-labs/routekit-eval-contracts";
 
 const WILSON_95_PERCENT_Z = 1.959963984540054;
 
-export type AreaComparisonEvidenceInput = {
-  readonly areaId: string;
+export type DimensionComparisonEvidenceInput = {
+  readonly dimensionId: string;
   readonly suiteDigest: string;
   readonly judgeModel: string;
   readonly expectedCaseIds: ReadonlyArray<string>;
   readonly comparison: EvalComparisonResult;
 };
 
-export type CompileAreaEvidenceMatrixInput = {
-  readonly catalog: RoutingAreaCatalog;
+export type CompileDimensionEvidenceMatrixInput = {
+  readonly basis: RoutingBasis;
   readonly candidateModels: ReadonlyArray<string>;
-  readonly comparisons: ReadonlyArray<AreaComparisonEvidenceInput>;
+  readonly comparisons: ReadonlyArray<DimensionComparisonEvidenceInput>;
 };
 
-export type CompiledAreaEvidenceMatrix = {
+export type CompiledDimensionEvidenceMatrix = {
   readonly evidenceDigest: string;
-  readonly evidence: ReadonlyArray<ModelAreaEvidence>;
+  readonly evidence: ReadonlyArray<ModelDimensionEvidence>;
 };
 
-export class AreaEvidenceCompilationError extends Error {
-  override readonly name = "AreaEvidenceCompilationError";
+export class DimensionEvidenceCompilationError extends Error {
+  override readonly name = "DimensionEvidenceCompilationError";
 }
 
 /**
- * Compile a complete, deterministic model-by-area matrix from sanitized
- * comparison results. Missing/duplicate cases, candidates, areas, judge
+ * Compile a complete, deterministic model-by-dimension matrix from sanitized
+ * comparison results. Missing/duplicate cases, candidates, dimensions, judge
  * scores, and non-terminal outcomes fail closed.
  */
-export function compileAreaEvidenceMatrix(
-  input: CompileAreaEvidenceMatrixInput
-): CompiledAreaEvidenceMatrix {
-  assertInputCatalog(input.catalog);
+export function compileDimensionEvidenceMatrix(
+  input: CompileDimensionEvidenceMatrixInput
+): CompiledDimensionEvidenceMatrix {
+  assertInputBasis(input.basis);
   const candidateModels = assertCandidateModels(input.candidateModels);
-  const areaIds = new Set(input.catalog.areas.map((area) => area.id));
-  const comparisons = new Map<string, AreaComparisonEvidenceInput>();
+  const dimensionIds = new Set(input.basis.dimensions.map((dimension) => dimension.id));
+  const comparisons = new Map<string, DimensionComparisonEvidenceInput>();
 
-  for (const area of input.comparisons) {
-    if (!areaIds.has(area.areaId)) {
-      fail(`comparison contains unknown area ${JSON.stringify(area.areaId)}`);
+  for (const dimension of input.comparisons) {
+    if (!dimensionIds.has(dimension.dimensionId)) {
+      fail(`comparison contains unknown dimension ${JSON.stringify(dimension.dimensionId)}`);
     }
-    if (comparisons.has(area.areaId)) {
-      fail(`comparison contains duplicate area ${JSON.stringify(area.areaId)}`);
+    if (comparisons.has(dimension.dimensionId)) {
+      fail(`comparison contains duplicate dimension ${JSON.stringify(dimension.dimensionId)}`);
     }
-    comparisons.set(area.areaId, area);
+    comparisons.set(dimension.dimensionId, dimension);
   }
-  for (const area of input.catalog.areas) {
-    if (!comparisons.has(area.id)) {
-      fail(`comparison is missing area ${JSON.stringify(area.id)}`);
+  for (const dimension of input.basis.dimensions) {
+    if (!comparisons.has(dimension.id)) {
+      fail(`comparison is missing dimension ${JSON.stringify(dimension.id)}`);
     }
   }
 
-  const evidence: ModelAreaEvidence[] = [];
-  for (const area of input.catalog.areas) {
-    const areaInput = comparisons.get(area.id)!;
-    evidence.push(...compileArea(areaInput, candidateModels));
+  const evidence: ModelDimensionEvidence[] = [];
+  for (const dimension of input.basis.dimensions) {
+    const dimensionInput = comparisons.get(dimension.id)!;
+    evidence.push(...compileDimension(dimensionInput, candidateModels));
   }
   evidence.sort(
     (left, right) =>
-      left.model.localeCompare(right.model) || left.areaId.localeCompare(right.areaId)
+      left.model.localeCompare(right.model) || left.dimensionId.localeCompare(right.dimensionId)
   );
   const evidenceDigest = stableDigest(evidence);
 
   // Reuse the public contract's exhaustive matrix validation before returning
   // an artifact that can be handed to the v2 snapshot store.
   try {
-    assertPublishedRoutingSnapshotV2({
+    assertPublishedRoutingActivation({
       version: COMPOSITIONAL_ROUTING_VERSION,
       generatedAt: "1970-01-01T00:00:00.000Z",
-      definitionSetDigest: input.catalog.definitionSetDigest,
+      basisDigest: input.basis.basisDigest,
       evidenceDigest,
-      areas: [...input.catalog.areas],
+      classifierModel: "routekit/evidence-validator",
+      objective: { kind: "highest-quality" },
+      maximumUnknownWeight: 1,
+      dimensions: [...input.basis.dimensions],
       candidateModels: [...candidateModels],
       evidence
     });
   } catch (cause) {
-    fail(`compiled model-area evidence is invalid: ${detailOf(cause)}`);
+    fail(`compiled model-dimension evidence is invalid: ${detailOf(cause)}`);
   }
   return { evidenceDigest, evidence };
 }
@@ -117,11 +120,11 @@ export function wilsonLowerBound95(passed: number, sampleCount: number): number 
   return Math.max(0, (center - margin) / denominator);
 }
 
-function assertInputCatalog(catalog: RoutingAreaCatalog): void {
+function assertInputBasis(basis: RoutingBasis): void {
   try {
-    assertRoutingAreaCatalog(catalog);
+    assertRoutingBasis(basis);
   } catch (cause) {
-    fail(`routing area catalog is invalid: ${detailOf(cause)}`);
+    fail(`routing dimension basis is invalid: ${detailOf(cause)}`);
   }
 }
 
@@ -140,44 +143,44 @@ function assertCandidateModels(models: ReadonlyArray<string>): string[] {
   return [...models].sort();
 }
 
-function compileArea(
-  input: AreaComparisonEvidenceInput,
+function compileDimension(
+  input: DimensionComparisonEvidenceInput,
   candidateModels: ReadonlyArray<string>
-): ModelAreaEvidence[] {
-  if (input.comparison.profileId !== input.areaId) {
+): ModelDimensionEvidence[] {
+  if (input.comparison.profileId !== input.dimensionId) {
     fail(
-      `comparison profile ${JSON.stringify(input.comparison.profileId)} does not match area ${JSON.stringify(
-        input.areaId
+      `comparison profile ${JSON.stringify(input.comparison.profileId)} does not match dimension ${JSON.stringify(
+        input.dimensionId
       )}`
     );
   }
   if (input.comparison.suiteDigest !== input.suiteDigest) {
-    fail(`comparison suite digest does not match area ${JSON.stringify(input.areaId)}`);
+    fail(`comparison suite digest does not match dimension ${JSON.stringify(input.dimensionId)}`);
   }
   if (input.comparison.judgeModel !== input.judgeModel) {
-    fail(`comparison judge does not match area ${JSON.stringify(input.areaId)}`);
+    fail(`comparison judge does not match dimension ${JSON.stringify(input.dimensionId)}`);
   }
   try {
     assertExplicitEvalModel(input.judgeModel, "judge");
   } catch (cause) {
     fail(detailOf(cause));
   }
-  const expectedCaseIds = assertExpectedCaseIds(input.areaId, input.expectedCaseIds);
+  const expectedCaseIds = assertExpectedCaseIds(input.dimensionId, input.expectedCaseIds);
   const expectedModels = new Set(candidateModels);
   const seenModels = new Set<string>();
-  const evidence: ModelAreaEvidence[] = [];
+  const evidence: ModelDimensionEvidence[] = [];
 
   for (const modelResult of input.comparison.models) {
     if (!expectedModels.has(modelResult.model)) {
       fail(
-        `area ${JSON.stringify(input.areaId)} contains unexpected candidate ${JSON.stringify(
+        `dimension ${JSON.stringify(input.dimensionId)} contains unexpected candidate ${JSON.stringify(
           modelResult.model
         )}`
       );
     }
     if (seenModels.has(modelResult.model)) {
       fail(
-        `area ${JSON.stringify(input.areaId)} contains duplicate candidate ${JSON.stringify(
+        `dimension ${JSON.stringify(input.dimensionId)} contains duplicate candidate ${JSON.stringify(
           modelResult.model
         )}`
       );
@@ -185,7 +188,7 @@ function compileArea(
     seenModels.add(modelResult.model);
     evidence.push(
       compileCell({
-        areaId: input.areaId,
+        dimensionId: input.dimensionId,
         suiteDigest: input.suiteDigest,
         judgeModel: input.judgeModel,
         comparisonId: input.comparison.comparisonId,
@@ -197,24 +200,26 @@ function compileArea(
   }
   for (const model of candidateModels) {
     if (!seenModels.has(model)) {
-      fail(`area ${JSON.stringify(input.areaId)} is missing candidate ${JSON.stringify(model)}`);
+      fail(
+        `dimension ${JSON.stringify(input.dimensionId)} is missing candidate ${JSON.stringify(model)}`
+      );
     }
   }
   return evidence;
 }
 
-function assertExpectedCaseIds(areaId: string, caseIds: ReadonlyArray<string>): Set<string> {
+function assertExpectedCaseIds(dimensionId: string, caseIds: ReadonlyArray<string>): Set<string> {
   if (caseIds.length === 0) {
-    fail(`area ${JSON.stringify(areaId)} must contain at least one expected case`);
+    fail(`dimension ${JSON.stringify(dimensionId)} must contain at least one expected case`);
   }
   const expected = new Set<string>();
   for (const caseId of caseIds) {
     if (caseId.length === 0 || caseId !== caseId.trim()) {
-      fail(`area ${JSON.stringify(areaId)} contains an invalid expected case id`);
+      fail(`dimension ${JSON.stringify(dimensionId)} contains an invalid expected case id`);
     }
     if (expected.has(caseId)) {
       fail(
-        `area ${JSON.stringify(areaId)} contains duplicate expected case ${JSON.stringify(caseId)}`
+        `dimension ${JSON.stringify(dimensionId)} contains duplicate expected case ${JSON.stringify(caseId)}`
       );
     }
     expected.add(caseId);
@@ -223,7 +228,7 @@ function assertExpectedCaseIds(areaId: string, caseIds: ReadonlyArray<string>): 
 }
 
 type CompileCellInput = {
-  readonly areaId: string;
+  readonly dimensionId: string;
   readonly suiteDigest: string;
   readonly judgeModel: string;
   readonly comparisonId: string;
@@ -232,11 +237,11 @@ type CompileCellInput = {
   readonly expectedCaseIds: ReadonlySet<string>;
 };
 
-function compileCell(input: CompileCellInput): ModelAreaEvidence {
+function compileCell(input: CompileCellInput): ModelDimensionEvidence {
   if (input.cases.length !== input.expectedCaseIds.size) {
     fail(
-      `candidate ${JSON.stringify(input.model)} in area ${JSON.stringify(
-        input.areaId
+      `candidate ${JSON.stringify(input.model)} in dimension ${JSON.stringify(
+        input.dimensionId
       )} has ${String(input.cases.length)} cases; expected ${String(input.expectedCaseIds.size)}`
     );
   }
@@ -251,30 +256,30 @@ function compileCell(input: CompileCellInput): ModelAreaEvidence {
   for (const result of input.cases) {
     if (!input.expectedCaseIds.has(result.caseId)) {
       fail(
-        `candidate ${JSON.stringify(input.model)} in area ${JSON.stringify(
-          input.areaId
+        `candidate ${JSON.stringify(input.model)} in dimension ${JSON.stringify(
+          input.dimensionId
         )} contains unknown case ${JSON.stringify(result.caseId)}`
       );
     }
     if (seenCases.has(result.caseId)) {
       fail(
-        `candidate ${JSON.stringify(input.model)} in area ${JSON.stringify(
-          input.areaId
+        `candidate ${JSON.stringify(input.model)} in dimension ${JSON.stringify(
+          input.dimensionId
         )} contains duplicate case ${JSON.stringify(result.caseId)}`
       );
     }
     seenCases.add(result.caseId);
     if (result.outcome === "unknown" || result.outcome === "cutoff") {
       fail(
-        `candidate ${JSON.stringify(input.model)} in area ${JSON.stringify(
-          input.areaId
+        `candidate ${JSON.stringify(input.model)} in dimension ${JSON.stringify(
+          input.dimensionId
         )} contains non-terminal case ${JSON.stringify(result.caseId)}`
       );
     }
     if (result.measurement.judgeScore === undefined) {
       fail(
-        `candidate ${JSON.stringify(input.model)} in area ${JSON.stringify(
-          input.areaId
+        `candidate ${JSON.stringify(input.model)} in dimension ${JSON.stringify(
+          input.dimensionId
         )} is missing a judge score for case ${JSON.stringify(result.caseId)}`
       );
     }
@@ -311,8 +316,8 @@ function compileCell(input: CompileCellInput): ModelAreaEvidence {
   for (const caseId of input.expectedCaseIds) {
     if (!seenCases.has(caseId)) {
       fail(
-        `candidate ${JSON.stringify(input.model)} in area ${JSON.stringify(
-          input.areaId
+        `candidate ${JSON.stringify(input.model)} in dimension ${JSON.stringify(
+          input.dimensionId
         )} is missing case ${JSON.stringify(caseId)}`
       );
     }
@@ -324,10 +329,10 @@ function compileCell(input: CompileCellInput): ModelAreaEvidence {
   const p95DurationMs = durations.length === sampleCount ? percentile95(durations) : undefined;
   return {
     model: input.model,
-    areaId: input.areaId,
+    dimensionId: input.dimensionId,
     suiteDigest: input.suiteDigest,
     evidenceDigest: stableDigest({
-      areaId: input.areaId,
+      dimensionId: input.dimensionId,
       suiteDigest: input.suiteDigest,
       judgeModel: input.judgeModel,
       comparisonId: input.comparisonId,
@@ -361,5 +366,5 @@ function detailOf(cause: unknown): string {
 }
 
 function fail(message: string): never {
-  throw new AreaEvidenceCompilationError(message);
+  throw new DimensionEvidenceCompilationError(message);
 }

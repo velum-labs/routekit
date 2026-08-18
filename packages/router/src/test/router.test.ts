@@ -4,8 +4,8 @@ import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
 import {
-  type AreaRequestClassifierService,
-  compositionalRoutingPolicyReaderFromSnapshot
+  compositionalRoutingPolicyReaderFromSnapshot,
+  type RequestDecomposerService
 } from "@velum-labs/routekit-gateway";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
@@ -122,28 +122,33 @@ test("SDK starts only after live provider discovery", async () => {
   });
 });
 
-test("model auto uses only area decomposition and matrix evidence", async () => {
+test("model auto uses only dimension decomposition and matrix evidence", async () => {
   await withRoutingServer(async (baseUrl, requestedModels) => {
-    const areas = ["code", "navigation", "debugging", "architecture", "explanation"].map((id) => ({
-      id,
-      description: `Tasks centered on ${id}`,
-      includes: [`Includes ${id}`],
-      excludes: [`Excludes work outside ${id}`]
-    }));
+    const dimensions = ["code", "navigation", "debugging", "architecture", "explanation"].map(
+      (id) => ({
+        id,
+        description: `Tasks centered on ${id}`,
+        includes: [`Includes ${id}`],
+        excludes: [`Excludes work outside ${id}`]
+      })
+    );
     const candidateModels = ["openai/preferred", "openai/fallback"] as const;
     const snapshot = {
       version: 2 as const,
       generatedAt: "2026-08-17T00:00:00.000Z",
-      definitionSetDigest: "definitions",
+      basisDigest: "definitions",
       evidenceDigest: "matrix",
-      areas,
+      classifierModel: "openai/classifier",
+      objective: { kind: "highest-quality" as const },
+      maximumUnknownWeight: 0.2,
+      dimensions,
       candidateModels,
-      evidence: areas.flatMap((area) =>
+      evidence: dimensions.flatMap((dimension) =>
         candidateModels.map((model) => ({
           model,
-          areaId: area.id,
-          suiteDigest: `suite-${area.id}`,
-          evidenceDigest: `evidence-${model}-${area.id}`,
+          dimensionId: dimension.id,
+          suiteDigest: `suite-${dimension.id}`,
+          evidenceDigest: `evidence-${model}-${dimension.id}`,
           quality: {
             passRate: model === "openai/preferred" ? 0.95 : 0.8,
             lowerConfidenceBound: model === "openai/preferred" ? 0.9 : 0.7,
@@ -156,10 +161,13 @@ test("model auto uses only area decomposition and matrix evidence", async () => 
         }))
       )
     };
-    const areaClassifier: AreaRequestClassifierService = {
+    const requestDecomposer: RequestDecomposerService = {
       classify: () =>
         Effect.succeed({
-          weights: areas.map((area, index) => ({ areaId: area.id, weight: index === 0 ? 1 : 0 })),
+          weights: dimensions.map((dimension, index) => ({
+            dimensionId: dimension.id,
+            weight: index === 0 ? 1 : 0
+          })),
           unknownWeight: 0
         })
     };
@@ -172,7 +180,7 @@ test("model auto uses only area decomposition and matrix evidence", async () => 
       port: 0,
       env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
       compositionalPolicyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot),
-      areaClassifier
+      requestDecomposer
     });
     try {
       const auto = await fetch(`${running.url}/v1/chat/completions`, {
@@ -202,7 +210,7 @@ test("model auto uses only area decomposition and matrix evidence", async () => 
   });
 });
 
-test("SDK serves an empty catalog when no providers are configured", async () => {
+test("SDK serves an empty basis when no providers are configured", async () => {
   const running = await startRouter({
     config: parseRouterConfig({ providers: {} }),
     host: "127.0.0.1",

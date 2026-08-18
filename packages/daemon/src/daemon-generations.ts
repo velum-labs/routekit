@@ -39,7 +39,7 @@ export type DaemonGenerationManagerOptions = {
   sidecar: CliproxySidecar;
   routerEnv: () => NodeJS.ProcessEnv;
   provenance: ProvenanceSink;
-  /** Published model-by-area evidence used by automatic routing. */
+  /** Published model-by-dimension evidence used by automatic routing. */
   compositionalPolicyReader?: CompositionalRoutingPolicyReader;
   activity: AccountActivityService;
   authHealth: AccountAuthService;

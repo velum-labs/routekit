@@ -43,7 +43,7 @@ function compositionalRoutingInspection(
   if (routing?.version !== 2) {
     return undefined;
   }
-  const definitionSetDigest = string(routing.definition_set_digest);
+  const basisDigest = string(routing.basis_digest);
   const evidenceDigest = string(routing.evidence_digest);
   const unknownWeight = number(routing.unknown_weight);
   const selectedModel = string(routing.selected_model);
@@ -53,9 +53,11 @@ function compositionalRoutingInspection(
   const weights = Array.isArray(routing.weights)
     ? routing.weights.flatMap((value) => {
         const weight = record(value);
-        const areaId = string(weight?.area_id);
+        const dimensionId = string(weight?.dimension_id);
         const amount = number(weight?.weight);
-        return areaId === undefined || amount === undefined ? [] : [{ areaId, weight: amount }];
+        return dimensionId === undefined || amount === undefined
+          ? []
+          : [{ dimensionId, weight: amount }];
       })
     : [];
   const requirements = record(routing.requirements);
@@ -104,7 +106,7 @@ function compositionalRoutingInspection(
       })
     : [];
   if (
-    definitionSetDigest === undefined ||
+    basisDigest === undefined ||
     evidenceDigest === undefined ||
     unknownWeight === undefined ||
     selectedModel === undefined ||
@@ -124,7 +126,7 @@ function compositionalRoutingInspection(
   }
   return {
     version: 2,
-    definitionSetDigest,
+    basisDigest,
     evidenceDigest,
     weights,
     unknownWeight,

@@ -7,6 +7,7 @@ import type { CallAttributionStore } from "../call-attribution-store.js";
 import type { CliproxySidecar } from "../cliproxy-sidecar.js";
 import { createDaemonGenerationManager } from "../daemon-generations.js";
 import type { DaemonRuntimeState } from "../daemon-runtime-state.js";
+import type { EvalSessionManager } from "../eval-session-service.js";
 import {
   AccountRecovery,
   ActiveGateway,
@@ -21,6 +22,7 @@ import {
   DaemonState,
   DataPlane,
   type DataPlaneValue,
+  EvalSessions,
   Generations,
   Leaderboard,
   type LeaderboardValue,
@@ -35,6 +37,7 @@ export type DaemonLiveOptions = {
   state: DaemonRuntimeState;
   sidecar: CliproxySidecar;
   tokens: TokenStore;
+  evalSessions: EvalSessionManager;
   telemetry: TelemetryServiceValue;
   activityPath: string;
   authPath: string;
@@ -52,6 +55,7 @@ export type DaemonLive =
   | DaemonState
   | Sidecar
   | Tokens
+  | EvalSessions
   | Telemetry
   | ActiveGateway
   | AccountActivity
@@ -77,6 +81,7 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
     DaemonState.layer(options.state),
     Layer.succeed(Sidecar, options.sidecar),
     Layer.succeed(Tokens, options.tokens),
+    Layer.succeed(EvalSessions, options.evalSessions),
     Layer.succeed(Telemetry, options.telemetry),
     Layer.succeed(DataPlane, options.dataPlane),
     Layer.succeed(AccountRecovery, options.accountRecovery),

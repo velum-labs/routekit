@@ -110,11 +110,11 @@ test("compositional routing provenance is complete, sanitized, and binds the inf
         billing_mode: "api_key",
         compositional_routing: {
           version: 2,
-          definition_set_digest: "definitions-v2",
+          basis_digest: "definitions-v2",
           evidence_digest: "evidence-v2",
           weights: [
-            { area_id: "gateway-protocols", weight: 0.6 },
-            { area_id: "eval-driven-routing", weight: 0.4 }
+            { dimension_id: "gateway-protocols", weight: 0.6 },
+            { dimension_id: "eval-driven-routing", weight: 0.4 }
           ],
           unknown_weight: 0,
           requirements: {
@@ -164,11 +164,11 @@ test("compositional routing provenance is complete, sanitized, and binds the inf
   )?.compositional_routing;
   assert.equal(routing?.classifier_call_id, "model_call_classifier");
   assert.equal(routing?.inference_call_id, "model_call_inference");
-  assert.equal(routing?.definition_set_digest, "definitions-v2");
+  assert.equal(routing?.basis_digest, "definitions-v2");
   assert.equal(routing?.evidence_digest, "evidence-v2");
   assert.deepEqual(routing?.weights, [
-    { area_id: "gateway-protocols", weight: 0.6 },
-    { area_id: "eval-driven-routing", weight: 0.4 }
+    { dimension_id: "gateway-protocols", weight: 0.6 },
+    { dimension_id: "eval-driven-routing", weight: 0.4 }
   ]);
   assert.doesNotMatch(JSON.stringify(routing), /private request/);
 });

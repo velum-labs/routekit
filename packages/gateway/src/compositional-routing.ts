@@ -1,12 +1,12 @@
 import {
-  assertAutoRoutingDecisionV2,
-  assertPublishedRoutingSnapshotV2,
-  assertRequestAreaDecomposition,
+  type AutoRoutingDecision,
+  assertAutoRoutingDecision,
+  assertPublishedRoutingActivation,
+  assertRequestDecomposition,
   assertRoutingObjectivePolicy,
   COMPOSITIONAL_ROUTING_VERSION,
-  type AutoRoutingDecisionV2,
-  type PublishedRoutingSnapshotV2,
-  type RequestAreaDecomposition,
+  type PublishedRoutingActivation,
+  type RequestDecomposition,
   type RequestRoutingRequirements,
   type RoutingCandidateDecision,
   type RoutingObjectivePolicy
@@ -19,8 +19,8 @@ import {
 } from "@velum-labs/routekit-eval-core";
 
 export type CompositionalRoutingInput = Readonly<{
-  snapshot: PublishedRoutingSnapshotV2;
-  decomposition: RequestAreaDecomposition;
+  snapshot: PublishedRoutingActivation;
+  decomposition: RequestDecomposition;
   requirements: RequestRoutingRequirements;
   objective: RoutingObjectivePolicy;
   availableModels: readonly RoutingModelAvailability[];
@@ -64,11 +64,11 @@ function validateMaximumUnknownWeight(value: number): void {
 
 function validateContracts(input: CompositionalRoutingInput): void {
   try {
-    assertPublishedRoutingSnapshotV2(input.snapshot);
-    assertRequestAreaDecomposition(input.decomposition, {
+    assertPublishedRoutingActivation(input.snapshot);
+    assertRequestDecomposition(input.decomposition, {
       version: COMPOSITIONAL_ROUTING_VERSION,
-      definitionSetDigest: input.snapshot.definitionSetDigest,
-      areas: input.snapshot.areas
+      basisDigest: input.snapshot.basisDigest,
+      dimensions: input.snapshot.dimensions
     });
     assertRoutingObjectivePolicy(input.objective);
   } catch (cause) {
@@ -80,19 +80,17 @@ function validateContracts(input: CompositionalRoutingInput): void {
 }
 
 /**
- * Compose a classifier-produced area vector with the published model-by-area
+ * Compose a classifier-produced dimension vector with the published model-by-dimension
  * evidence matrix. Model selection is delegated exclusively to the pure,
  * deterministic eval-core scorer.
  */
-export function routeCompositionalRequest(
-  input: CompositionalRoutingInput
-): AutoRoutingDecisionV2 {
+export function routeCompositionalRequest(input: CompositionalRoutingInput): AutoRoutingDecision {
   validateMaximumUnknownWeight(input.maximumUnknownWeight);
   validateContracts(input);
   if (input.decomposition.unknownWeight > input.maximumUnknownWeight) {
     throw new CompositionalRoutingError(
       "unknown_weight_above_maximum",
-      "request is not sufficiently covered by the published routing areas"
+      "request is not sufficiently covered by the published routing dimensions"
     );
   }
 
@@ -120,7 +118,7 @@ export function routeCompositionalRequest(
     );
   }
 
-  const decision: AutoRoutingDecisionV2 = {
+  const decision: AutoRoutingDecision = {
     version: COMPOSITIONAL_ROUTING_VERSION,
     decomposition: input.decomposition,
     requirements: input.requirements,
@@ -131,7 +129,7 @@ export function routeCompositionalRequest(
     fallbackModels: scored.fallbackModels
   };
   try {
-    assertAutoRoutingDecisionV2(decision, input.snapshot);
+    assertAutoRoutingDecision(decision, input.snapshot);
   } catch (cause) {
     throw new CompositionalRoutingError(
       "invalid_input",

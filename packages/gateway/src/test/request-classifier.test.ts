@@ -4,19 +4,19 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import {
-  AreaRequestClassifier,
+  RequestDecomposer,
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
-  classifyRequestAreas,
+  classifyRequestDimensions,
   extractClassifiableRequestText,
-  makeAreaRequestClassifierLayer,
-  makeFakeAreaRequestClassifier,
-  makeLanguageModelAreaClassifier,
-  parseAreaClassificationResult,
-  validateAreaClassificationInput,
-  validateAreaClassificationResult
+  makeRequestDecomposerLayer,
+  makeFakeRequestDecomposer,
+  makeLanguageModelDimensionClassifier,
+  parseDecompositionResult,
+  validateDecompositionInput,
+  validateDecompositionResult
 } from "../request-classifier.js";
 
-const areas = [
+const dimensions = [
   {
     id: "gateway-protocol",
     description: "OpenAI-compatible gateway protocol behavior",
@@ -49,25 +49,25 @@ const areas = [
   }
 ] as const;
 
-const areaCatalog = {
+const routingBasis = {
   version: 2 as const,
-  definitionSetDigest: "sha256:test-area-catalog",
-  areas
+  basisDigest: "sha256:test-dimension-basis",
+  dimensions
 };
 
 const areaResult = {
   weights: [
-    { areaId: "gateway-protocol", weight: 0.6 },
-    { areaId: "eval-routing", weight: 0.3 },
-    { areaId: "provider-adapters", weight: 0 },
-    { areaId: "daemon-lifecycle", weight: 0 },
-    { areaId: "remote-enrollment", weight: 0 }
+    { dimensionId: "gateway-protocol", weight: 0.6 },
+    { dimensionId: "eval-routing", weight: 0.3 },
+    { dimensionId: "provider-adapters", weight: 0 },
+    { dimensionId: "daemon-lifecycle", weight: 0 },
+    { dimensionId: "remote-enrollment", weight: 0 }
   ],
   unknownWeight: 0.1
 } as const;
 
 const areaWireResult = {
-  weights: Object.fromEntries(areaResult.weights.map((entry) => [entry.areaId, entry.weight])),
+  weights: Object.fromEntries(areaResult.weights.map((entry) => [entry.dimensionId, entry.weight])),
   unknownWeight: areaResult.unknownWeight
 };
 
@@ -123,9 +123,9 @@ test("extractClassifiableRequestText keeps user text and drops system prompts", 
   );
 });
 
-test("area classifier validates exact, complete decomposition vectors", async () => {
+test("dimension classifier validates exact, complete decomposition vectors", async () => {
   assert.deepEqual(
-    await runRouteKitEffect(validateAreaClassificationResult(areaResult, areaCatalog)),
+    await runRouteKitEffect(validateDecompositionResult(areaResult, routingBasis)),
     areaResult
   );
 
@@ -133,7 +133,7 @@ test("area classifier validates exact, complete decomposition vectors", async ()
     { ...areaResult, weights: areaResult.weights.slice(1) },
     {
       ...areaResult,
-      weights: [...areaResult.weights, { areaId: "other", weight: 0 }]
+      weights: [...areaResult.weights, { dimensionId: "other", weight: 0 }]
     },
     {
       ...areaResult,
@@ -143,64 +143,64 @@ test("area classifier validates exact, complete decomposition vectors", async ()
     { ...areaResult, unknownWeight: -0.1 }
   ]) {
     await assert.rejects(
-      runRouteKitEffect(validateAreaClassificationResult(invalid, areaCatalog)),
-      /area classifier returned (an invalid|a malformed) decomposition vector/
+      runRouteKitEffect(validateDecompositionResult(invalid, routingBasis)),
+      /dimension classifier returned (an invalid|a malformed) decomposition vector/
     );
   }
 });
 
-test("area classifier rejects empty, oversized, and invalid catalog input", async () => {
+test("dimension classifier rejects empty, oversized, and invalid basis input", async () => {
   await assert.rejects(
-    runRouteKitEffect(validateAreaClassificationInput({ request: "", areas })),
-    /malformed input|invalid area catalog/
+    runRouteKitEffect(validateDecompositionInput({ request: "", dimensions })),
+    /malformed input|invalid dimension basis/
   );
   await assert.rejects(
     runRouteKitEffect(
-      validateAreaClassificationInput({
+      validateDecompositionInput({
         request: "x".repeat(CLASSIFIABLE_REQUEST_TEXT_LIMIT + 1),
-        areas
+        dimensions
       })
     ),
     /character limit/
   );
   await assert.rejects(
     runRouteKitEffect(
-      validateAreaClassificationInput({
+      validateDecompositionInput({
         request: "Route this request",
-        areas: areas.slice(0, 4)
+        dimensions: dimensions.slice(0, 4)
       })
     ),
-    /invalid area catalog/
+    /invalid dimension basis/
   );
 });
 
-test("parseAreaClassificationResult rejects fences, prefixes, and trailing output", () => {
-  assert.deepEqual(parseAreaClassificationResult(JSON.stringify(areaResult)), areaResult);
+test("parseDecompositionResult rejects fences, prefixes, and trailing output", () => {
+  assert.deepEqual(parseDecompositionResult(JSON.stringify(areaResult)), areaResult);
   for (const text of [
     `\`\`\`json\n${JSON.stringify(areaResult)}\n\`\`\``,
     `Here is the result: ${JSON.stringify(areaResult)}`,
     `${JSON.stringify(areaResult)}\nDone.`
   ]) {
-    assert.throws(() => parseAreaClassificationResult(text), /exactly one JSON value/);
+    assert.throws(() => parseDecompositionResult(text), /exactly one JSON value/);
   }
 });
 
-test("area classifier protocol is provided as an Effect layer", async () => {
+test("dimension classifier protocol is provided as an Effect layer", async () => {
   const result = await runRouteKitEffect(
-    classifyRequestAreas({
+    classifyRequestDimensions({
       request: "Fix routing evidence and an HTTP response translation bug",
-      areas
+      dimensions
     }).pipe(
-      Effect.provide(makeAreaRequestClassifierLayer(makeFakeAreaRequestClassifier(areaResult)))
+      Effect.provide(makeRequestDecomposerLayer(makeFakeRequestDecomposer(areaResult)))
     )
   );
   assert.deepEqual(result, areaResult);
 
   await assert.rejects(
     runRouteKitEffect(
-      classifyRequestAreas({ request: "hello", areas }).pipe(
+      classifyRequestDimensions({ request: "hello", dimensions }).pipe(
         Effect.provide(
-          makeAreaRequestClassifierLayer({
+          makeRequestDecomposerLayer({
             classify: () => {
               throw new Error("synchronous failure");
             }
@@ -208,14 +208,14 @@ test("area classifier protocol is provided as an Effect layer", async () => {
         )
       )
     ),
-    /area request classifier failed before returning an Effect/
+    /dimension request classifier failed before returning an Effect/
   );
-  assert.equal(typeof AreaRequestClassifier, "function");
+  assert.equal(typeof RequestDecomposer, "function");
 });
 
-test("language-model area classifier sends only bounded area semantics and strict schema", async () => {
+test("language-model dimension classifier sends only bounded dimension semantics and strict schema", async () => {
   const bodies: unknown[] = [];
-  const classifier = makeLanguageModelAreaClassifier({
+  const classifier = makeLanguageModelDimensionClassifier({
     model: "openai/gpt-5.6-luna",
     complete: (body) => {
       bodies.push(body);
@@ -233,7 +233,7 @@ test("language-model area classifier sends only bounded area semantics and stric
     await runRouteKitEffect(
       classifier.classify({
         request: "Fix routing evidence and an HTTP response translation bug",
-        areas
+        dimensions
       })
     ),
     { ...areaResult, classifierCallId: "model_call_classifier" }
@@ -266,12 +266,12 @@ test("language-model area classifier sends only bounded area semantics and stric
   assert.equal(body.response_format?.json_schema?.schema?.properties?.weights?.type, "object");
   assert.deepEqual(
     body.response_format?.json_schema?.schema?.properties?.weights?.required,
-    areas.map((area) => area.id)
+    dimensions.map((dimension) => dimension.id)
   );
 });
 
-test("language-model area classifier normalizes complete nonnegative model weights", async () => {
-  const classifier = makeLanguageModelAreaClassifier({
+test("language-model dimension classifier normalizes complete nonnegative model weights", async () => {
+  const classifier = makeLanguageModelDimensionClassifier({
     model: "openai/gpt-5.6-luna",
     complete: () =>
       Effect.succeed(
@@ -296,12 +296,12 @@ test("language-model area classifier normalizes complete nonnegative model weigh
       )
   });
   assert.deepEqual(
-    await runRouteKitEffect(classifier.classify({ request: "Route this", areas })),
+    await runRouteKitEffect(classifier.classify({ request: "Route this", dimensions })),
     areaResult
   );
 });
 
-test("language-model area classifier fails closed on incomplete or invalid model output", async () => {
+test("language-model dimension classifier fails closed on incomplete or invalid model output", async () => {
   for (const content of [
     JSON.stringify({
       ...areaWireResult,
@@ -312,18 +312,18 @@ test("language-model area classifier fails closed on incomplete or invalid model
       unknownWeight: 0
     }),
     JSON.stringify({
-      weights: Object.fromEntries(areas.map((area) => [area.id, 0])),
+      weights: Object.fromEntries(dimensions.map((dimension) => [dimension.id, 0])),
       unknownWeight: 0
     }),
     `\`\`\`json\n${JSON.stringify(areaWireResult)}\n\`\`\``
   ]) {
-    const classifier = makeLanguageModelAreaClassifier({
+    const classifier = makeLanguageModelDimensionClassifier({
       model: "openai/gpt-5.6-luna",
       complete: () => Effect.succeed(Response.json({ choices: [{ message: { content } }] }))
     });
     await assert.rejects(
-      runRouteKitEffect(classifier.classify({ request: "Route this", areas })),
-      /area classifier (response|returned)/
+      runRouteKitEffect(classifier.classify({ request: "Route this", dimensions })),
+      /dimension classifier (response|returned)/
     );
   }
 });

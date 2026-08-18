@@ -4,11 +4,13 @@ import { AccountMutationService } from "./account-mutation-service.js";
 import { AccountQueryService } from "./account-query-service.js";
 import { DaemonLifecycleService } from "./daemon-lifecycle-service.js";
 import { DoctorApplicationService } from "./doctor-application-service.js";
+import { EvalRoutingApplicationService } from "./eval-routing-application-service.js";
+import { EvalSessionApplicationService } from "./eval-session-application-service.js";
 import { LauncherApplicationService } from "./launcher-application-service.js";
-import { TelemetryApplicationService } from "./telemetry-application-service.js";
-import { TokenApplicationService } from "./token-application-service.js";
 import { ProviderQueryService } from "./provider-query-service.js";
 import { RouterGenerationService } from "./router-generation-service.js";
+import { TelemetryApplicationService } from "./telemetry-application-service.js";
+import { TokenApplicationService } from "./token-application-service.js";
 
 /**
  * Composes owned application services into the daemon control handler map.
@@ -29,6 +31,8 @@ export function createDaemonControlHandlers(): EffectRouteKitControlHandlers {
     ...new LauncherApplicationService({
       listModels: providerHandlers["models.list"]
     }).handlers(),
-    ...new TokenApplicationService().handlers()
+    ...new TokenApplicationService().handlers(),
+    ...new EvalRoutingApplicationService().handlers(),
+    ...new EvalSessionApplicationService().handlers()
   };
 }

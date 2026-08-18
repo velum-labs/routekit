@@ -25,6 +25,9 @@ test("method table is the source of truth for protocol methods and policy", () =
   assert.equal(controlMutation("daemon.reload"), "mutation");
   assert.equal(controlMutation("models.list"), "query");
   assert.equal(controlIdempotency("daemon.reload"), "optional");
+  assert.equal(controlIdempotency("evalSession.open"), "required");
+  assert.equal(controlIdempotency("evalSession.close"), "required");
+  assert.equal(controlIdempotency("evalRouting.activate"), "required");
   assert.equal(controlIdempotency("models.list"), "none");
   assert.equal(MUTATING_ROUTEKIT_METHODS.has("config.update"), true);
   assert.equal(MUTATING_ROUTEKIT_METHODS.has("models.list"), false);
@@ -34,6 +37,9 @@ test("method table is the source of truth for protocol methods and policy", () =
   assert.equal(controlSurface("accounts.enroll"), "daemon");
   assert.equal(controlSurface("providers.set"), "daemon");
   assert.equal(controlSurface("telemetry.captureCommand"), "cli-internal");
+  assert.equal(controlSurface("evalSession.open"), "cli-internal");
+  assert.equal(controlSurface("evalRouting.status"), "cli-internal");
+  assert.equal(controlSurface("evalRouting.activate"), "cli-internal");
 
   assert.equal(controlOperation("daemon.reload", {}), "config_reload");
   assert.equal(controlOperation("providers.set", { enabled: true }), "provider_enable");

@@ -115,7 +115,7 @@ test("oversized snapshots fail before parsing online policy data", async () => {
   }
 });
 
-test("publication rejects a catalog that would disable online classification", async () => {
+test("publication rejects a profile set that would disable online classification", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-routing-snapshot-limit-"));
   try {
     const store = makeRoutingSnapshotStore(root);
@@ -126,7 +126,7 @@ test("publication rejects a catalog that would disable online classification", a
     }
     await assert.rejects(
       runRouteKitEffect(store.publish(policy("profile-64", "openai/model-64"))),
-      /catalog exceeds 64 profiles/
+      /basis exceeds 64 profiles/
     );
     assert.equal(Object.keys((await runRouteKitEffect(store.read()))?.profiles ?? {}).length, 64);
   } finally {

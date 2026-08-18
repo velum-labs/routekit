@@ -114,9 +114,9 @@ export type AccountReadinessState = {
 
 export type CompositionalRoutingAttribution = {
   version: 2;
-  definition_set_digest: string;
+  basis_digest: string;
   evidence_digest: string;
-  weights: ReadonlyArray<{ area_id: string; weight: number }>;
+  weights: ReadonlyArray<{ dimension_id: string; weight: number }>;
   unknown_weight: number;
   requirements: {
     endpoint: "chat" | "responses" | "anthropic";
@@ -177,11 +177,11 @@ export type RequestAttribution = {
     token_id: string;
     label?: string;
   };
-  /** Reproducible area decomposition and deterministic scoring evidence. */
+  /** Reproducible workload-dimension decomposition and deterministic scoring evidence. */
   compositional_routing?: CompositionalRoutingAttribution;
   eval?: {
     purpose: "eval";
-    role: "author" | "candidate" | "judge";
+    role: "author" | "classifier" | "candidate" | "judge";
     run_id: string;
     case_id?: string;
     policy_bypass: true;

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type {
-  ModelAreaEvidence,
-  PublishedRoutingSnapshotV2,
-  RequestAreaDecomposition,
+  ModelDimensionEvidence,
+  PublishedRoutingActivation,
+  RequestDecomposition,
   RequestRoutingRequirements,
   RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
@@ -16,14 +16,14 @@ import {
 } from "../routing-score.js";
 
 const models = ["provider/alpha", "provider/beta", "provider/gamma"] as const;
-const areas = [
+const dimensions = [
   { id: "code", description: "Code changes", includes: ["implementation"], excludes: [] },
   { id: "docs", description: "Documentation", includes: ["writing"], excludes: [] }
 ] as const;
 
 function cell(
   model: string,
-  areaId: string,
+  dimensionId: string,
   quality: number,
   options: {
     failureRate?: number;
@@ -31,12 +31,12 @@ function cell(
     duration?: number;
     unpricedCalls?: number;
   } = {}
-): ModelAreaEvidence {
+): ModelDimensionEvidence {
   return {
     model,
-    areaId,
-    suiteDigest: `suite-${areaId}`,
-    evidenceDigest: `evidence-${model}-${areaId}`,
+    dimensionId,
+    suiteDigest: `suite-${dimensionId}`,
+    evidenceDigest: `evidence-${model}-${dimensionId}`,
     quality: { passRate: quality, lowerConfidenceBound: quality, sampleCount: 20 },
     failureRate: options.failureRate ?? 1 - quality,
     ...(options.duration === undefined ? {} : { p95DurationMs: options.duration }),
@@ -46,26 +46,29 @@ function cell(
 }
 
 function snapshot(
-  evidence: readonly ModelAreaEvidence[],
+  evidence: readonly ModelDimensionEvidence[],
   candidateModels: readonly string[] = models
-): PublishedRoutingSnapshotV2 {
+): PublishedRoutingActivation {
   return {
     version: 2,
     generatedAt: "2026-08-17T00:00:00.000Z",
-    definitionSetDigest: "definition-digest",
+    basisDigest: "definition-digest",
     evidenceDigest: "evidence-digest",
-    areas,
+    classifierModel: "provider/classifier",
+    objective: { kind: "highest-quality" },
+    maximumUnknownWeight: 0.2,
+    dimensions,
     candidateModels,
     evidence
   };
 }
 
-const decomposition: RequestAreaDecomposition = {
+const decomposition: RequestDecomposition = {
   version: 2,
-  definitionSetDigest: "definition-digest",
+  basisDigest: "definition-digest",
   weights: [
-    { areaId: "code", weight: 0.54 },
-    { areaId: "docs", weight: 0.36 }
+    { dimensionId: "code", weight: 0.54 },
+    { dimensionId: "docs", weight: 0.36 }
   ],
   unknownWeight: 0.1
 };
@@ -92,12 +95,12 @@ function available(model: string, overrides: Partial<RoutingModelAvailability> =
 }
 
 function run(
-  evidence: readonly ModelAreaEvidence[],
+  evidence: readonly ModelDimensionEvidence[],
   objective: RoutingObjectivePolicy = { kind: "highest-quality" },
   options: {
     candidateModels?: readonly string[];
     availableModels?: readonly RoutingModelAvailability[];
-    requestDecomposition?: RequestAreaDecomposition;
+    requestDecomposition?: RequestDecomposition;
   } = {}
 ) {
   return scoreRoutingCandidates({
@@ -118,7 +121,7 @@ const completeEvidence = [
   cell(models[2], "docs", 0.7, { cost: 0.5, duration: 80 })
 ];
 
-test("highest-quality aggregates covered area weights and is candidate-order invariant", () => {
+test("highest-quality aggregates covered dimension weights and is candidate-order invariant", () => {
   const first = run(completeEvidence);
   const reversed = run(
     [...completeEvidence].reverse(),
@@ -173,15 +176,19 @@ test("hard requirements exclude unserved and incapable candidates before scoring
   );
 });
 
-test("unknown numeric catalog limits do not claim a served model is incapable", () => {
-  const result = run(completeEvidence, { kind: "highest-quality" }, {
-    availableModels: models.map((model) =>
-      available(model, {
-        maxInputTokens: undefined,
-        maxOutputTokens: undefined
-      })
-    )
-  });
+test("unknown numeric basis limits do not claim a served model is incapable", () => {
+  const result = run(
+    completeEvidence,
+    { kind: "highest-quality" },
+    {
+      availableModels: models.map((model) =>
+        available(model, {
+          maxInputTokens: undefined,
+          maxOutputTokens: undefined
+        })
+      )
+    }
+  );
 
   assert.equal(result.selectedModel, models[0]);
   assert.deepEqual(
@@ -190,9 +197,9 @@ test("unknown numeric catalog limits do not claim a served model is incapable", 
   );
 });
 
-test("missing evidence and per-area quality floors fail candidates closed", () => {
+test("missing evidence and per-dimension quality floors fail candidates closed", () => {
   const missingLastCell = completeEvidence.filter(
-    (entry) => !(entry.model === models[0] && entry.areaId === "docs")
+    (entry) => !(entry.model === models[0] && entry.dimensionId === "docs")
   );
   const result = scoreRoutingCandidates({
     snapshot: snapshot(missingLastCell),
@@ -200,7 +207,7 @@ test("missing evidence and per-area quality floors fail candidates closed", () =
     requirements,
     objective: { kind: "highest-quality" },
     availableModels: models.map((model) => available(model)),
-    constraints: { minimumAreaQuality: { code: 0.72 } }
+    constraints: { minimumDimensionQuality: { code: 0.72 } }
   });
 
   assert.equal(result.selectedModel, models[1]);
@@ -208,7 +215,7 @@ test("missing evidence and per-area quality floors fail candidates closed", () =
     "missing_evidence:docs"
   ]);
   assert.deepEqual(result.candidates.find(({ model }) => model === models[2])?.exclusionReasons, [
-    "quality_below_area_floor:code"
+    "quality_below_dimension_floor:code"
   ]);
 });
 
@@ -227,7 +234,7 @@ test("lowest-cost excludes partially unpriced candidates rather than treating co
 
 test("lowest-latency applies the aggregate quality floor and requires latency evidence", () => {
   const evidence = completeEvidence.map((entry) =>
-    entry.model === models[2] && entry.areaId === "docs"
+    entry.model === models[2] && entry.dimensionId === "docs"
       ? cell(models[2], "docs", 0.7, { cost: 0.5 })
       : entry
   );

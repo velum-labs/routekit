@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import type {
+  EvalComparisonCall,
   EvalComparisonCase,
   EvalComparisonRequest,
   EvalComparisonResult,
@@ -376,6 +377,24 @@ const toComparisonCase = (row: EvalResultRow, caseId: string): EvalComparisonCas
   };
 };
 
+const toComparisonCall = (row: EvalResultRow): EvalComparisonCall | undefined => {
+  if (row.caseId === undefined) return undefined;
+  const usage = usageNumbers(row);
+  const costUsd = rowCostUsd(row);
+  return {
+    role: isCandidateRun(row) ? "candidate" : "judge",
+    model: runModel(row),
+    caseId: row.caseId,
+    measurement: {
+      ...(row.durationMs === undefined ? {} : { durationMs: row.durationMs }),
+      ...(row.score === undefined ? {} : { judgeScore: row.score }),
+      ...(costUsd === undefined ? {} : { costUsd }),
+      ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
+      ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens })
+    }
+  };
+};
+
 const normalizeComparison = (input: {
   readonly request: EvalComparisonRequest;
   readonly output: EvalExecutionOutput;
@@ -570,11 +589,15 @@ export const normalizeEvalComparisonEvidence = (
       comparisonId: input.comparisonId,
       profileId: input.request.profileId,
       suiteDigest: input.suiteDigest,
-      judgeModel: input.request.judgeModel,
-      startedAt: input.startedAt,
-      finishedAt: input.finishedAt,
-      models: normalizeComparison({ request: input.request, output: input.output })
-    };
+    judgeModel: input.request.judgeModel,
+    startedAt: input.startedAt,
+    finishedAt: input.finishedAt,
+    models: normalizeComparison({ request: input.request, output: input.output }),
+    calls: input.output.results.flatMap((row) => {
+      const call = toComparisonCall(row);
+      return call === undefined ? [] : [call];
+    })
+  };
   });
 
 export const makeEvalEngineLayer = (execution: EvalExecutionPortService): Layer.Layer<EvalEngine> =>

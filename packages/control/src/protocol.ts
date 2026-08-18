@@ -8,6 +8,7 @@ import type {
   RequestBillingMode,
   UpstreamAuthState
 } from "@velum-labs/routekit-contracts";
+import type { PublishedRoutingActivation } from "@velum-labs/routekit-eval-contracts";
 import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
 import type {
   CommandCompletedProperties,
@@ -44,6 +45,28 @@ export type IssuedTokenResult = {
    * can run `routekit peer add <joinCredential>` with no location flag.
    */
   joinCredential?: string;
+};
+
+export type EvalSessionPurpose = "authoring" | "qualification";
+
+export type EvalSessionLimits = {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  perCallOutputTokens: number;
+  wallTimeMs: number;
+};
+
+export type OpenedEvalSession = {
+  sessionId: string;
+  gatewayUrl: string;
+  /**
+   * Ephemeral plaintext credential returned once to the authenticated caller.
+   * Callers must immediately wrap this value in `Redacted.Redacted`.
+   */
+  bearerCredential: string;
+  targetIdentity: string;
+  expiresAt: string;
 };
 
 export type RouteKitControlParams = {
@@ -123,6 +146,20 @@ export type RouteKitControlParams = {
   };
   "tokens.list": { plane?: TokenPlane };
   "tokens.revoke": { id: string };
+  "evalSession.open": {
+    purpose: EvalSessionPurpose;
+    operationId: string;
+    allowedModels: string[];
+    limits: EvalSessionLimits;
+    expiresInSeconds: number;
+  };
+  "evalSession.close": { sessionId: string };
+  "evalRouting.status": Record<string, never>;
+  "evalRouting.activate": {
+    /** `null` means the caller expects the target to have no active policy. */
+    expectedEvidenceDigest: string | null;
+    activation: PublishedRoutingActivation;
+  };
 };
 
 export type DaemonStatus = {
@@ -202,9 +239,9 @@ export type LaunchPreparation = {
 
 export type RouteKitCompositionalRoutingInspection = {
   version: 2;
-  definitionSetDigest: string;
+  basisDigest: string;
   evidenceDigest: string;
-  weights: ReadonlyArray<{ areaId: string; weight: number }>;
+  weights: ReadonlyArray<{ dimensionId: string; weight: number }>;
   unknownWeight: number;
   requirements: {
     endpoint: "chat" | "responses" | "anthropic";
@@ -481,6 +518,10 @@ export type RouteKitControlResults = {
   "tokens.issue": IssuedTokenResult;
   "tokens.list": { tokens: TokenListEntry[] };
   "tokens.revoke": TokenListEntry;
+  "evalSession.open": OpenedEvalSession;
+  "evalSession.close": { sessionId: string; closed: boolean };
+  "evalRouting.status": { activation: PublishedRoutingActivation | null };
+  "evalRouting.activate": { activated: true; activation: PublishedRoutingActivation };
 };
 
 /**

@@ -14,12 +14,12 @@ export const CLASSIFIABLE_PROFILE_LIMIT = 64;
 export const CLASSIFIABLE_PROFILE_DESCRIPTION_LIMIT = 1_024;
 export const CLASSIFIABLE_PROFILE_EVIDENCE_LIMIT = 64;
 export const CLASSIFIABLE_PROFILE_FALLBACK_LIMIT = 32;
-export const CLASSIFIER_CATALOG_TEXT_LIMIT = 64 * 1_024;
-export const ROUTING_AREA_CATALOG_MIN = 5;
-export const ROUTING_AREA_CATALOG_MAX = 10;
-export const ROUTING_AREA_DESCRIPTION_LIMIT = 1_024;
-export const ROUTING_AREA_BOUNDARY_LIMIT = 512;
-export const ROUTING_AREA_VECTOR_TOLERANCE = 1e-6;
+export const CLASSIFIER_BASIS_TEXT_LIMIT = 64 * 1_024;
+export const ROUTING_BASIS_DIMENSION_MIN = 5;
+export const ROUTING_BASIS_DIMENSION_MAX = 10;
+export const WORKLOAD_DIMENSION_DESCRIPTION_LIMIT = 1_024;
+export const WORKLOAD_DIMENSION_BOUNDARY_LIMIT = 512;
+export const REQUEST_DECOMPOSITION_TOLERANCE = 1e-6;
 
 export const EvalContractVersion = Schema.Literal(EVAL_CONTRACT_VERSION);
 export type EvalContractVersion = typeof EvalContractVersion.Type;
@@ -49,46 +49,46 @@ const UnitInterval = Schema.Finite.pipe(
 export const CompositionalRoutingVersion = Schema.Literal(COMPOSITIONAL_ROUTING_VERSION);
 export type CompositionalRoutingVersion = typeof CompositionalRoutingVersion.Type;
 
-export const RoutingAreaDefinition = Schema.Struct({
+export const WorkloadDimension = Schema.Struct({
   id: Schema.String,
   description: Schema.String,
   includes: Schema.Array(Schema.String),
   excludes: Schema.Array(Schema.String)
 });
-export type RoutingAreaDefinition = typeof RoutingAreaDefinition.Type;
+export type WorkloadDimension = typeof WorkloadDimension.Type;
 
-export const RoutingAreaCatalog = Schema.Struct({
+export const RoutingBasis = Schema.Struct({
   version: CompositionalRoutingVersion,
-  definitionSetDigest: Schema.String,
-  areas: Schema.Array(RoutingAreaDefinition)
+  basisDigest: Schema.String,
+  dimensions: Schema.Array(WorkloadDimension)
 });
-export type RoutingAreaCatalog = typeof RoutingAreaCatalog.Type;
+export type RoutingBasis = typeof RoutingBasis.Type;
 
-export const RequestAreaWeight = Schema.Struct({
-  areaId: Schema.String,
+export const DimensionWeight = Schema.Struct({
+  dimensionId: Schema.String,
   weight: UnitInterval
 });
-export type RequestAreaWeight = typeof RequestAreaWeight.Type;
+export type DimensionWeight = typeof DimensionWeight.Type;
 
-export const AreaClassificationInput = Schema.Struct({
+export const DecompositionInput = Schema.Struct({
   request: Schema.String,
-  areas: Schema.Array(RoutingAreaDefinition)
+  dimensions: Schema.Array(WorkloadDimension)
 });
-export type AreaClassificationInput = typeof AreaClassificationInput.Type;
+export type DecompositionInput = typeof DecompositionInput.Type;
 
-export const AreaClassificationResult = Schema.Struct({
-  weights: Schema.Array(RequestAreaWeight),
+export const DecompositionResult = Schema.Struct({
+  weights: Schema.Array(DimensionWeight),
   unknownWeight: UnitInterval
 });
-export type AreaClassificationResult = typeof AreaClassificationResult.Type;
+export type DecompositionResult = typeof DecompositionResult.Type;
 
-export const RequestAreaDecomposition = Schema.Struct({
+export const RequestDecomposition = Schema.Struct({
   version: CompositionalRoutingVersion,
-  definitionSetDigest: Schema.String,
-  weights: Schema.Array(RequestAreaWeight),
+  basisDigest: Schema.String,
+  weights: Schema.Array(DimensionWeight),
   unknownWeight: UnitInterval
 });
-export type RequestAreaDecomposition = typeof RequestAreaDecomposition.Type;
+export type RequestDecomposition = typeof RequestDecomposition.Type;
 
 export const RoutingEndpoint = Schema.Literals(["chat", "responses", "anthropic"]);
 export type RoutingEndpoint = typeof RoutingEndpoint.Type;
@@ -102,26 +102,26 @@ export const RequestRoutingRequirements = Schema.Struct({
 });
 export type RequestRoutingRequirements = typeof RequestRoutingRequirements.Type;
 
-export const ModelAreaQuality = Schema.Struct({
+export const ModelDimensionQuality = Schema.Struct({
   passRate: UnitInterval,
   lowerConfidenceBound: UnitInterval,
   sampleCount: NonNegativeInteger
 });
-export type ModelAreaQuality = typeof ModelAreaQuality.Type;
+export type ModelDimensionQuality = typeof ModelDimensionQuality.Type;
 
-export const ModelAreaEvidence = Schema.Struct({
+export const ModelDimensionEvidence = Schema.Struct({
   model: Schema.String,
-  areaId: Schema.String,
+  dimensionId: Schema.String,
   suiteDigest: Schema.String,
   evidenceDigest: Schema.String,
-  quality: ModelAreaQuality,
+  quality: ModelDimensionQuality,
   failureRate: UnitInterval,
   averageJudgeScore: Schema.optionalKey(UnitInterval),
   p95DurationMs: Schema.optionalKey(NonNegativeFinite),
   averageCostUsd: Schema.optionalKey(NonNegativeFinite),
   unpricedCalls: NonNegativeInteger
 });
-export type ModelAreaEvidence = typeof ModelAreaEvidence.Type;
+export type ModelDimensionEvidence = typeof ModelDimensionEvidence.Type;
 
 export const RoutingMetricWeights = Schema.Struct({
   quality: UnitInterval,
@@ -169,20 +169,30 @@ export const RoutingCandidateDecision = Schema.Struct({
 });
 export type RoutingCandidateDecision = typeof RoutingCandidateDecision.Type;
 
-export const PublishedRoutingSnapshotV2 = Schema.Struct({
+export const RoutingActivationConstraints = Schema.Struct({
+  minimumDimensionQuality: Schema.optionalKey(Schema.Record(Schema.String, UnitInterval)),
+  maximumFailureRate: Schema.optionalKey(UnitInterval)
+});
+export type RoutingActivationConstraints = typeof RoutingActivationConstraints.Type;
+
+export const PublishedRoutingActivation = Schema.Struct({
   version: CompositionalRoutingVersion,
   generatedAt: Schema.String,
-  definitionSetDigest: Schema.String,
+  basisDigest: Schema.String,
   evidenceDigest: Schema.String,
-  areas: Schema.Array(RoutingAreaDefinition),
+  classifierModel: Schema.String,
+  objective: RoutingObjectivePolicy,
+  maximumUnknownWeight: UnitInterval,
+  constraints: Schema.optionalKey(RoutingActivationConstraints),
+  dimensions: Schema.Array(WorkloadDimension),
   candidateModels: Schema.Array(Schema.String),
-  evidence: Schema.Array(ModelAreaEvidence)
+  evidence: Schema.Array(ModelDimensionEvidence)
 });
-export type PublishedRoutingSnapshotV2 = typeof PublishedRoutingSnapshotV2.Type;
+export type PublishedRoutingActivation = typeof PublishedRoutingActivation.Type;
 
-export const AutoRoutingDecisionV2 = Schema.Struct({
+export const AutoRoutingDecision = Schema.Struct({
   version: CompositionalRoutingVersion,
-  decomposition: RequestAreaDecomposition,
+  decomposition: RequestDecomposition,
   requirements: RequestRoutingRequirements,
   objective: RoutingObjectivePolicy,
   evidenceDigest: Schema.String,
@@ -190,9 +200,9 @@ export const AutoRoutingDecisionV2 = Schema.Struct({
   selectedModel: Schema.String,
   fallbackModels: Schema.Array(Schema.String)
 });
-export type AutoRoutingDecisionV2 = typeof AutoRoutingDecisionV2.Type;
+export type AutoRoutingDecision = typeof AutoRoutingDecision.Type;
 
-const ROUTING_AREA_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62})$/u;
+const WORKLOAD_DIMENSION_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62})$/u;
 const DIGEST_LIMIT = 256;
 
 function assertNonEmptyDigest(value: string, label: string): void {
@@ -201,151 +211,156 @@ function assertNonEmptyDigest(value: string, label: string): void {
   }
 }
 
-function assertRoutingAreaDefinition(area: RoutingAreaDefinition): void {
-  if (!ROUTING_AREA_ID_PATTERN.test(area.id)) {
-    throw new Error(`invalid routing area id ${JSON.stringify(area.id)}`);
+function assertWorkloadDimension(dimension: WorkloadDimension): void {
+  if (!WORKLOAD_DIMENSION_ID_PATTERN.test(dimension.id)) {
+    throw new Error(`invalid routing dimension id ${JSON.stringify(dimension.id)}`);
   }
   if (
-    area.description.length === 0 ||
-    area.description !== area.description.trim() ||
-    area.description.length > ROUTING_AREA_DESCRIPTION_LIMIT
+    dimension.description.length === 0 ||
+    dimension.description !== dimension.description.trim() ||
+    dimension.description.length > WORKLOAD_DIMENSION_DESCRIPTION_LIMIT
   ) {
-    throw new Error(`routing area ${JSON.stringify(area.id)} has an invalid description`);
+    throw new Error(`routing dimension ${JSON.stringify(dimension.id)} has an invalid description`);
   }
-  if (area.includes.length === 0 || area.excludes.length === 0) {
+  if (dimension.includes.length === 0 || dimension.excludes.length === 0) {
     throw new Error(
-      `routing area ${JSON.stringify(area.id)} must define inclusion and exclusion boundaries`
+      `routing dimension ${JSON.stringify(dimension.id)} must define inclusion and exclusion boundaries`
     );
   }
   const boundaries = new Set<string>();
   for (const [kind, values] of [
-    ["inclusion", area.includes],
-    ["exclusion", area.excludes]
+    ["inclusion", dimension.includes],
+    ["exclusion", dimension.excludes]
   ] as const) {
     for (const value of values) {
       if (
         value.length === 0 ||
         value !== value.trim() ||
-        value.length > ROUTING_AREA_BOUNDARY_LIMIT
+        value.length > WORKLOAD_DIMENSION_BOUNDARY_LIMIT
       ) {
-        throw new Error(`routing area ${JSON.stringify(area.id)} has an invalid ${kind} boundary`);
+        throw new Error(
+          `routing dimension ${JSON.stringify(dimension.id)} has an invalid ${kind} boundary`
+        );
       }
       const normalized = value.toLowerCase();
       if (boundaries.has(normalized)) {
-        throw new Error(`routing area ${JSON.stringify(area.id)} has duplicate boundaries`);
+        throw new Error(
+          `routing dimension ${JSON.stringify(dimension.id)} has duplicate boundaries`
+        );
       }
       boundaries.add(normalized);
     }
   }
 }
 
-export function assertRoutingAreaCatalog(catalog: RoutingAreaCatalog): void {
-  assertNonEmptyDigest(catalog.definitionSetDigest, "definition-set digest");
+export function assertRoutingBasis(basis: RoutingBasis): void {
+  assertNonEmptyDigest(basis.basisDigest, "definition-set digest");
   if (
-    catalog.areas.length < ROUTING_AREA_CATALOG_MIN ||
-    catalog.areas.length > ROUTING_AREA_CATALOG_MAX
+    basis.dimensions.length < ROUTING_BASIS_DIMENSION_MIN ||
+    basis.dimensions.length > ROUTING_BASIS_DIMENSION_MAX
   ) {
     throw new Error(
-      `routing area catalog must contain between ${String(ROUTING_AREA_CATALOG_MIN)} and ${String(
-        ROUTING_AREA_CATALOG_MAX
-      )} areas`
+      `routing dimension basis must contain between ${String(ROUTING_BASIS_DIMENSION_MIN)} and ${String(
+        ROUTING_BASIS_DIMENSION_MAX
+      )} dimensions`
     );
   }
   const ids = new Set<string>();
-  for (const area of catalog.areas) {
-    assertRoutingAreaDefinition(area);
-    if (ids.has(area.id)) {
-      throw new Error(`duplicate routing area ${JSON.stringify(area.id)}`);
+  for (const dimension of basis.dimensions) {
+    assertWorkloadDimension(dimension);
+    if (ids.has(dimension.id)) {
+      throw new Error(`duplicate routing dimension ${JSON.stringify(dimension.id)}`);
     }
-    ids.add(area.id);
+    ids.add(dimension.id);
   }
-  if (JSON.stringify(catalog.areas).length > CLASSIFIER_CATALOG_TEXT_LIMIT) {
+  if (JSON.stringify(basis.dimensions).length > CLASSIFIER_BASIS_TEXT_LIMIT) {
     throw new Error(
-      `routing area catalog exceeds ${String(CLASSIFIER_CATALOG_TEXT_LIMIT)} characters`
+      `routing dimension basis exceeds ${String(CLASSIFIER_BASIS_TEXT_LIMIT)} characters`
     );
   }
 }
 
-export function assertAreaClassificationInput(input: AreaClassificationInput): void {
+export function assertDecompositionInput(input: DecompositionInput): void {
   if (input.request.length === 0 || input.request !== input.request.trim()) {
-    throw new Error("area classification request must be non-empty");
+    throw new Error("dimension classification request must be non-empty");
   }
-  assertRoutingAreaCatalog({
+  assertRoutingBasis({
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definitionSetDigest: "classification-input",
-    areas: input.areas
+    basisDigest: "classification-input",
+    dimensions: input.dimensions
   });
 }
 
-function assertAreaVector(
-  weights: ReadonlyArray<RequestAreaWeight>,
+function assertDimensionVector(
+  weights: ReadonlyArray<DimensionWeight>,
   unknownWeight: number,
-  expectedAreaIds?: ReadonlySet<string>
+  expectedDimensionIds?: ReadonlySet<string>
 ): void {
-  const actualAreaIds = new Set<string>();
+  const actualDimensionIds = new Set<string>();
   let sum = unknownWeight;
   for (const entry of weights) {
-    if (!ROUTING_AREA_ID_PATTERN.test(entry.areaId)) {
-      throw new Error(`invalid routing area weight id ${JSON.stringify(entry.areaId)}`);
+    if (!WORKLOAD_DIMENSION_ID_PATTERN.test(entry.dimensionId)) {
+      throw new Error(`invalid routing dimension weight id ${JSON.stringify(entry.dimensionId)}`);
     }
-    if (actualAreaIds.has(entry.areaId)) {
-      throw new Error(`duplicate routing area weight ${JSON.stringify(entry.areaId)}`);
+    if (actualDimensionIds.has(entry.dimensionId)) {
+      throw new Error(`duplicate routing dimension weight ${JSON.stringify(entry.dimensionId)}`);
     }
-    actualAreaIds.add(entry.areaId);
+    actualDimensionIds.add(entry.dimensionId);
     sum += entry.weight;
-    if (expectedAreaIds !== undefined && !expectedAreaIds.has(entry.areaId)) {
-      throw new Error(`unknown routing area weight ${JSON.stringify(entry.areaId)}`);
+    if (expectedDimensionIds !== undefined && !expectedDimensionIds.has(entry.dimensionId)) {
+      throw new Error(`unknown routing dimension weight ${JSON.stringify(entry.dimensionId)}`);
     }
   }
-  if (expectedAreaIds !== undefined) {
-    for (const areaId of expectedAreaIds) {
-      if (!actualAreaIds.has(areaId)) {
-        throw new Error(`missing routing area weight ${JSON.stringify(areaId)}`);
+  if (expectedDimensionIds !== undefined) {
+    for (const dimensionId of expectedDimensionIds) {
+      if (!actualDimensionIds.has(dimensionId)) {
+        throw new Error(`missing routing dimension weight ${JSON.stringify(dimensionId)}`);
       }
     }
   }
-  if (Math.abs(sum - 1) > ROUTING_AREA_VECTOR_TOLERANCE) {
-    throw new Error("routing area weights and unknown weight must sum to one");
+  if (Math.abs(sum - 1) > REQUEST_DECOMPOSITION_TOLERANCE) {
+    throw new Error("routing dimension weights and unknown weight must sum to one");
   }
 }
 
-export function assertAreaClassificationResult(
-  result: AreaClassificationResult,
-  catalog: RoutingAreaCatalog
-): void {
-  assertRoutingAreaCatalog(catalog);
-  assertAreaVector(
+export function assertDecompositionResult(result: DecompositionResult, basis: RoutingBasis): void {
+  assertRoutingBasis(basis);
+  assertDimensionVector(
     result.weights,
     result.unknownWeight,
-    new Set(catalog.areas.map((area) => area.id))
+    new Set(basis.dimensions.map((dimension) => dimension.id))
   );
 }
 
-export function assertRequestAreaDecomposition(
-  decomposition: RequestAreaDecomposition,
-  catalog: RoutingAreaCatalog
+export function assertRequestDecomposition(
+  decomposition: RequestDecomposition,
+  basis: RoutingBasis
 ): void {
-  if (decomposition.definitionSetDigest !== catalog.definitionSetDigest) {
-    throw new Error("request decomposition definition-set digest does not match the area catalog");
+  if (decomposition.basisDigest !== basis.basisDigest) {
+    throw new Error(
+      "request decomposition definition-set digest does not match the dimension basis"
+    );
   }
-  assertAreaClassificationResult(decomposition, catalog);
+  assertDecompositionResult(decomposition, basis);
 }
 
 export function assertRoutingObjectivePolicy(policy: RoutingObjectivePolicy): void {
   if (policy.kind !== "balanced") return;
   const sum = policy.weights.quality + policy.weights.cost + policy.weights.latency;
-  if (Math.abs(sum - 1) > ROUTING_AREA_VECTOR_TOLERANCE) {
+  if (Math.abs(sum - 1) > REQUEST_DECOMPOSITION_TOLERANCE) {
     throw new Error("balanced routing objective weights must sum to one");
   }
 }
 
-export function assertPublishedRoutingSnapshotV2(snapshot: PublishedRoutingSnapshotV2): void {
-  const catalog: RoutingAreaCatalog = {
+export function assertPublishedRoutingActivation(snapshot: PublishedRoutingActivation): void {
+  const basis: RoutingBasis = {
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definitionSetDigest: snapshot.definitionSetDigest,
-    areas: snapshot.areas
+    basisDigest: snapshot.basisDigest,
+    dimensions: snapshot.dimensions
   };
-  assertRoutingAreaCatalog(catalog);
+  assertRoutingBasis(basis);
+  assertExplicitEvalModel(snapshot.classifierModel, "classifier");
+  assertRoutingObjectivePolicy(snapshot.objective);
   assertNonEmptyDigest(snapshot.evidenceDigest, "evidence digest");
   if (snapshot.candidateModels.length === 0) {
     throw new Error("routing snapshot must contain at least one candidate model");
@@ -358,71 +373,84 @@ export function assertPublishedRoutingSnapshotV2(snapshot: PublishedRoutingSnaps
     }
     candidates.add(model);
   }
-  const areaIds = new Set(snapshot.areas.map((area) => area.id));
+  const dimensionIds = new Set(snapshot.dimensions.map((dimension) => dimension.id));
+  for (const [dimensionId] of Object.entries(
+    snapshot.constraints?.minimumDimensionQuality ?? {}
+  )) {
+    if (!dimensionIds.has(dimensionId)) {
+      throw new Error(
+        `routing activation quality constraint refers to unknown dimension ${JSON.stringify(
+          dimensionId
+        )}`
+      );
+    }
+  }
   const cells = new Set<string>();
-  const suiteDigestByArea = new Map<string, string>();
+  const suiteDigestByDimension = new Map<string, string>();
   for (const evidence of snapshot.evidence) {
     assertExplicitEvalModel(evidence.model, "candidate");
     if (!candidates.has(evidence.model)) {
       throw new Error(`evidence contains unknown candidate ${JSON.stringify(evidence.model)}`);
     }
-    if (!areaIds.has(evidence.areaId)) {
-      throw new Error(`evidence contains unknown area ${JSON.stringify(evidence.areaId)}`);
+    if (!dimensionIds.has(evidence.dimensionId)) {
+      throw new Error(
+        `evidence contains unknown dimension ${JSON.stringify(evidence.dimensionId)}`
+      );
     }
-    const cell = `${evidence.model}\u0000${evidence.areaId}`;
+    const cell = `${evidence.model}\u0000${evidence.dimensionId}`;
     if (cells.has(cell)) {
       throw new Error(
-        `duplicate model-area evidence for ${JSON.stringify(evidence.model)} and ${JSON.stringify(
-          evidence.areaId
+        `duplicate model-dimension evidence for ${JSON.stringify(evidence.model)} and ${JSON.stringify(
+          evidence.dimensionId
         )}`
       );
     }
     cells.add(cell);
     assertNonEmptyDigest(evidence.suiteDigest, "suite digest");
     assertNonEmptyDigest(evidence.evidenceDigest, "cell evidence digest");
-    const areaSuiteDigest = suiteDigestByArea.get(evidence.areaId);
-    if (areaSuiteDigest !== undefined && areaSuiteDigest !== evidence.suiteDigest) {
+    const dimensionSuiteDigest = suiteDigestByDimension.get(evidence.dimensionId);
+    if (dimensionSuiteDigest !== undefined && dimensionSuiteDigest !== evidence.suiteDigest) {
       throw new Error(
-        `routing area ${JSON.stringify(evidence.areaId)} has inconsistent suite digests`
+        `routing dimension ${JSON.stringify(evidence.dimensionId)} has inconsistent suite digests`
       );
     }
-    suiteDigestByArea.set(evidence.areaId, evidence.suiteDigest);
+    suiteDigestByDimension.set(evidence.dimensionId, evidence.suiteDigest);
     if (evidence.quality.sampleCount === 0) {
-      throw new Error("model-area evidence sample count must be greater than zero");
+      throw new Error("model-dimension evidence sample count must be greater than zero");
     }
     if (evidence.quality.lowerConfidenceBound > evidence.quality.passRate) {
       throw new Error("quality lower confidence bound cannot exceed pass rate");
     }
-    if (evidence.quality.passRate + evidence.failureRate > 1 + ROUTING_AREA_VECTOR_TOLERANCE) {
-      throw new Error("model-area pass and failure rates cannot sum above one");
+    if (evidence.quality.passRate + evidence.failureRate > 1 + REQUEST_DECOMPOSITION_TOLERANCE) {
+      throw new Error("model-dimension pass and failure rates cannot sum above one");
     }
     if (evidence.unpricedCalls > 0 && evidence.averageCostUsd !== undefined) {
-      throw new Error("partially priced model-area evidence must not report an average cost");
+      throw new Error("partially priced model-dimension evidence must not report an average cost");
     }
     if (evidence.unpricedCalls === 0 && evidence.averageCostUsd === undefined) {
-      throw new Error("fully priced model-area evidence must report its average cost");
+      throw new Error("fully priced model-dimension evidence must report its average cost");
     }
   }
   for (const model of candidates) {
-    for (const areaId of areaIds) {
-      if (!cells.has(`${model}\u0000${areaId}`)) {
+    for (const dimensionId of dimensionIds) {
+      if (!cells.has(`${model}\u0000${dimensionId}`)) {
         throw new Error(
-          `missing model-area evidence for ${JSON.stringify(model)} and ${JSON.stringify(areaId)}`
+          `missing model-dimension evidence for ${JSON.stringify(model)} and ${JSON.stringify(dimensionId)}`
         );
       }
     }
   }
 }
 
-export function assertAutoRoutingDecisionV2(
-  decision: AutoRoutingDecisionV2,
-  snapshot: PublishedRoutingSnapshotV2
+export function assertAutoRoutingDecision(
+  decision: AutoRoutingDecision,
+  snapshot: PublishedRoutingActivation
 ): void {
-  assertPublishedRoutingSnapshotV2(snapshot);
-  assertRequestAreaDecomposition(decision.decomposition, {
+  assertPublishedRoutingActivation(snapshot);
+  assertRequestDecomposition(decision.decomposition, {
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definitionSetDigest: snapshot.definitionSetDigest,
-    areas: snapshot.areas
+    basisDigest: snapshot.basisDigest,
+    dimensions: snapshot.dimensions
   });
   assertRoutingObjectivePolicy(decision.objective);
   if (decision.evidenceDigest !== snapshot.evidenceDigest) {
@@ -499,14 +527,14 @@ export function assertAutoRoutingDecisionV2(
 /** Evaluation must never select the online auto-router. */
 export const EVAL_FORBIDDEN_MODELS = ["auto", "router", "default"] as const;
 
-export const EvalRole = Schema.Literals(["candidate", "judge"]);
+export const EvalRole = Schema.Literals(["author", "classifier", "candidate", "judge"]);
 export type EvalRole = typeof EvalRole.Type;
 
 export const EvalAttribution = Schema.Struct({
   purpose: Schema.Literal("eval"),
   role: EvalRole,
   runId: Schema.String,
-  caseId: Schema.String
+  caseId: Schema.optionalKey(Schema.String)
 });
 export type EvalAttribution = typeof EvalAttribution.Type;
 
@@ -686,6 +714,14 @@ export const EvalModelComparison = Schema.Struct({
 });
 export type EvalModelComparison = typeof EvalModelComparison.Type;
 
+export const EvalComparisonCall = Schema.Struct({
+  role: Schema.Literals(["candidate", "judge"]),
+  model: Schema.String,
+  caseId: Schema.String,
+  measurement: EvalMeasurement
+});
+export type EvalComparisonCall = typeof EvalComparisonCall.Type;
+
 export const EvalComparisonResult = Schema.Struct({
   version: EvalContractVersion,
   comparisonId: Schema.String,
@@ -694,7 +730,8 @@ export const EvalComparisonResult = Schema.Struct({
   judgeModel: Schema.String,
   startedAt: Schema.String,
   finishedAt: Schema.String,
-  models: Schema.Array(EvalModelComparison)
+  models: Schema.Array(EvalModelComparison),
+  calls: Schema.optionalKey(Schema.Array(EvalComparisonCall))
 });
 export type EvalComparisonResult = typeof EvalComparisonResult.Type;
 
@@ -767,13 +804,13 @@ export const PublishedRoutingSnapshot = Schema.Struct({
 });
 export type PublishedRoutingSnapshot = typeof PublishedRoutingSnapshot.Type;
 
-export function assertPublishedRoutingCatalog(
+export function assertPublishedRoutingProfiles(
   profiles: Readonly<Record<string, PublishedRoutingProfile>>
 ): void {
   const entries = Object.entries(profiles);
   if (entries.length > CLASSIFIABLE_PROFILE_LIMIT) {
     throw new Error(
-      `published routing catalog exceeds ${String(CLASSIFIABLE_PROFILE_LIMIT)} profiles`
+      `published routing basis exceeds ${String(CLASSIFIABLE_PROFILE_LIMIT)} profiles`
     );
   }
   for (const [id, profile] of entries) {
@@ -816,9 +853,9 @@ export function assertPublishedRoutingCatalog(
     fallbackModels: profile.fallbackModels,
     evidence: profile.evidence ?? []
   }));
-  if (JSON.stringify(projection).length > CLASSIFIER_CATALOG_TEXT_LIMIT) {
+  if (JSON.stringify(projection).length > CLASSIFIER_BASIS_TEXT_LIMIT) {
     throw new Error(
-      `published routing catalog exceeds ${String(CLASSIFIER_CATALOG_TEXT_LIMIT)} characters`
+      `published routing basis exceeds ${String(CLASSIFIER_BASIS_TEXT_LIMIT)} characters`
     );
   }
 }
@@ -894,7 +931,10 @@ export function isForbiddenEvalModel(model: string): boolean {
   );
 }
 
-export function assertExplicitEvalModel(model: string, role: EvalRole): void {
+export function assertExplicitEvalModel(
+  model: string,
+  role: EvalRole | "classifier" | "author"
+): void {
   if (isForbiddenEvalModel(model)) {
     throw new Error(
       `${role} model must be an explicit provider/model id, not ${JSON.stringify(model)}`

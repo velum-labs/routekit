@@ -279,12 +279,17 @@ export const COMMAND_PATHS = [
   "daemon.logs",
   "daemon.restart",
   "daemon.upgrade",
-  "eval.prepare",
+  "eval.setup",
   "eval.status",
   "eval.answer",
+  "eval.propose.dimensions",
+  "eval.propose.evaluations",
+  "eval.approve.dimensions",
+  "eval.approve.evaluations",
   "eval.validate",
   "eval.estimate",
   "eval.run",
+  "eval.results",
   "eval.publish",
   "policy.show"
 ] as const;

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  type AutoRoutingDecisionV2,
+  type AutoRoutingDecision,
   COMPOSITIONAL_ROUTING_VERSION,
-  type ModelAreaEvidence,
-  type PublishedRoutingSnapshotV2,
-  type RequestAreaDecomposition,
+  type ModelDimensionEvidence,
+  type PublishedRoutingActivation,
+  type RequestDecomposition,
   type RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
@@ -19,9 +19,9 @@ import {
   resolveCompositionalAutoRoutingModel,
   resolveConfiguredAutoRoutingModel
 } from "../eval-policy.js";
-import { makeFakeAreaRequestClassifier } from "../request-classifier.js";
+import { makeFakeRequestDecomposer } from "../request-classifier.js";
 
-const areas = [
+const dimensions = [
   "code-change",
   "repository-navigation",
   "verification-debugging",
@@ -38,19 +38,19 @@ const models = ["openai/alpha", "openai/beta"] as const;
 
 function evidenceCell(
   model: (typeof models)[number],
-  areaId: string,
+  dimensionId: string,
   options: Readonly<{
     quality: number;
     failureRate?: number;
     latency: number;
     cost: number;
   }>
-): ModelAreaEvidence {
+): ModelDimensionEvidence {
   return {
     model,
-    areaId,
-    suiteDigest: `suite-${areaId}`,
-    evidenceDigest: `evidence-${model}-${areaId}`,
+    dimensionId,
+    suiteDigest: `suite-${dimensionId}`,
+    evidenceDigest: `evidence-${model}-${dimensionId}`,
     quality: {
       passRate: options.quality,
       lowerConfidenceBound: options.quality,
@@ -63,14 +63,14 @@ function evidenceCell(
   };
 }
 
-function snapshot(): PublishedRoutingSnapshotV2 {
-  const evidence = areas.flatMap((area, index) => [
-    evidenceCell("openai/alpha", area.id, {
+function snapshot(): PublishedRoutingActivation {
+  const evidence = dimensions.flatMap((dimension, index) => [
+    evidenceCell("openai/alpha", dimension.id, {
       quality: index === 0 ? 0.95 : index === 1 ? 0.7 : 0.8,
       latency: 100,
       cost: 0.01
     }),
-    evidenceCell("openai/beta", area.id, {
+    evidenceCell("openai/beta", dimension.id, {
       quality: index === 0 ? 0.8 : index === 1 ? 0.95 : 0.9,
       latency: 200,
       cost: 0.02
@@ -79,20 +79,23 @@ function snapshot(): PublishedRoutingSnapshotV2 {
   return {
     version: COMPOSITIONAL_ROUTING_VERSION,
     generatedAt: "2026-08-17T00:00:00.000Z",
-    definitionSetDigest: "definitions-v2",
+    basisDigest: "definitions-v2",
     evidenceDigest: "matrix-v2",
-    areas,
+    classifierModel: "openai/classifier",
+    objective: { kind: "highest-quality" },
+    maximumUnknownWeight: 0.2,
+    dimensions,
     candidateModels: models,
     evidence
   };
 }
 
-function decomposition(unknownWeight = 0): RequestAreaDecomposition {
+function decomposition(unknownWeight = 0): RequestDecomposition {
   return {
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definitionSetDigest: "definitions-v2",
-    weights: areas.map((area, index) => ({
-      areaId: area.id,
+    basisDigest: "definitions-v2",
+    weights: dimensions.map((dimension, index) => ({
+      dimensionId: dimension.id,
       weight: index === 0 ? 0.6 * (1 - unknownWeight) : index === 1 ? 0.4 * (1 - unknownWeight) : 0
     })),
     unknownWeight
@@ -132,7 +135,7 @@ function route(
   });
 }
 
-test("routes a mixed-area request by deterministic matrix composition", () => {
+test("routes a mixed-dimension request by deterministic matrix composition", () => {
   const decision = route({ kind: "highest-quality" });
 
   assert.equal(decision.selectedModel, "openai/beta");
@@ -145,7 +148,7 @@ test("routes a mixed-area request by deterministic matrix composition", () => {
     ]
   );
   assert.equal(decision.evidenceDigest, "matrix-v2");
-  assert.equal(decision.decomposition.definitionSetDigest, "definitions-v2");
+  assert.equal(decision.decomposition.basisDigest, "definitions-v2");
 });
 
 test("excludes stale, unavailable, and capability-incompatible models", () => {
@@ -190,13 +193,13 @@ test("fails closed when unknown request content exceeds policy", () => {
     (error: unknown) =>
       error instanceof CompositionalRoutingError &&
       error.code === "unknown_weight_above_maximum" &&
-      error.message === "request is not sufficiently covered by the published routing areas"
+      error.message === "request is not sufficiently covered by the published routing dimensions"
   );
 });
 
 test("rejects incomplete and mismatched evidence before scoring", () => {
   const complete = snapshot();
-  const incomplete: PublishedRoutingSnapshotV2 = {
+  const incomplete: PublishedRoutingActivation = {
     ...complete,
     evidence: complete.evidence.slice(1)
   };
@@ -205,7 +208,7 @@ test("rejects incomplete and mismatched evidence before scoring", () => {
     (error: unknown) =>
       error instanceof CompositionalRoutingError &&
       error.code === "invalid_input" &&
-      error.message.includes("missing model-area evidence")
+      error.message.includes("missing model-dimension evidence")
   );
 
   assert.throws(
@@ -215,7 +218,7 @@ test("rejects incomplete and mismatched evidence before scoring", () => {
         {
           decomposition: {
             ...decomposition(),
-            definitionSetDigest: "wrong-definitions"
+            basisDigest: "wrong-definitions"
           }
         }
       ),
@@ -247,12 +250,12 @@ test("applies each configured objective without classifier involvement", () => {
   }
 });
 
-test("area quality floors prevent cross-area compensation", () => {
+test("dimension quality floors prevent cross-dimension compensation", () => {
   const decision = route(
     { kind: "highest-quality" },
     {
       constraints: {
-        minimumAreaQuality: {
+        minimumDimensionQuality: {
           "repository-navigation": 0.8
         }
       }
@@ -263,13 +266,13 @@ test("area quality floors prevent cross-area compensation", () => {
   assert.deepEqual(decision.fallbackModels, []);
   assert.deepEqual(
     decision.candidates.find((candidate) => candidate.model === "openai/alpha")?.exclusionReasons,
-    ["quality_below_area_floor:repository-navigation"]
+    ["quality_below_dimension_floor:repository-navigation"]
   );
 });
 
 test("online v2 resolution classifies once and records the reproducible decision", async () => {
   let classifierCalls = 0;
-  let observed: AutoRoutingDecisionV2 | undefined;
+  let observed: AutoRoutingDecision | undefined;
   const resolved = await runRouteKitEffect(
     resolveCompositionalAutoRoutingModel({
       headers: {},
@@ -277,7 +280,7 @@ test("online v2 resolution classifies once and records the reproducible decision
       requestText: "Implement a change and navigate the repository",
       requirements,
       policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
-      classifier: makeFakeAreaRequestClassifier(() => {
+      classifier: makeFakeRequestDecomposer(() => {
         classifierCalls += 1;
         return {
           weights: decomposition().weights,
@@ -308,7 +311,7 @@ test("online v2 resolution leaves explicit models untouched", async () => {
       model: "openai/explicit",
       requirements,
       policyReader: compositionalRoutingPolicyReaderFromSnapshot(undefined),
-      classifier: makeFakeAreaRequestClassifier(() => {
+      classifier: makeFakeRequestDecomposer(() => {
         classifierCalls += 1;
         return { weights: decomposition().weights, unknownWeight: 0 };
       }),
@@ -331,7 +334,7 @@ test("online v2 resolution fails closed without a snapshot or for unknown-heavy 
         requestText: "hello",
         requirements,
         policyReader: compositionalRoutingPolicyReaderFromSnapshot(undefined),
-        classifier: makeFakeAreaRequestClassifier({
+        classifier: makeFakeRequestDecomposer({
           weights: decomposition().weights,
           unknownWeight: 0
         }),
@@ -353,7 +356,7 @@ test("online v2 resolution fails closed without a snapshot or for unknown-heavy 
         requestText: "An out-of-domain request",
         requirements,
         policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
-        classifier: makeFakeAreaRequestClassifier({
+        classifier: makeFakeRequestDecomposer({
           weights: decomposition(0.5).weights,
           unknownWeight: 0.5
         }),
@@ -364,11 +367,11 @@ test("online v2 resolution fails closed without a snapshot or for unknown-heavy 
     ),
     (error: unknown) =>
       error instanceof AutoRoutingUnavailableError &&
-      error.message === "request is not sufficiently covered by the published routing areas"
+      error.message === "request is not sufficiently covered by the published routing dimensions"
   );
 });
 
-test("configured auto routing uses only area decomposition and matrix scoring", async () => {
+test("configured auto routing uses only dimension decomposition and matrix scoring", async () => {
   const observations: string[] = [];
   const resolved = await runRouteKitEffect(
     resolveConfiguredAutoRoutingModel({
@@ -378,7 +381,7 @@ test("configured auto routing uses only area decomposition and matrix scoring", 
       requirements,
       compositionalRouting: {
         policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
-        classifier: makeFakeAreaRequestClassifier({
+        classifier: makeFakeRequestDecomposer({
           weights: decomposition().weights,
           unknownWeight: 0
         }),
@@ -411,7 +414,7 @@ test("configured auto routing fails closed and observes missing evidence", async
         requirements,
         compositionalRouting: {
           policyReader: compositionalRoutingPolicyReaderFromSnapshot(undefined),
-          classifier: makeFakeAreaRequestClassifier({
+          classifier: makeFakeRequestDecomposer({
             weights: decomposition().weights,
             unknownWeight: 0
           }),
@@ -440,7 +443,7 @@ test("configured auto routing retains per-model rejection reasons", async () => 
         requirements,
         compositionalRouting: {
           policyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot()),
-          classifier: makeFakeAreaRequestClassifier({
+          classifier: makeFakeRequestDecomposer({
             weights: decomposition().weights,
             unknownWeight: 0
           }),

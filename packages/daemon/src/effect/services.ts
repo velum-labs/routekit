@@ -19,6 +19,7 @@ import type { CallAttributionStore } from "../call-attribution-store.js";
 import type { CliproxySidecar } from "../cliproxy-sidecar.js";
 import type { DaemonGenerationManager, DaemonGenerationStage } from "../daemon-generations.js";
 import type { DaemonRuntimeState } from "../daemon-runtime-state.js";
+import type { EvalSessionManager } from "../eval-session-service.js";
 import type { LeaderboardRollupStore } from "../leaderboard.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "../telemetry.js";
 
@@ -175,6 +176,10 @@ export class ActiveGateway extends Context.Service<ActiveGateway, ActiveGatewayV
 
 export class Tokens extends Context.Service<Tokens, TokenStore>()(
   "@velum-labs/routekit-daemon/Tokens"
+) {}
+
+export class EvalSessions extends Context.Service<EvalSessions, EvalSessionManager>()(
+  "@velum-labs/routekit-daemon/EvalSessions"
 ) {}
 
 export class Telemetry extends Context.Service<Telemetry, TelemetryServiceValue>()(

@@ -2,28 +2,28 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Schema } from "effect";
 import {
-  AreaClassificationResult,
-  AutoRoutingDecisionV2,
-  assertAreaClassificationInput,
-  assertAreaClassificationResult,
-  assertAutoRoutingDecisionV2,
+  AutoRoutingDecision,
+  assertAutoRoutingDecision,
+  assertDecompositionInput,
+  assertDecompositionResult,
   assertExplicitEvalModel,
-  assertPublishedRoutingSnapshotV2,
-  assertRequestAreaDecomposition,
-  assertRoutingAreaCatalog,
+  assertPublishedRoutingActivation,
+  assertRequestDecomposition,
+  assertRoutingBasis,
   assertRoutingObjectivePolicy,
   assertRoutingProfile,
   COMPOSITIONAL_ROUTING_VERSION,
+  DecompositionResult,
   EVAL_POLICY,
   EvalMeasurement,
   EvalSetupState,
   EvalSuiteSpec,
   isForbiddenEvalModel,
   ModelEvidence,
+  PublishedRoutingActivation,
   PublishedRoutingSnapshot,
-  PublishedRoutingSnapshotV2,
-  RequestAreaDecomposition,
-  RoutingAreaCatalog,
+  RequestDecomposition,
+  RoutingBasis,
   RoutingObjectivePolicy,
   RoutingProfile
 } from "../index.js";
@@ -41,29 +41,32 @@ const routingAreas = [
   excludes: [`Tasks unrelated to ${id}`]
 }));
 
-function makeRoutingAreaCatalog(): RoutingAreaCatalog {
-  return Schema.decodeSync(RoutingAreaCatalog)({
+function makeRoutingBasis(): RoutingBasis {
+  return Schema.decodeSync(RoutingBasis)({
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definitionSetDigest: "definitions-v2",
-    areas: routingAreas
+    basisDigest: "definitions-v2",
+    dimensions: routingAreas
   });
 }
 
-function makePublishedRoutingSnapshotV2(): PublishedRoutingSnapshotV2 {
+function makePublishedRoutingActivation(): PublishedRoutingActivation {
   const candidates = ["openai/model-a", "anthropic/model-b"];
-  return Schema.decodeSync(PublishedRoutingSnapshotV2)({
+  return Schema.decodeSync(PublishedRoutingActivation)({
     version: COMPOSITIONAL_ROUTING_VERSION,
     generatedAt: "2026-08-17T00:00:00.000Z",
-    definitionSetDigest: "definitions-v2",
+    basisDigest: "definitions-v2",
     evidenceDigest: "all-evidence-v2",
-    areas: routingAreas,
+    classifierModel: "openai/classifier",
+    objective: { kind: "highest-quality" },
+    maximumUnknownWeight: 0.2,
+    dimensions: routingAreas,
     candidateModels: candidates,
     evidence: candidates.flatMap((model) =>
-      routingAreas.map((area) => ({
+      routingAreas.map((dimension) => ({
         model,
-        areaId: area.id,
-        suiteDigest: `suite-${area.id}`,
-        evidenceDigest: `evidence-${model}-${area.id}`,
+        dimensionId: dimension.id,
+        suiteDigest: `suite-${dimension.id}`,
+        evidenceDigest: `evidence-${model}-${dimension.id}`,
         quality: {
           passRate: 0.9,
           lowerConfidenceBound: 0.8,
@@ -175,106 +178,101 @@ test("published routing snapshots contain compact online decisions", () => {
   assert.equal("token" in snapshot, false);
 });
 
-test("v2 area catalogs require bounded, unique, reviewable definitions", () => {
-  const catalog = makeRoutingAreaCatalog();
-  assert.doesNotThrow(() => assertRoutingAreaCatalog(catalog));
+test("v2 dimension catalogs require bounded, unique, reviewable definitions", () => {
+  const basis = makeRoutingBasis();
+  assert.doesNotThrow(() => assertRoutingBasis(basis));
   assert.throws(
     () =>
-      assertRoutingAreaCatalog({
-        ...catalog,
-        areas: [...catalog.areas, catalog.areas[0]!]
+      assertRoutingBasis({
+        ...basis,
+        dimensions: [...basis.dimensions, basis.dimensions[0]!]
       }),
-    /duplicate routing area/
+    /duplicate routing dimension/
   );
   assert.throws(
     () =>
-      assertRoutingAreaCatalog({
-        ...catalog,
-        areas: catalog.areas.slice(0, 4)
+      assertRoutingBasis({
+        ...basis,
+        dimensions: basis.dimensions.slice(0, 4)
       }),
-    /between 5 and 10 areas/
+    /between 5 and 10 dimensions/
   );
   assert.throws(
     () =>
-      assertRoutingAreaCatalog({
-        ...catalog,
-        definitionSetDigest: " "
+      assertRoutingBasis({
+        ...basis,
+        basisDigest: " "
       }),
     /definition-set digest/
   );
 });
 
-test("v2 classifier vectors cover exactly the catalog and sum to one", () => {
-  const catalog = makeRoutingAreaCatalog();
+test("v2 classifier vectors cover exactly the basis and sum to one", () => {
+  const basis = makeRoutingBasis();
   assert.doesNotThrow(() =>
-    assertAreaClassificationInput({
+    assertDecompositionInput({
       request: "Implement deterministic request routing",
-      areas: catalog.areas
+      dimensions: basis.dimensions
     })
   );
   assert.throws(
     () =>
-      assertAreaClassificationInput({
+      assertDecompositionInput({
         request: " ",
-        areas: catalog.areas
+        dimensions: basis.dimensions
       }),
     /must be non-empty/
   );
-  const complete = Schema.decodeSync(AreaClassificationResult)({
-    weights: catalog.areas.map((area) => ({ areaId: area.id, weight: 0.18 })),
+  const complete = Schema.decodeSync(DecompositionResult)({
+    weights: basis.dimensions.map((dimension) => ({ dimensionId: dimension.id, weight: 0.18 })),
     unknownWeight: 0.1
   });
-  assert.doesNotThrow(() => assertAreaClassificationResult(complete, catalog));
+  assert.doesNotThrow(() => assertDecompositionResult(complete, basis));
   assert.throws(
-    () =>
-      assertAreaClassificationResult(
-        { ...complete, weights: complete.weights.slice(0, -1) },
-        catalog
-      ),
-    /missing routing area weight/
+    () => assertDecompositionResult({ ...complete, weights: complete.weights.slice(0, -1) }, basis),
+    /missing routing dimension weight/
   );
   assert.throws(
     () =>
-      assertAreaClassificationResult(
+      assertDecompositionResult(
         { ...complete, weights: [...complete.weights.slice(0, -1), complete.weights[0]!] },
-        catalog
+        basis
       ),
-    /duplicate routing area weight/
+    /duplicate routing dimension weight/
   );
   assert.throws(
     () =>
-      assertAreaClassificationResult(
+      assertDecompositionResult(
         {
           ...complete,
-          weights: [...complete.weights.slice(0, -1), { areaId: "other-area", weight: 0.18 }]
+          weights: [
+            ...complete.weights.slice(0, -1),
+            { dimensionId: "other-dimension", weight: 0.18 }
+          ]
         },
-        catalog
+        basis
       ),
-    /unknown routing area weight/
+    /unknown routing dimension weight/
   );
   assert.throws(
-    () => assertAreaClassificationResult({ ...complete, unknownWeight: 0.2 }, catalog),
+    () => assertDecompositionResult({ ...complete, unknownWeight: 0.2 }, basis),
     /must sum to one/
   );
   assert.throws(() =>
-    Schema.decodeSync(AreaClassificationResult)({
-      weights: [{ areaId: "gateway-protocol", weight: -0.1 }],
+    Schema.decodeSync(DecompositionResult)({
+      weights: [{ dimensionId: "gateway-protocol", weight: -0.1 }],
       unknownWeight: 1
     })
   );
 
-  const decomposition = Schema.decodeSync(RequestAreaDecomposition)({
+  const decomposition = Schema.decodeSync(RequestDecomposition)({
     version: COMPOSITIONAL_ROUTING_VERSION,
-    definitionSetDigest: catalog.definitionSetDigest,
+    basisDigest: basis.basisDigest,
     ...complete
   });
-  assert.doesNotThrow(() => assertRequestAreaDecomposition(decomposition, catalog));
+  assert.doesNotThrow(() => assertRequestDecomposition(decomposition, basis));
   assert.throws(
-    () =>
-      assertRequestAreaDecomposition(
-        { ...decomposition, definitionSetDigest: "wrong-definitions" },
-        catalog
-      ),
+    () => assertRequestDecomposition({ ...decomposition, basisDigest: "wrong-definitions" }, basis),
     /does not match/
   );
 });
@@ -301,28 +299,28 @@ test("v2 objectives reject malformed and non-normalized policies", () => {
   );
 });
 
-test("v2 snapshots require a complete, coherent model-area evidence matrix", () => {
-  const snapshot = makePublishedRoutingSnapshotV2();
-  assert.doesNotThrow(() => assertPublishedRoutingSnapshotV2(snapshot));
+test("v2 snapshots require a complete, coherent model-dimension evidence matrix", () => {
+  const snapshot = makePublishedRoutingActivation();
+  assert.doesNotThrow(() => assertPublishedRoutingActivation(snapshot));
   assert.throws(
     () =>
-      assertPublishedRoutingSnapshotV2({
+      assertPublishedRoutingActivation({
         ...snapshot,
         evidence: snapshot.evidence.slice(0, -1)
       }),
-    /missing model-area evidence/
+    /missing model-dimension evidence/
   );
   assert.throws(
     () =>
-      assertPublishedRoutingSnapshotV2({
+      assertPublishedRoutingActivation({
         ...snapshot,
         evidence: [...snapshot.evidence, snapshot.evidence[0]!]
       }),
-    /duplicate model-area evidence/
+    /duplicate model-dimension evidence/
   );
   assert.throws(
     () =>
-      assertPublishedRoutingSnapshotV2({
+      assertPublishedRoutingActivation({
         ...snapshot,
         evidence: [
           ...snapshot.evidence.slice(0, -1),
@@ -333,7 +331,7 @@ test("v2 snapshots require a complete, coherent model-area evidence matrix", () 
   );
   assert.throws(
     () =>
-      assertPublishedRoutingSnapshotV2({
+      assertPublishedRoutingActivation({
         ...snapshot,
         candidateModels: ["auto", "anthropic/model-b"]
       }),
@@ -342,25 +340,25 @@ test("v2 snapshots require a complete, coherent model-area evidence matrix", () 
 });
 
 test("v2 evidence never represents partially unknown pricing as a known average", () => {
-  const snapshot = makePublishedRoutingSnapshotV2();
+  const snapshot = makePublishedRoutingActivation();
   const [first, ...rest] = snapshot.evidence;
   assert.throws(
     () =>
-      assertPublishedRoutingSnapshotV2({
+      assertPublishedRoutingActivation({
         ...snapshot,
         evidence: [{ ...first!, unpricedCalls: 1 }, ...rest]
       }),
     /must not report an average cost/
   );
   assert.doesNotThrow(() =>
-    assertPublishedRoutingSnapshotV2({
+    assertPublishedRoutingActivation({
       ...snapshot,
       evidence: [{ ...first!, averageCostUsd: undefined, unpricedCalls: 20 }, ...rest]
     })
   );
   assert.throws(
     () =>
-      assertPublishedRoutingSnapshotV2({
+      assertPublishedRoutingActivation({
         ...snapshot,
         evidence: [{ ...first!, averageCostUsd: undefined, unpricedCalls: 0 }, ...rest]
       }),
@@ -369,14 +367,14 @@ test("v2 evidence never represents partially unknown pricing as a known average"
 });
 
 test("v2 decisions match their snapshot and rank only eligible candidates", () => {
-  const snapshot = makePublishedRoutingSnapshotV2();
-  const catalog = makeRoutingAreaCatalog();
-  const decision = Schema.decodeSync(AutoRoutingDecisionV2)({
+  const snapshot = makePublishedRoutingActivation();
+  const basis = makeRoutingBasis();
+  const decision = Schema.decodeSync(AutoRoutingDecision)({
     version: COMPOSITIONAL_ROUTING_VERSION,
     decomposition: {
       version: COMPOSITIONAL_ROUTING_VERSION,
-      definitionSetDigest: catalog.definitionSetDigest,
-      weights: catalog.areas.map((area) => ({ areaId: area.id, weight: 0.2 })),
+      basisDigest: basis.basisDigest,
+      weights: basis.dimensions.map((dimension) => ({ dimensionId: dimension.id, weight: 0.2 })),
       unknownWeight: 0
     },
     requirements: {
@@ -413,10 +411,10 @@ test("v2 decisions match their snapshot and rank only eligible candidates", () =
     selectedModel: "openai/model-a",
     fallbackModels: ["anthropic/model-b"]
   });
-  assert.doesNotThrow(() => assertAutoRoutingDecisionV2(decision, snapshot));
+  assert.doesNotThrow(() => assertAutoRoutingDecision(decision, snapshot));
   assert.throws(
     () =>
-      assertAutoRoutingDecisionV2(
+      assertAutoRoutingDecision(
         {
           ...decision,
           candidates: [

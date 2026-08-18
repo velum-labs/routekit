@@ -95,6 +95,7 @@ import {
 import { type DaemonLive, daemonLive } from "./effect/daemon-live.js";
 import { ActiveGateway, type ActiveGatewayValue, Generations } from "./effect/services.js";
 import { makeCompositionalRoutingPolicyReader } from "./eval-routing-policy.js";
+import { EvalSessionManager } from "./eval-session-service.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import { LeaderboardRollupStore } from "./leaderboard.js";
 import {
@@ -317,6 +318,7 @@ export async function bootstrapRouteKitDaemon(
       return injected;
     };
     const compositionalPolicyReader = makeCompositionalRoutingPolicyReader(home);
+    const evalSessions = new EvalSessionManager();
     effectRuntime = ManagedRuntime.make(
       daemonLive({
         env: {
@@ -331,6 +333,7 @@ export async function bootstrapRouteKitDaemon(
         state: runtimeState,
         sidecar,
         tokens,
+        evalSessions,
         telemetry: {
           consent: telemetry,
           ...(daemonTelemetry !== undefined ? { daemon: daemonTelemetry } : {}),
@@ -394,6 +397,8 @@ export async function bootstrapRouteKitDaemon(
           port: options.port ?? 8080,
           authToken: dataAuth.token,
           resolveDataPrincipal: (presented) => {
+            const evalPrincipal = evalSessions.resolve(presented);
+            if (evalPrincipal !== undefined) return evalPrincipal;
             const principal = tokens.resolve(presented, "data");
             if (principal !== undefined) {
               return {

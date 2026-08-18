@@ -66,6 +66,10 @@ const telemetryStatus = {
 
 const ACCOUNT_KINDS = ["claude-code", "codex"] as const;
 const TOKEN_PLANES = ["data", "control"] as const;
+const EVAL_SESSION_PURPOSES = ["authoring", "qualification"] as const;
+const routingActivation = requiredUnknown("activation") as z.ZodType<
+  RouteKitControlParams["evalRouting.activate"]["activation"]
+>;
 
 /**
  * `buildTelemetryEvent` owns the command-completed allowlist, so the protocol
@@ -435,6 +439,89 @@ export const CONTROL_METHODS = {
     }),
     mutation: "mutation",
     operation: "token_revoke"
+  },
+  "evalSession.open": {
+    params: z
+      .strictObject({
+        purpose: requiredEnum("purpose", EVAL_SESSION_PURPOSES),
+        operationId: requiredString("operationId").max(128),
+        allowedModels: z
+          .array(requiredString("allowedModels").max(256))
+          .min(1)
+          .max(64)
+          .superRefine((models, ctx) => {
+            if (new Set(models).size !== models.length) {
+              ctx.addIssue({ code: "custom", message: "allowedModels contains duplicates" });
+            }
+            for (const [index, model] of models.entries()) {
+              if (!model.includes("/") || model.trim().toLowerCase() === "auto") {
+                ctx.addIssue({
+                  code: "custom",
+                  path: [index],
+                  message: "allowedModels must contain explicit provider/model ids"
+                });
+              }
+            }
+          }),
+        limits: z.strictObject({
+          calls: boundedInt(1, "calls must be a positive safe integer"),
+          inputTokens: boundedInt(1, "inputTokens must be a positive safe integer"),
+          outputTokens: boundedInt(1, "outputTokens must be a positive safe integer"),
+          perCallOutputTokens: boundedInt(1, "perCallOutputTokens must be a positive safe integer"),
+          wallTimeMs: boundedInt(1, "wallTimeMs must be a positive safe integer")
+        }),
+        expiresInSeconds: boundedInt(
+          1,
+          "expiresInSeconds must be between 1 and 14400"
+        ).max(14_400, {
+          error: "expiresInSeconds must be between 1 and 14400"
+        })
+      })
+      .superRefine((params, ctx) => {
+        if (params.limits.perCallOutputTokens > params.limits.outputTokens) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["limits", "perCallOutputTokens"],
+            message: "perCallOutputTokens cannot exceed outputTokens"
+          });
+        }
+      }),
+    result: z.strictObject({
+      sessionId: value.string,
+      gatewayUrl: value.string,
+      bearerCredential: value.string,
+      targetIdentity: value.string,
+      expiresAt: value.string
+    }),
+    mutation: "mutation",
+    idempotency: "required",
+    surface: "cli-internal"
+  },
+  "evalSession.close": {
+    params: z.strictObject({ sessionId: requiredString("sessionId") }),
+    result: z.strictObject({ sessionId: value.string, closed: value.boolean }),
+    mutation: "mutation",
+    idempotency: "required",
+    surface: "cli-internal"
+  },
+  "evalRouting.status": {
+    params: closedParams,
+    result: z.strictObject({ activation: routingActivation.nullable() }),
+    mutation: "query",
+    surface: "cli-internal"
+  },
+  "evalRouting.activate": {
+    params: z.strictObject({
+      expectedEvidenceDigest: requiredString("expectedEvidenceDigest").nullable(),
+      activation: routingActivation
+    }),
+    result: z.strictObject({
+      activated: value.true,
+      activation: routingActivation
+    }),
+    mutation: "mutation",
+    idempotency: "required",
+    surface: "cli-internal"
   }
 } as const satisfies ControlMethodTable;
 

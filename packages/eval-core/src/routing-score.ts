@@ -1,14 +1,14 @@
 import type {
-  PublishedRoutingSnapshotV2,
-  RequestAreaDecomposition,
+  PublishedRoutingActivation,
+  RequestDecomposition,
   RequestRoutingRequirements,
   RoutingCandidateDecision,
   RoutingEndpoint,
   RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
-import { ROUTING_AREA_VECTOR_TOLERANCE } from "@velum-labs/routekit-eval-contracts";
+import { REQUEST_DECOMPOSITION_TOLERANCE } from "@velum-labs/routekit-eval-contracts";
 
-const VECTOR_TOLERANCE = ROUTING_AREA_VECTOR_TOLERANCE;
+const VECTOR_TOLERANCE = REQUEST_DECOMPOSITION_TOLERANCE;
 
 export type RoutingModelAvailability = Readonly<{
   model: string;
@@ -21,15 +21,15 @@ export type RoutingModelAvailability = Readonly<{
 }>;
 
 export type RoutingScoreConstraints = Readonly<{
-  /** Per-area conservative quality floors, applied before aggregation. */
-  minimumAreaQuality?: Readonly<Record<string, number>>;
+  /** Per-dimension conservative quality floors, applied before aggregation. */
+  minimumDimensionQuality?: Readonly<Record<string, number>>;
   /** Maximum weighted failure rate for a candidate. */
   maximumFailureRate?: number;
 }>;
 
 export type ScoreRoutingCandidatesInput = Readonly<{
-  snapshot: PublishedRoutingSnapshotV2;
-  decomposition: RequestAreaDecomposition;
+  snapshot: PublishedRoutingActivation;
+  decomposition: RequestDecomposition;
   requirements: RequestRoutingRequirements;
   objective: RoutingObjectivePolicy;
   availableModels: readonly RoutingModelAvailability[];
@@ -72,7 +72,7 @@ type CalculatedCandidate = {
   rank?: number;
 };
 
-type WeightedArea = Readonly<{ areaId: string; weight: number }>;
+type WeightedDimension = Readonly<{ dimensionId: string; weight: number }>;
 
 function invalid(message: string): never {
   throw new RoutingScoringError("invalid_input", message);
@@ -104,52 +104,55 @@ function compareNumberDescending(left: number | undefined, right: number | undef
   return right - left;
 }
 
-function activeWeights(input: ScoreRoutingCandidatesInput): readonly WeightedArea[] {
-  if (input.snapshot.definitionSetDigest !== input.decomposition.definitionSetDigest) {
-    invalid("area definition digest does not match the routing snapshot");
+function activeWeights(input: ScoreRoutingCandidatesInput): readonly WeightedDimension[] {
+  if (input.snapshot.basisDigest !== input.decomposition.basisDigest) {
+    invalid("dimension definition digest does not match the routing snapshot");
   }
 
-  const areaIds = input.snapshot.areas.map((area) => area.id);
-  unique(areaIds, "snapshot area IDs");
+  const dimensionIds = input.snapshot.dimensions.map((dimension) => dimension.id);
+  unique(dimensionIds, "snapshot dimension IDs");
   unique(input.snapshot.candidateModels, "snapshot candidate models");
-  if (areaIds.length === 0) invalid("routing snapshot must contain at least one area");
+  if (dimensionIds.length === 0) invalid("routing snapshot must contain at least one dimension");
   if (input.snapshot.candidateModels.length === 0) {
     invalid("routing snapshot must contain at least one candidate model");
   }
 
   const weights = new Map<string, number>();
   for (const entry of input.decomposition.weights) {
-    finiteUnit(entry.weight, `weight for area ${entry.areaId}`);
-    if (weights.has(entry.areaId)) invalid(`duplicate decomposition area: ${entry.areaId}`);
-    if (!areaIds.includes(entry.areaId)) invalid(`unknown decomposition area: ${entry.areaId}`);
-    weights.set(entry.areaId, entry.weight);
+    finiteUnit(entry.weight, `weight for dimension ${entry.dimensionId}`);
+    if (weights.has(entry.dimensionId))
+      invalid(`duplicate decomposition dimension: ${entry.dimensionId}`);
+    if (!dimensionIds.includes(entry.dimensionId))
+      invalid(`unknown decomposition dimension: ${entry.dimensionId}`);
+    weights.set(entry.dimensionId, entry.weight);
   }
-  for (const areaId of areaIds) {
-    if (!weights.has(areaId)) invalid(`missing decomposition area: ${areaId}`);
+  for (const dimensionId of dimensionIds) {
+    if (!weights.has(dimensionId)) invalid(`missing decomposition dimension: ${dimensionId}`);
   }
   finiteUnit(input.decomposition.unknownWeight, "unknown weight");
   const total = [...weights.values()].reduce((sum, weight) => sum + weight, 0);
   if (Math.abs(total + input.decomposition.unknownWeight - 1) > VECTOR_TOLERANCE) {
-    invalid("area weights and unknown weight must sum to one");
+    invalid("dimension weights and unknown weight must sum to one");
   }
-  if (total <= VECTOR_TOLERANCE) invalid("routing requires at least one covered area");
+  if (total <= VECTOR_TOLERANCE) invalid("routing requires at least one covered dimension");
 
-  return areaIds.flatMap((areaId): WeightedArea[] => {
-    const weight = weights.get(areaId) ?? 0;
-    return weight > VECTOR_TOLERANCE ? [{ areaId, weight: weight / total }] : [];
+  return dimensionIds.flatMap((dimensionId): WeightedDimension[] => {
+    const weight = weights.get(dimensionId) ?? 0;
+    return weight > VECTOR_TOLERANCE ? [{ dimensionId, weight: weight / total }] : [];
   });
 }
 
-function validateInput(input: ScoreRoutingCandidatesInput): readonly WeightedArea[] {
+function validateInput(input: ScoreRoutingCandidatesInput): readonly WeightedDimension[] {
   const active = activeWeights(input);
   const availableIds = input.availableModels.map((model) => model.model);
   unique(availableIds, "available model IDs");
 
-  const floors = input.constraints?.minimumAreaQuality ?? {};
-  const knownAreas = new Set(input.snapshot.areas.map((area) => area.id));
-  for (const [areaId, floor] of Object.entries(floors)) {
-    if (!knownAreas.has(areaId)) invalid(`quality floor refers to unknown area: ${areaId}`);
-    finiteUnit(floor, `quality floor for area ${areaId}`);
+  const floors = input.constraints?.minimumDimensionQuality ?? {};
+  const knownDimensions = new Set(input.snapshot.dimensions.map((dimension) => dimension.id));
+  for (const [dimensionId, floor] of Object.entries(floors)) {
+    if (!knownDimensions.has(dimensionId))
+      invalid(`quality floor refers to unknown dimension: ${dimensionId}`);
+    finiteUnit(floor, `quality floor for dimension ${dimensionId}`);
   }
   const maximumFailureRate = input.constraints?.maximumFailureRate;
   if (maximumFailureRate !== undefined) {
@@ -198,7 +201,7 @@ function capabilityReasons(
   if (requirements.requiresVision && !availability.supportsVision) {
     reasons.push("vision_not_supported");
   }
-  // Numeric limits are optional catalog assertions. A known insufficient
+  // Numeric limits are optional basis assertions. A known insufficient
   // limit excludes the model; absent metadata must not be misrepresented as
   // proof that an otherwise served model is incapable.
   if (
@@ -220,10 +223,10 @@ function capabilityReasons(
 
 function calculateCandidates(
   input: ScoreRoutingCandidatesInput,
-  active: readonly WeightedArea[]
+  active: readonly WeightedDimension[]
 ): CalculatedCandidate[] {
   const availability = new Map(input.availableModels.map((model) => [model.model, model]));
-  const floors = input.constraints?.minimumAreaQuality ?? {};
+  const floors = input.constraints?.minimumDimensionQuality ?? {};
 
   return input.snapshot.candidateModels.map((model): CalculatedCandidate => {
     const reasons = capabilityReasons(availability.get(model), input.requirements);
@@ -235,19 +238,19 @@ function calculateCandidates(
     let completeDuration = true;
     let completeCost = true;
 
-    for (const { areaId, weight } of active) {
+    for (const { dimensionId, weight } of active) {
       const cells = input.snapshot.evidence.filter(
-        (cell) => cell.model === model && cell.areaId === areaId
+        (cell) => cell.model === model && cell.dimensionId === dimensionId
       );
       if (cells.length === 0) {
-        reasons.push(`missing_evidence:${areaId}`);
+        reasons.push(`missing_evidence:${dimensionId}`);
         completeCoreEvidence = false;
         completeDuration = false;
         completeCost = false;
         continue;
       }
       if (cells.length > 1) {
-        reasons.push(`duplicate_evidence:${areaId}`);
+        reasons.push(`duplicate_evidence:${dimensionId}`);
         completeCoreEvidence = false;
         completeDuration = false;
         completeCost = false;
@@ -257,9 +260,9 @@ function calculateCandidates(
       if (cell === undefined) continue;
       quality += cell.quality.lowerConfidenceBound * weight;
       failureRate += cell.failureRate * weight;
-      const floor = floors[areaId];
+      const floor = floors[dimensionId];
       if (floor !== undefined && cell.quality.lowerConfidenceBound < floor) {
-        reasons.push(`quality_below_area_floor:${areaId}`);
+        reasons.push(`quality_below_dimension_floor:${dimensionId}`);
       }
       if (cell.p95DurationMs === undefined) completeDuration = false;
       else duration += cell.p95DurationMs * weight;
@@ -505,7 +508,7 @@ function publicDecision(candidate: CalculatedCandidate): RoutingCandidateDecisio
 
 /**
  * Deterministically rank candidate models from a semantic decomposition and a
- * published model-by-area evidence matrix. This function performs no I/O and
+ * published model-by-dimension evidence matrix. This function performs no I/O and
  * never treats missing or partially unpriced cost as zero.
  */
 export function scoreRoutingCandidates(input: ScoreRoutingCandidatesInput): RoutingScoreResult {

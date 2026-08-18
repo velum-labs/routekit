@@ -65,10 +65,13 @@ export {
 export type {
   ConfigSnapshot,
   DaemonStatus,
+  EvalSessionLimits,
+  EvalSessionPurpose,
   IssuedTokenResult,
   LaunchPreparation,
   ModelInfo,
   ModelRouteInfo,
+  OpenedEvalSession,
   RouteKitAccountLimits,
   RouteKitAccountMemberStatus,
   RouteKitAccountStatusEntry,
