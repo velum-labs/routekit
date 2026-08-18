@@ -18,6 +18,10 @@
     "./effect": {
       "types": "./dist/effect-api.d.ts",
       "default": "./dist/effect-api.js"
+    },
+    "./experiment": {
+      "types": "./dist/experiment-api.d.ts",
+      "default": "./dist/experiment-api.js"
     }
   },
   "files": [

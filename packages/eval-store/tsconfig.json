@@ -5,5 +5,9 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../eval-contracts" }, { "path": "../runtime" }]
+  "references": [
+    { "path": "../eval-contracts" },
+    { "path": "../eval-core" },
+    { "path": "../runtime" }
+  ]
 }

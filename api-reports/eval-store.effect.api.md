@@ -2,10 +2,12 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `4dc3f3bb81083f4632244e6276a198f787560b8fb26a2787c7d862d1cc555b80`
+Declaration SHA-256: `42a2d37343bb948cc86421052b4044f9082d5eacb54ba0ee91b8a83f876f0187`
 
 ## Root declarations
 
 ```ts
 export { EvalStore, makeEvalStore } from "./store.js";
+export { LocalArtifactStore, VercelBlobArtifactStore, putJsonArtifact, readJsonArtifact, type ArtifactPutOptions, type ArtifactStore, type VercelBlobArtifactStoreOptions } from "./artifacts.js";
+export { LocalExperimentLedger, type CompleteExperimentJobInput, type ExperimentLedger, type FailExperimentJobInput } from "./experiment-ledger.js";
 ```

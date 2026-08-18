@@ -1,0 +1,26 @@
+{
+  "functions": {
+    "src/app/api/queue/hosted-model/route.ts": {
+      "maxDuration": 300,
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "hosted-model-call",
+          "retryAfterSeconds": 30,
+          "maxConcurrency": 32
+        }
+      ]
+    },
+    "src/app/api/queue/sandbox/route.ts": {
+      "maxDuration": 60,
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "experiment-sandbox",
+          "retryAfterSeconds": 60,
+          "maxConcurrency": 8
+        }
+      ]
+    }
+  }
+}

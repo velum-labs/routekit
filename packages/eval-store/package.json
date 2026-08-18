@@ -18,6 +18,10 @@
     "./effect": {
       "types": "./dist/effect-api.d.ts",
       "default": "./dist/effect-api.js"
+    },
+    "./platform": {
+      "types": "./dist/platform-api.d.ts",
+      "default": "./dist/platform-api.js"
     }
   },
   "files": [
@@ -30,7 +34,9 @@
     "provenance": true
   },
   "dependencies": {
+    "@vercel/blob": "catalog:",
     "@velum-labs/routekit-eval-contracts": "workspace:*",
+    "@velum-labs/routekit-eval-core": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "effect": "catalog:"
   },

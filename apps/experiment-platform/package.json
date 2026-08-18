@@ -1,0 +1,47 @@
+{
+  "name": "@velum-labs/routekit-experiment-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Vercel control plane for reproducible RouteKit experiments.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3010",
+    "build": "next build",
+    "start": "next start --port 3010",
+    "cli": "node cli/experiment-cli.mjs",
+    "cloud:check": "node cli/cloud-preflight.mjs",
+    "assets:freeze": "node cli/freeze-coding-router-assets.mjs",
+    "assets:upload": "node cli/upload-frozen-assets.mjs",
+    "inputs:prepare": "node cli/prepare-luna-task-inputs.mjs",
+    "inputs:upload": "node cli/upload-luna-task-inputs.mjs",
+    "manifests:generate": "node cli/generate-luna-manifests.mjs",
+    "composition:prepare": "node cli/prepare-composition-task-inputs.mjs",
+    "composition:upload": "node cli/upload-composition-task-inputs.mjs",
+    "composition:manifests": "node cli/generate-composition-manifests.mjs",
+    "runner:build": "vercel vcr build docker . routekit-experiment-runner:coding-router --push -- -f apps/experiment-platform/Dockerfile.coding-router-runner",
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "types:check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "catalog:",
+    "@vercel/blob": "catalog:",
+    "@vercel/queue": "catalog:",
+    "@vercel/sandbox": "catalog:",
+    "@velum-labs/routekit-eval-contracts": "workspace:*",
+    "@velum-labs/routekit-eval-core": "workspace:*",
+    "@velum-labs/routekit-eval-store": "workspace:*",
+    "effect": "catalog:",
+    "next": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "workflow": "catalog:",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:"
+  }
+}

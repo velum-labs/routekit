@@ -16,8 +16,12 @@ __pycache__/
 *.tgz
 .pnpm-store
 .npm
+.tools/
 .eslintcache
 *.log
+.routekit-experiments/
+.routekit-experiment-assets/
+apps/experiment-platform/.routekit-experiments/
 docs/generated/
 apps/docs/generated/
 apps/docs/content/docs/api/
@@ -36,3 +40,5 @@ apps/docs/.source/
 deploy/aws/bootstrap/backend.tf
 deploy/aws/bootstrap/backend.hcl
 deploy/aws/.failover.env
+.vercel
+.env*
