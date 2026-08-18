@@ -4,9 +4,14 @@ import type {
 } from "@velum-labs/routekit-eval-contracts";
 import {
   evaluateClassificationPredictions,
+  evaluateCompositionPredictions,
   extractClassificationPrediction,
+  extractCompositionPrediction,
   renderClassificationMetrics,
+  renderCompositionMetrics,
   renderExperimentReport,
+  type CompositionEvaluationEntry,
+  type CompositionEvaluationRole,
   type LabeledClassificationPrediction
 } from "@velum-labs/routekit-eval-core/experiment";
 import { putJsonArtifact } from "@velum-labs/routekit-eval-store/platform";
@@ -157,6 +162,7 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
     reportSnapshot.experiment.manifest.tasks.map((task) => [task.id, task.metadata])
   );
   const predictions: LabeledClassificationPrediction[] = [];
+  const compositionEntries: CompositionEvaluationEntry[] = [];
   const succeeded = reportSnapshot.jobs.filter(
     (record) => record.status === "succeeded" && record.outputArtifact !== undefined
   );
@@ -167,6 +173,25 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
         const raw = JSON.parse(
           new TextDecoder().decode(await artifacts.get(record.outputArtifact))
         ) as unknown;
+        const evaluationRole = record.job.configuration.evaluationRole;
+        if (
+          evaluationRole === "composition_reference" ||
+          evaluationRole === "composition_candidate"
+        ) {
+          return {
+            kind: "composition" as const,
+            entry: {
+              treatmentId: record.job.treatmentId,
+              taskId: record.job.taskId,
+              seed: record.job.seed,
+              evaluationRole: evaluationRole as CompositionEvaluationRole,
+              prediction: extractCompositionPrediction(raw),
+              latencyMs: record.latencyMs ?? 0,
+              providerCostUsd: record.providerCostUsd,
+              infrastructureCostUsd: record.infrastructureCostUsd
+            } satisfies CompositionEvaluationEntry
+          };
+        }
         const prediction = extractClassificationPrediction(raw);
         if (prediction === undefined) return undefined;
         const metadata = taskMetadata.get(record.job.taskId);
@@ -187,24 +212,31 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
           return undefined;
         }
         return {
-          treatmentId: record.job.treatmentId,
-          taskId: record.job.taskId,
-          seed: record.job.seed,
-          expectedScope,
-          expectedArea,
-          expectedAreas,
-          prediction: {
-            ...prediction,
-            latencyMs: record.latencyMs ?? prediction.latencyMs,
-            providerCostUsd: record.providerCostUsd,
-            infrastructureCostUsd: record.infrastructureCostUsd
-          }
-        } satisfies LabeledClassificationPrediction;
+          kind: "classification" as const,
+          entry: {
+            treatmentId: record.job.treatmentId,
+            taskId: record.job.taskId,
+            seed: record.job.seed,
+            expectedScope,
+            expectedArea,
+            expectedAreas,
+            prediction: {
+              ...prediction,
+              latencyMs: record.latencyMs ?? prediction.latencyMs,
+              providerCostUsd: record.providerCostUsd,
+              infrastructureCostUsd: record.infrastructureCostUsd
+            }
+          } satisfies LabeledClassificationPrediction
+        };
       })
     );
-    predictions.push(...batch.filter((entry) => entry !== undefined));
+    for (const result of batch) {
+      if (result?.kind === "composition") compositionEntries.push(result.entry);
+      else if (result?.kind === "classification") predictions.push(result.entry);
+    }
   }
   const classificationMetrics = evaluateClassificationPredictions(predictions);
+  const compositionMetrics = evaluateCompositionPredictions(compositionEntries);
   const failedJobs = reportSnapshot.jobs.some((record) => record.status === "failed");
   const providerBudgetExceeded =
     reportSnapshot.experiment.providerSpentUsd >
@@ -220,27 +252,25 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
     ...(infrastructureBudgetExceeded ? ["actual Vercel cost exceeded its budget"] : [])
   ];
   const finalError = failureReasons.length === 0 ? undefined : failureReasons.join("; ");
-  const metricsArtifact = await putJsonArtifact(
-    artifacts,
-    `metrics/${experimentId}/classification`,
-    {
-      schemaVersion: 1,
-      experimentId,
-      manifestHash: reportSnapshot.experiment.manifestHash,
-      status: finalStatus,
-      successfulJobs: succeeded.length,
-      labeledPredictions: predictions.length,
-      budget: {
-        providerMaximumUsd: reportSnapshot.experiment.manifest.budget.providerMaximumUsd,
-        providerSpentUsd: reportSnapshot.experiment.providerSpentUsd,
-        providerExceeded: providerBudgetExceeded,
-        vercelMaximumUsd: reportSnapshot.experiment.manifest.budget.vercelMaximumUsd,
-        vercelSpentUsd: reportSnapshot.experiment.infrastructureSpentUsd,
-        vercelExceeded: infrastructureBudgetExceeded
-      },
-      treatments: classificationMetrics
-    }
-  );
+  const metricsArtifact = await putJsonArtifact(artifacts, `metrics/${experimentId}/evaluation`, {
+    schemaVersion: 2,
+    experimentId,
+    manifestHash: reportSnapshot.experiment.manifestHash,
+    status: finalStatus,
+    successfulJobs: succeeded.length,
+    labeledPredictions: predictions.length,
+    compositionAttempts: compositionEntries.length,
+    budget: {
+      providerMaximumUsd: reportSnapshot.experiment.manifest.budget.providerMaximumUsd,
+      providerSpentUsd: reportSnapshot.experiment.providerSpentUsd,
+      providerExceeded: providerBudgetExceeded,
+      vercelMaximumUsd: reportSnapshot.experiment.manifest.budget.vercelMaximumUsd,
+      vercelSpentUsd: reportSnapshot.experiment.infrastructureSpentUsd,
+      vercelExceeded: infrastructureBudgetExceeded
+    },
+    treatments: classificationMetrics,
+    composition: compositionMetrics
+  });
   await ledger.attachMetrics(experimentId, metricsArtifact);
   const report = [
     renderExperimentReport({
@@ -250,10 +280,13 @@ async function aggregateExperiment(experimentId: string): Promise<string> {
     "",
     renderClassificationMetrics(classificationMetrics).trimEnd(),
     "",
+    renderCompositionMetrics(compositionMetrics).trimEnd(),
+    "",
     "## Metric artifacts",
     "",
-    `- Classification metrics: \`${metricsArtifact.pathname}\``,
+    `- Evaluation metrics: \`${metricsArtifact.pathname}\``,
     `- Labeled standardized predictions: ${predictions.length}`,
+    `- Composition attempts: ${compositionEntries.length}`,
     ""
   ].join("\n");
   const artifact = await artifacts.put(report, {

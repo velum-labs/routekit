@@ -11,9 +11,12 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import {
   aggregateEvalResults,
   evaluateClassificationPredictions,
+  evaluateCompositionPredictions,
   expectedExperimentCost,
   extractClassificationPrediction,
+  extractCompositionPrediction,
   freezeExperimentPlan,
+  renderCompositionMetrics,
   requiredExperimentApprovalStages,
   runEvalSuite
 } from "../effect-api.js";
@@ -434,4 +437,151 @@ test("classification predictions are extracted from worker and hosted-model outp
       provenance: prediction.provenance
     }
   );
+});
+
+test("composition predictions are extracted from the exact runtime contract", () => {
+  const defaults = {
+    latencyMs: 42,
+    providerCostUsd: 0.002,
+    infrastructureCostUsd: 0,
+    provenance: {
+      model: "openai/gpt-5.6-luna",
+      provider: "openai",
+      imageDigest: "a".repeat(64),
+      datasetHash: "b".repeat(64),
+      configurationHash: "c".repeat(64),
+      seed: 181081
+    }
+  };
+  const expected = {
+    areaCompositionScores: {
+      backend: 0.9,
+      authentication: 0.75,
+      frontend: 0.05
+    },
+    unknownProbability: 0.12,
+    ...defaults
+  };
+  assert.deepEqual(
+    extractCompositionPrediction(
+      {
+        response: {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  area_composition_scores: {
+                    backend: 0.9,
+                    authentication: 0.75,
+                    frontend: 0.05
+                  },
+                  unknown_probability: 0.12
+                })
+              }
+            }
+          ]
+        }
+      },
+      defaults
+    ),
+    expected
+  );
+  assert.deepEqual(extractCompositionPrediction({ compositionPrediction: expected }), expected);
+  assert.equal(
+    extractCompositionPrediction(
+      {
+        area_composition_scores: { backend: 1.1 },
+        unknown_probability: 0
+      },
+      defaults
+    ),
+    undefined
+  );
+});
+
+test("composition metrics compare candidate vectors with a Sol reference", () => {
+  const provenance = {
+    imageDigest: "a".repeat(64),
+    datasetHash: "b".repeat(64),
+    configurationHash: "c".repeat(64),
+    seed: 181081
+  };
+  const prediction = (
+    areaCompositionScores: Record<string, number>,
+    unknownProbability: number
+  ) => ({
+    areaCompositionScores,
+    unknownProbability,
+    latencyMs: 10,
+    providerCostUsd: 0.001,
+    infrastructureCostUsd: 0,
+    provenance
+  });
+  const metrics = evaluateCompositionPredictions([
+    {
+      treatmentId: "sol_reference",
+      taskId: "task-1",
+      seed: 181081,
+      evaluationRole: "composition_reference",
+      prediction: prediction({ backend: 0.75, authentication: 0.25, frontend: 0 }, 0.1),
+      latencyMs: 100,
+      providerCostUsd: 0.01,
+      infrastructureCostUsd: 0
+    },
+    {
+      treatmentId: "sol_reference",
+      taskId: "task-2",
+      seed: 181081,
+      evaluationRole: "composition_reference",
+      prediction: prediction({ backend: 0, authentication: 0, frontend: 0 }, 0.8),
+      latencyMs: 120,
+      providerCostUsd: 0.01,
+      infrastructureCostUsd: 0
+    },
+    {
+      treatmentId: "luna_anchored",
+      taskId: "task-1",
+      seed: 181081,
+      evaluationRole: "composition_candidate",
+      prediction: prediction({ backend: 0.7, authentication: 0.4, frontend: 0.1 }, 0.2),
+      latencyMs: 10,
+      providerCostUsd: 0.001,
+      infrastructureCostUsd: 0
+    },
+    {
+      treatmentId: "luna_anchored",
+      taskId: "task-2",
+      seed: 181081,
+      evaluationRole: "composition_candidate",
+      prediction: prediction({ backend: 0.1, authentication: 0.1, frontend: 0.2 }, 0.6),
+      latencyMs: 20,
+      providerCostUsd: 0.001,
+      infrastructureCostUsd: 0
+    },
+    {
+      treatmentId: "luna_anchored",
+      taskId: "task-3",
+      seed: 181081,
+      evaluationRole: "composition_candidate",
+      latencyMs: 30,
+      providerCostUsd: 0.001,
+      infrastructureCostUsd: 0
+    }
+  ]);
+
+  assert.equal(metrics.reference?.contractValidity.rate, 1);
+  const luna = metrics.treatments[0];
+  assert.equal(luna?.contractValidity.rate, 2 / 3);
+  assert.equal(luna?.pairedPredictions, 2);
+  assert.ok(Math.abs((luna?.meanAllAreaAbsoluteError ?? 0) - 7 / 60) < 1e-12);
+  assert.ok(Math.abs((luna?.meanActiveAreaAbsoluteError ?? 0) - 0.1) < 1e-12);
+  assert.ok(Math.abs((luna?.meanInactiveAreaAbsoluteError ?? 0) - 0.125) < 1e-12);
+  assert.equal(luna?.activeAreaF1, 1);
+  assert.equal(luna?.topAreaAgreement?.rate, 1);
+  assert.equal(luna?.meanTopTwoOverlap, 1);
+  assert.equal(luna?.allActiveAreasAt3?.rate, 1);
+  assert.ok(Math.abs((luna?.meanUnknownAbsoluteError ?? 0) - 0.15) < 1e-12);
+  assert.equal(luna?.unknownAgreementAtPointFive?.rate, 1);
+  assert.equal(luna?.medianLatencyMs, 20);
+  assert.match(renderCompositionMetrics(metrics), /luna_anchored/);
 });

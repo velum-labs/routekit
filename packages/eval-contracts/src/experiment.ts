@@ -123,6 +123,23 @@ export const ClassificationPrediction = Schema.Struct({
 });
 export type ClassificationPrediction = typeof ClassificationPrediction.Type;
 
+export const CompositionPrediction = Schema.Struct({
+  areaCompositionScores: Schema.Record(Schema.String, Schema.Finite),
+  unknownProbability: Schema.Finite,
+  latencyMs: Schema.Finite,
+  providerCostUsd: Schema.Finite,
+  infrastructureCostUsd: Schema.Finite,
+  provenance: Schema.Struct({
+    model: Schema.optionalKey(Schema.String),
+    provider: Schema.optionalKey(Schema.String),
+    imageDigest: Schema.String,
+    datasetHash: Schema.String,
+    configurationHash: Schema.String,
+    seed: Schema.Finite
+  })
+});
+export type CompositionPrediction = typeof CompositionPrediction.Type;
+
 export const ExperimentJob = Schema.Struct({
   id: Schema.String,
   experimentId: Schema.String,

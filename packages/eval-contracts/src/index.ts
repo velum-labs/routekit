@@ -3,6 +3,7 @@ import { Schema } from "effect";
 export {
   ArtifactReference,
   ClassificationPrediction,
+  CompositionPrediction,
   EXPERIMENT_MANIFEST_VERSION,
   ExperimentApproval,
   ExperimentApprovalStage,

@@ -8,6 +8,17 @@ export {
   type ProportionMetric
 } from "./classification-metrics.js";
 export {
+  evaluateCompositionPredictions,
+  extractCompositionPrediction,
+  renderCompositionMetrics,
+  type CompositionEvaluationEntry,
+  type CompositionEvaluationMetrics,
+  type CompositionEvaluationRole,
+  type CompositionPredictionDefaults,
+  type CompositionReferenceMetrics,
+  type CompositionTreatmentMetrics
+} from "./composition-metrics.js";
+export {
   canonicalJson,
   configurationValue,
   expectedExperimentCost,

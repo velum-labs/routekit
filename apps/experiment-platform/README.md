@@ -205,3 +205,20 @@ Benjamin locked dataset.
 Locked-test manifests are rejected unless the deployment is explicitly configured as a separate
 `locked-evaluator` project and locked execution is enabled. The development project must keep the
 default disabled settings.
+
+## Composition-classifier experiment
+
+The prepared Luna-versus-Sol continuous area-composition experiment is documented in
+`COMPOSITION_EXPERIMENT_RUNBOOK_2026-08-18.md`. Its preparation, upload, and manifest-generation
+commands are:
+
+```bash
+pnpm --filter @velum-labs/routekit-experiment-platform composition:prepare
+pnpm --filter @velum-labs/routekit-experiment-platform composition:upload
+pnpm --filter @velum-labs/routekit-experiment-platform composition:manifests -- \
+  --image '<immutable-runner-image>' \
+  --source-commit '<implementation-commit>'
+```
+
+These commands prepare infrastructure and artifacts only. Paid inference still requires
+manifest submission followed by explicit `paid_execution` approval.

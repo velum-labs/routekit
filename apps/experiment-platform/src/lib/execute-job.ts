@@ -7,6 +7,7 @@ import {
 import {
   LocalExecutionBackend,
   extractClassificationPrediction,
+  extractCompositionPrediction,
   type ExperimentExecutionResult
 } from "@velum-labs/routekit-eval-core/experiment";
 import {
@@ -83,6 +84,27 @@ export function standardizeExperimentOutput(
     configurationHash: job.configurationHash,
     seed: job.seed
   };
+  const compositionPrediction = extractCompositionPrediction(result.output, {
+    latencyMs: result.latencyMs,
+    providerCostUsd: result.providerCostUsd,
+    infrastructureCostUsd: result.infrastructureCostUsd,
+    provenance
+  });
+  if (compositionPrediction !== undefined) {
+    return {
+      result: result.output,
+      compositionPrediction: {
+        ...compositionPrediction,
+        latencyMs: result.latencyMs,
+        providerCostUsd: result.providerCostUsd,
+        infrastructureCostUsd: result.infrastructureCostUsd,
+        provenance: {
+          ...compositionPrediction.provenance,
+          ...provenance
+        }
+      }
+    };
+  }
   const prediction = extractClassificationPrediction(result.output, {
     latencyMs: result.latencyMs,
     providerCostUsd: result.providerCostUsd,
@@ -131,6 +153,8 @@ async function executeHostedModel(
   if (model === undefined) throw new Error(`hosted-model job ${job.id} has no pinned model`);
   const parsed = parseInput(input);
   const { messages, extra } = promptFromInput(parsed, job.treatmentId);
+  const evaluationRole = stringConfiguration(job, "evaluationRole");
+  const attributionRole = evaluationRole === "composition_reference" ? "judge" : "candidate";
   const startedAt = performance.now();
   const timeoutSeconds = Math.max(
     1,
@@ -146,7 +170,7 @@ async function executeHostedModel(
       [EVAL_POLICY_BYPASS_HEADER]: "1",
       [EVAL_ATTRIBUTION_HEADER]: JSON.stringify({
         purpose: "eval",
-        role: "candidate",
+        role: attributionRole,
         runId: job.experimentId,
         caseId: job.taskId
       })
@@ -300,8 +324,7 @@ export async function processExperimentJob(jobId: string, workerId: string): Pro
       current?.status === "succeeded" ||
       current?.status === "cancelled" ||
       (current?.status === "failed" &&
-        (!current.retryable ||
-          current.attemptCount >= EXPERIMENT_JOB_MAXIMUM_ATTEMPTS))
+        (!current.retryable || current.attemptCount >= EXPERIMENT_JOB_MAXIMUM_ATTEMPTS))
     ) {
       return;
     }

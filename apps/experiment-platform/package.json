@@ -16,6 +16,9 @@
     "inputs:prepare": "node cli/prepare-luna-task-inputs.mjs",
     "inputs:upload": "node cli/upload-luna-task-inputs.mjs",
     "manifests:generate": "node cli/generate-luna-manifests.mjs",
+    "composition:prepare": "node cli/prepare-composition-task-inputs.mjs",
+    "composition:upload": "node cli/upload-composition-task-inputs.mjs",
+    "composition:manifests": "node cli/generate-composition-manifests.mjs",
     "runner:build": "vercel vcr build docker . routekit-experiment-runner:coding-router --push -- -f apps/experiment-platform/Dockerfile.coding-router-runner",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "types:check": "tsc --noEmit"
