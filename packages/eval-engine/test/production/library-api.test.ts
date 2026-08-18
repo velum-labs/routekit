@@ -19,6 +19,10 @@ import {
   makeRouteKitEvalExecutionPort,
   normalizeEvalComparisonEvidence
 } from "../../src/index.ts";
+import type {
+  EvalResultLine,
+  EvalResultRow
+} from "../../src/vendor/framework/cli/src/commands/eval/results.ts";
 import { joinOutcomes } from "../../src/vendor/framework/cli/src/commands/eval/results-lines.ts";
 
 const request = (suitePath: string): EvalComparisonRequest => ({
@@ -40,6 +44,42 @@ const closeServer = (server: ReturnType<typeof createServer>): Promise<void> =>
   new Promise((resolve, reject) =>
     server.close((error) => (error === undefined ? resolve() : reject(error)))
   );
+
+const resultEvents = (rows: readonly EvalResultRow[]): readonly EvalResultLine[] =>
+  rows.flatMap((row): readonly EvalResultLine[] => {
+    if (row.cutOff) {
+      return [
+        {
+          ...(row.caseId === undefined ? {} : { caseId: row.caseId }),
+          requestedModel: row.model,
+          ...(row.role === undefined ? {} : { role: row.role }),
+          runKey: row.runKey ?? `cutoff:${row.model}`
+        }
+      ];
+    }
+    const {
+      cutOff: _cutOff,
+      outcome,
+      outcomeDetail,
+      score,
+      ...run
+    } = row;
+    return [
+      run,
+      ...(run.runKey === undefined || outcome === "unknown"
+        ? []
+        : [
+            {
+              ...(outcomeDetail === undefined ? {} : { message: outcomeDetail }),
+              outcome,
+              runKey: run.runKey,
+              ...(score === undefined ? {} : { score })
+            }
+          ])
+    ];
+  });
+
+const resultStream = (rows: readonly EvalResultRow[]) => Stream.fromIterable(resultEvents(rows));
 
 test("Effect-native seam discovers and validates the real vendored eval format", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-library-"));
@@ -150,7 +190,7 @@ test("validation rejects non-portable imports before the execution port runs", a
         makeEvalEngineLayer({
           execute: () => {
             executed = true;
-            return Stream.succeed({ results: [], tests: [] });
+            return Stream.empty;
           }
         })
       ),
@@ -171,11 +211,13 @@ test("comparison normalization consumes vendored crash-tolerant JSONL semantics"
   await writeFile(suite, 'import { test } from "node:test";\n');
   const results = joinOutcomes([
     {
+      caseId: "cheap case",
       requestedModel: "openai/cheap",
       role: "candidate",
       runKey: "cheap-1"
     },
     {
+      caseId: "cheap case",
       model: "openai/cheap",
       role: "candidate",
       runKey: "cheap-1",
@@ -198,11 +240,13 @@ test("comparison normalization consumes vendored crash-tolerant JSONL semantics"
       score: 0.8
     },
     {
+      caseId: "strong case",
       requestedModel: "anthropic/strong",
       role: "candidate",
       runKey: "strong-cutoff"
     },
     {
+      caseId: "cheap case",
       model: "openai/judge",
       role: "judge",
       runKey: "judge-1"
@@ -216,14 +260,7 @@ test("comparison normalization consumes vendored crash-tolerant JSONL semantics"
     }).pipe(
       Effect.provide(
         makeEvalEngineLayer({
-          execute: () =>
-            Stream.succeed({
-              results,
-              tests: [
-                { name: "cheap case", status: "pass" },
-                { name: "strong case", status: "fail" }
-              ]
-            })
+          execute: () => resultStream(results)
         })
       ),
       Effect.provide(NodeServicesLayer)
@@ -293,14 +330,10 @@ test("comparison fails when a requested candidate produced no cases", async () =
         makeEvalEngineLayer({
           execute: () =>
             Stream.succeed({
-              results: joinOutcomes([
-                {
-                  requestedModel: "openai/cheap",
-                  role: "candidate",
-                  runKey: "cheap-1"
-                }
-              ]),
-              tests: [{ name: "cheap case", status: "pass" }]
+              caseId: "cheap case",
+              requestedModel: "openai/cheap",
+              role: "candidate",
+              runKey: "cheap-1"
             })
         })
       ),
@@ -330,11 +363,7 @@ test("comparison rejects unrequested candidate and mismatched judge evidence", a
       }).pipe(
         Effect.provide(
           makeEvalEngineLayer({
-            execute: () =>
-              Stream.succeed({
-                results,
-                tests: [{ name: "case", status: "pass" }]
-              })
+            execute: () => resultStream(results)
           })
         ),
         Effect.provide(NodeServicesLayer),
@@ -530,7 +559,7 @@ test("comparison rejects auto-router model ids without calling execution", async
         makeEvalEngineLayer({
           execute: () => {
             executed = true;
-            return Stream.succeed({ results: [], tests: [] });
+            return Stream.empty;
           }
         })
       ),
