@@ -1,4 +1,3 @@
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   CLIPROXY_API_KEY_ENV,
@@ -45,12 +44,10 @@ import {
   processIdentity,
   supervisorFromEnv
 } from "@velum-labs/routekit-runtime/service";
-import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
 import { Context, Effect, Layer, Ref } from "effect";
 
 import type { AccountTransactionRecovery } from "../account-transaction.js";
 import { callInspection } from "../call-attribution-store.js";
-import type { CliproxySidecar } from "../cliproxy-sidecar.js";
 import {
   createCliproxySidecar,
   createHostedCliproxySidecar
@@ -92,10 +89,6 @@ import { Leaderboard } from "../leaderboard-context.js";
 import { Sidecar } from "../sidecar-context.js";
 import { Telemetry } from "../services/telemetry/service.js";
 import { Tokens } from "../services/tokens/service.js";
-import {
-  DaemonTelemetry,
-  GatewayTelemetryAggregator
-} from "../telemetry.js";
 
 const ROUTEKIT_DAEMON_KIND = "daemon";
 const ROUTEKIT_PRODUCT = "routekit";
@@ -109,24 +102,6 @@ type Foundation = DaemonBootstrapPreflight & {
 
 class DaemonFoundation extends Context.Service<DaemonFoundation, Foundation>()(
   "@velum-labs/routekit-daemon/DaemonFoundation"
-) {}
-
-type OwnedResources = {
-  readonly sidecar: CliproxySidecar;
-  readonly accountRecovery: AccountTransactionRecovery;
-  readonly leaderboardRollups: LeaderboardRollupStore;
-  readonly telemetry: ReturnType<typeof createConsentManager>;
-  readonly daemonTelemetry: DaemonTelemetry;
-  readonly gatewayTelemetry: GatewayTelemetryAggregator;
-  leaderboardConfig(): LeaderboardConfig;
-  applyLeaderboardConfig(config: RouterConfig): void;
-  wantsSidecar(config: RouterConfig): boolean;
-  activeCredentialFingerprints(): Map<string, string>;
-  routerEnv(): NodeJS.ProcessEnv;
-};
-
-class DaemonResources extends Context.Service<DaemonResources, OwnedResources>()(
-  "@velum-labs/routekit-daemon/DaemonResources"
 ) {}
 
 export type DaemonLive =
@@ -197,83 +172,33 @@ const prepareFoundation = (options: RouteKitDaemonOptions) =>
       })
   );
 
-const makeOwnedResources = (
-  foundation: Foundation,
-  options: RouteKitDaemonOptions
-): OwnedResources => {
-  const { env, home, hosted } = foundation;
-  const sidecar =
-    hosted === undefined
-      ? createCliproxySidecar({ env })
-      : createHostedCliproxySidecar(hosted.sidecarRequest);
-  let leaderboardConfig = resolveLeaderboardConfig(foundation.runtimeState.config);
-  const leaderboardRollups = new LeaderboardRollupStore({ home, config: leaderboardConfig });
-  const telemetry = createConsentManager({
-    path: () => join(home, "telemetry.json"),
-    environmentVariable: "ROUTEKIT_TELEMETRY"
-  });
-  const daemonTelemetry = new DaemonTelemetry({
-    env,
-    resolveConsent: telemetry.resolve,
-    ...(options.telemetryTransportFactory === undefined
-      ? {}
-      : { factory: options.telemetryTransportFactory })
-  });
-  const gatewayTelemetry = new GatewayTelemetryAggregator({
-    telemetry: daemonTelemetry,
-    version: options.packageVersion,
-    ...(options.telemetryFlushIntervalMs === undefined
-      ? {}
-      : { flushIntervalMs: options.telemetryFlushIntervalMs })
-  });
-  mkdirSync(join(home, "usage"), { recursive: true, mode: 0o700 });
-  mkdirSync(join(home, "subscriptions"), { recursive: true, mode: 0o700 });
-  const activeCredentialFingerprints = (): Map<string, string> =>
-    new Map(
-      accountEntriesWithPaths(env).flatMap((entry) =>
-        entry.connector === "native"
-          ? [
-              [
-                subscriptionAccountIdentity(entry.subscriptionKind, entry.label),
-                subscriptionCredentialFingerprint(entry.path)
-              ] as const
-            ]
-          : []
-      )
-    );
-  const applyLeaderboardConfig = (config: RouterConfig): void => {
-    leaderboardConfig = resolveLeaderboardConfig(config);
-    leaderboardRollups.configure({
-      durable: leaderboardConfig.durable,
-      durableRetentionDays: leaderboardConfig.durableRetentionDays
-    });
-  };
-  const wantsSidecar = (config: RouterConfig): boolean =>
-    config.providers.cliproxy !== undefined;
-  const routerEnv = (): NodeJS.ProcessEnv => {
-    const injected: NodeJS.ProcessEnv = { ...env };
-    if ((env[CLIPROXY_API_KEY_ENV] ?? "").length === 0) {
-      const key = cliproxyApiKey(env);
-      if (key !== undefined) injected[CLIPROXY_API_KEY_ENV] = key;
-    }
-    if ((env[CLIPROXY_BASE_URL_ENV] ?? "").length === 0) {
-      injected[CLIPROXY_BASE_URL_ENV] = cliproxyBaseUrl(env);
-    }
-    return injected;
-  };
-  return {
-    sidecar,
-    accountRecovery: foundation.accountRecovery,
-    leaderboardRollups,
-    telemetry,
-    daemonTelemetry,
-    gatewayTelemetry,
-    leaderboardConfig: () => leaderboardConfig,
-    applyLeaderboardConfig,
-    wantsSidecar,
-    activeCredentialFingerprints,
-    routerEnv
-  };
+const wantsSidecar = (config: RouterConfig): boolean =>
+  config.providers.cliproxy !== undefined;
+
+const activeCredentialFingerprints = (env: NodeJS.ProcessEnv): Map<string, string> =>
+  new Map(
+    accountEntriesWithPaths(env).flatMap((entry) =>
+      entry.connector === "native"
+        ? [
+            [
+              subscriptionAccountIdentity(entry.subscriptionKind, entry.label),
+              subscriptionCredentialFingerprint(entry.path)
+            ] as const
+          ]
+        : []
+    )
+  );
+
+const routerEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+  const injected: NodeJS.ProcessEnv = { ...env };
+  if ((env[CLIPROXY_API_KEY_ENV] ?? "").length === 0) {
+    const key = cliproxyApiKey(env);
+    if (key !== undefined) injected[CLIPROXY_API_KEY_ENV] = key;
+  }
+  if ((env[CLIPROXY_BASE_URL_ENV] ?? "").length === 0) {
+    injected[CLIPROXY_BASE_URL_ENV] = cliproxyBaseUrl(env);
+  }
+  return injected;
 };
 
 function promiseHandlers(
@@ -301,27 +226,27 @@ const acquireRunningDaemon = Effect.fn("Daemon.acquireRunning")(function* (
   options: RouteKitDaemonOptions
 ) {
   const foundation = yield* DaemonFoundation;
-  const resources = yield* DaemonResources;
   const state = yield* DaemonState;
   const sidecar = yield* Sidecar;
   const generations = yield* Generations;
   const gateway = yield* ActiveGateway;
   const evalSessions = yield* EvalSessions;
   const tokens = yield* Tokens;
+  const telemetry = yield* Telemetry;
   const auth = yield* AccountAuth;
   const context = yield* Effect.context<DaemonLive>();
   const provideRuntime = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E> =>
     effect.pipe(Effect.provide(context as Context.Context<R>));
   yield* Effect.addFinalizer(() => Effect.sync(() => foundation.runtimeState.markClosed()));
 
-  yield* sidecar.reconcile(resources.wantsSidecar(state.config));
+  yield* sidecar.reconcile(wantsSidecar(state.config));
   const router = yield* generations.start(state.config);
   yield* Ref.update(gateway.state, (current) => ({ ...current, router }));
   yield* Effect.addFinalizer(() => {
     const active = gateway.router();
     return active === undefined ? Effect.void : active.close.pipe(Effect.ignore);
   });
-  yield* auth.reconcileActiveCredentials(resources.activeCredentialFingerprints());
+  yield* auth.reconcileActiveCredentials(activeCredentialFingerprints(foundation.env));
 
   const workloadJwt = workloadJwtOptions(options.workloadJwt, foundation.env);
   const verifyWorkloadJwt =
@@ -330,7 +255,7 @@ const acquireRunningDaemon = Effect.fn("Daemon.acquireRunning")(function* (
     target: router.url,
     host: options.host ?? "127.0.0.1",
     port: options.port ?? 8080,
-    authToken: foundation.dataAuth.token,
+    authToken: tokens.dataAuth.token,
     resolveDataPrincipal: (presented) => {
       const evalPrincipal = evalSessions.resolve(presented);
       if (evalPrincipal !== undefined) return evalPrincipal;
@@ -369,7 +294,7 @@ const acquireRunningDaemon = Effect.fn("Daemon.acquireRunning")(function* (
     handlers,
     runtimeState: foundation.runtimeState,
     packageVersion: options.packageVersion,
-    daemonTelemetry: resources.daemonTelemetry,
+    daemonTelemetry: telemetry.daemon,
     ...(foundation.hosted?.executeIdempotent === undefined
       ? {}
       : { executeIdempotent: foundation.hosted.executeIdempotent })
@@ -417,7 +342,7 @@ const acquireRunningDaemon = Effect.fn("Daemon.acquireRunning")(function* (
     host: options.host ?? "127.0.0.1",
     portless: portless?.enabled ?? false,
     drainGraceMs: foundation.drainGraceMs,
-    authTokenFile: foundation.dataAuth.path,
+    authTokenFile: tokens.dataAuth.path,
     generation: foundation.generation,
     supervisor: supervisorFromEnv(foundation.env),
     ...(process.argv[1] === undefined ? {} : { binPath: process.argv[1] }),
@@ -448,7 +373,7 @@ const acquireRunningDaemon = Effect.fn("Daemon.acquireRunning")(function* (
     );
   }
 
-  resources.daemonTelemetry.capture("routekit.daemon_lifecycle", {
+  telemetry.daemon.capture("routekit.daemon_lifecycle", {
     action: "started",
     outcome: "success",
     supervisor: (["systemd", "launchd", "detached"] as const).includes(
@@ -462,7 +387,7 @@ const acquireRunningDaemon = Effect.fn("Daemon.acquireRunning")(function* (
   const prepareClose = Effect.gen(function* () {
     foundation.runtimeState.beginShutdown();
     yield* foundation.runtimeState.awaitMutations();
-    resources.daemonTelemetry.capture("routekit.daemon_lifecycle", {
+    telemetry.daemon.capture("routekit.daemon_lifecycle", {
       action: "stopped",
       outcome: "success",
       supervisor: (["systemd", "launchd", "detached"] as const).includes(
@@ -513,27 +438,73 @@ const acquireRunningDaemon = Effect.fn("Daemon.acquireRunning")(function* (
 /** Construct and own the complete daemon worker lifetime. */
 export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, Error> {
   const foundation = Layer.effect(DaemonFoundation, prepareFoundation(options));
-  const resources = Layer.effect(
-    DaemonResources,
-    Effect.flatMap(DaemonFoundation, (value) =>
-      Effect.acquireRelease(
-        Effect.sync(() => makeOwnedResources(value, options)),
-        (owned) =>
-          Effect.all(
-            [
-              owned.sidecar.close.pipe(Effect.ignore),
-              Effect.sync(() => owned.gatewayTelemetry.close()),
-              Effect.tryPromise({
-                try: () => owned.daemonTelemetry.shutdown(),
-                catch: toRouteKitFailure
-              }).pipe(Effect.ignore)
-            ],
-            { concurrency: "unbounded", discard: true }
-          )
+  const platform = RouteKitLive.pipe(Layer.provideMerge(foundation));
+
+  const owned = Layer.mergeAll(
+    Layer.effect(
+      Sidecar,
+      Effect.flatMap(DaemonFoundation, (value) =>
+        Effect.acquireRelease(
+          Effect.sync(() =>
+            value.hosted === undefined
+              ? createCliproxySidecar({ env: value.env })
+              : createHostedCliproxySidecar(value.hosted.sidecarRequest)
+          ),
+          (sidecar) => sidecar.close.pipe(Effect.ignore)
+        )
       )
-    )
-  ).pipe(Layer.provideMerge(foundation));
-  const platform = RouteKitLive.pipe(Layer.provideMerge(resources));
+    ),
+    Layer.unwrap(
+      Effect.map(DaemonFoundation, (value) =>
+        Tokens.layer({
+          home: value.home,
+          ...(options.authToken === undefined ? {} : { authToken: options.authToken }),
+          ...(options.authTokenFile === undefined
+            ? {}
+            : { authTokenFile: options.authTokenFile })
+        })
+      )
+    ),
+    Layer.unwrap(
+      Effect.map(DaemonFoundation, (value) =>
+        Telemetry.layer({
+          home: value.home,
+          env: value.env,
+          packageVersion: options.packageVersion,
+          ...(options.telemetryTransportFactory === undefined
+            ? {}
+            : { transportFactory: options.telemetryTransportFactory }),
+          ...(options.telemetryFlushIntervalMs === undefined
+            ? {}
+            : { flushIntervalMs: options.telemetryFlushIntervalMs })
+        })
+      )
+    ),
+    Layer.effect(
+      Leaderboard,
+      Effect.flatMap(DaemonFoundation, (value) =>
+        Effect.acquireRelease(
+          Effect.sync(() => {
+            let config: LeaderboardConfig = resolveLeaderboardConfig(value.runtimeState.config);
+            const rollups = new LeaderboardRollupStore({ home: value.home, config });
+            return Leaderboard.of({
+              rollups,
+              config: () => config,
+              applyConfig: (next) => {
+                config = resolveLeaderboardConfig(next);
+                rollups.configure({
+                  durable: config.durable,
+                  durableRetentionDays: config.durableRetentionDays
+                });
+              }
+            });
+          }),
+          (leaderboard) => Effect.sync(() => leaderboard.rollups.flush())
+        )
+      )
+    ),
+    EvalSessions.layer()
+  ).pipe(Layer.provideMerge(platform));
 
   const staticServices = Layer.mergeAll(
     Layer.effect(
@@ -553,107 +524,25 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
     Layer.unwrap(
       Effect.map(DaemonFoundation, (value) => DaemonState.layer(value.runtimeState))
     ),
-    Layer.effect(Sidecar, Effect.map(DaemonResources, (value) => value.sidecar)),
-    Layer.unwrap(Effect.map(DaemonFoundation, (value) => Tokens.layer(value.tokens))),
-    EvalSessions.layer(),
-    Layer.effect(
-      Telemetry,
-      Effect.map(DaemonResources, (value) => {
-        const flushAndShutdown = Effect.tryPromise({
-          try: async () => {
-            await value.daemonTelemetry.flush();
-            await value.daemonTelemetry.shutdown();
-          },
-          catch: toRouteKitFailure
-        });
-        const discardDaemon = Effect.tryPromise({
-          try: () => value.daemonTelemetry.discard(),
-          catch: toRouteKitFailure
-        });
-        return {
-          consent: value.telemetry,
-          daemon: value.daemonTelemetry,
-          gateway: value.gatewayTelemetry,
-          flushAndShutdown,
-          discardDaemon,
-          applyPreference: (
-            params: RouteKitControlParams["telemetry.set"],
-            env: NodeJS.ProcessEnv,
-            packageVersion: string
-          ) =>
-            Effect.try({
-              try: () => {
-                if (params.enabled !== undefined) {
-                  if (params.enabled) value.telemetry.enable();
-                  else value.telemetry.disable();
-                }
-                if (params.category !== undefined && params.categoryEnabled !== undefined) {
-                  if (
-                    !params.categoryEnabled &&
-                    (params.category === "usage" || params.category === "reliability")
-                  ) {
-                    value.gatewayTelemetry.discard(params.category);
-                  }
-                  value.telemetry.setCategory(params.category, params.categoryEnabled);
-                }
-                const result = value.telemetry.resolve(env);
-                if (result.enabled && result.categories.adoption) {
-                  value.daemonTelemetry.capture("routekit.telemetry_preference_changed", {
-                    action: params.enabled !== undefined ? "master" : "category",
-                    ...(params.category !== undefined ? { category: params.category } : {}),
-                    enabled: params.enabled ?? params.categoryEnabled!,
-                    source: result.source,
-                    version: packageVersion
-                  });
-                }
-              },
-              catch: toRouteKitFailure
-            }),
-          resetIdentity: (env: NodeJS.ProcessEnv, packageVersion: string) =>
-            Effect.try({
-              try: () => {
-                value.telemetry.resetIdentity(env);
-                const result = value.telemetry.resolve(env);
-                if (result.enabled && result.categories.adoption) {
-                  value.daemonTelemetry.capture("routekit.telemetry_preference_changed", {
-                    action: "identity-reset",
-                    enabled: true,
-                    source: result.source,
-                    version: packageVersion
-                  });
-                }
-              },
-              catch: toRouteKitFailure
-            })
-        };
-      })
-    ),
     Layer.effect(
       DataPlane,
-      Effect.map(DaemonFoundation, (value) => ({
-        token: value.dataAuth.token,
-        path: value.dataAuth.path
+      Effect.map(Tokens, (tokens) => ({
+        token: tokens.dataAuth.token,
+        path: tokens.dataAuth.path
       }))
     ),
     Layer.effect(
       AccountRecovery,
-      Effect.map(DaemonResources, (value) => value.accountRecovery)
+      Effect.map(DaemonFoundation, (value) => value.accountRecovery)
     ),
     Layer.unwrap(
-      Effect.map(DaemonResources, (value) => CallAttributions.layer(value.leaderboardConfig()))
-    ),
-    Layer.effect(
-      Leaderboard,
-      Effect.map(DaemonResources, (value) => ({
-        rollups: value.leaderboardRollups,
-        config: value.leaderboardConfig
-      }))
+      Effect.map(DaemonFoundation, (value) =>
+        CallAttributions.layer(resolveLeaderboardConfig(value.runtimeState.config))
+      )
     ),
     Layer.effect(
       DaemonPolicy,
-      Effect.map(DaemonResources, (value) => ({
-        wantsCliproxySidecar: value.wantsSidecar
-      }))
+      Effect.succeed({ wantsCliproxySidecar: wantsSidecar })
     ),
     Layer.effect(
       DaemonHost,
@@ -689,37 +578,38 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
         AccountAuth.layer({ statePath: join(value.home, "subscriptions", "account-auth.v1.json") })
       )
     )
-  ).pipe(Layer.provideMerge(platform));
+  ).pipe(Layer.provideMerge(owned));
 
   const generations = Layer.effect(
     Generations,
     Effect.gen(function* () {
       const foundation = yield* DaemonFoundation;
-      const resources = yield* DaemonResources;
       const state = yield* DaemonState;
       const sidecar = yield* Sidecar;
       const activity = yield* AccountActivity;
       const auth = yield* AccountAuth;
       const gateway = yield* ActiveGateway;
       const callAttributions = yield* CallAttributions;
+      const leaderboard = yield* Leaderboard;
+      const telemetry = yield* Telemetry;
       return createDaemonGenerationManager({
         configPath: foundation.configPath,
         home: foundation.home,
         drainGraceMs: foundation.drainGraceMs,
         sidecar,
-        routerEnv: resources.routerEnv,
+        routerEnv: () => routerEnv(foundation.env),
         provenance: {
           onModelCall(record) {
             callAttributions.onModelCall(record);
             const inspection = callInspection(record);
-            if (inspection !== undefined) resources.leaderboardRollups.record(inspection);
-            resources.gatewayTelemetry.record(record);
+            if (inspection !== undefined) leaderboard.rollups.record(inspection);
+            telemetry.gateway.record(record);
           }
         },
         compositionalPolicyReader: makeCompositionalRoutingPolicyReader(foundation.home),
         activity,
         authHealth: auth,
-        wantsSidecar: resources.wantsSidecar,
+        wantsSidecar,
         getCurrentConfig: () => state.config,
         setCurrentConfig: (config) => {
           state.config = config;
@@ -736,13 +626,13 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
         setActiveRouter: (router) =>
           Ref.update(gateway.state, (current) => ({ ...current, router })),
         getProxy: () => gateway.proxy(),
-        activeCredentialFingerprints: resources.activeCredentialFingerprints,
+        activeCredentialFingerprints: () => activeCredentialFingerprints(foundation.env),
         applyConfig: (config) => {
-          resources.applyLeaderboardConfig(config);
-          const leaderboard = resources.leaderboardConfig();
+          leaderboard.applyConfig(config);
+          const current = leaderboard.config();
           callAttributions.configureBudget({
-            limit: leaderboard.liveLimit,
-            ttlMs: leaderboard.liveTtlHours * 60 * 60 * 1_000
+            limit: current.liveLimit,
+            ttlMs: current.liveTtlHours * 60 * 60 * 1_000
           });
         },
         ...(options.onGenerationStage === undefined ? {} : { onStage: options.onGenerationStage })

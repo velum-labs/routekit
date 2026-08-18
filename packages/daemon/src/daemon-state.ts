@@ -2,7 +2,6 @@ import { chmodSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { WorkloadJwtVerifierOptions } from "@velum-labs/routekit-gateway";
 import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
-import type { TokenStore } from "@velum-labs/routekit-runtime/tokens";
 import { CONTROL_PROTOCOL_VERSION, ControlClient } from "@velum-labs/routekit-runtime/control";
 import { SERVICE_HOME_MODE } from "@velum-labs/routekit-runtime/service";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
@@ -22,21 +21,6 @@ export function workloadJwtOptions(
     throw new Error(`${WORKLOAD_JWT_CONFIG_ENV} must contain a JSON object`);
   }
   return parsed;
-}
-
-export function resolveDataToken(
-  home: string,
-  input: { authToken?: string; authTokenFile?: string },
-  tokens: TokenStore,
-  dataTokenPath: (home: string) => string
-): { token: string; path: string } {
-  const path = input.authTokenFile ?? dataTokenPath(home);
-  const ensured = tokens.ensureOwnerDataToken({
-    ...(input.authToken !== undefined ? { plaintext: input.authToken } : {}),
-    plaintextPath: path
-  });
-  if (ensured.token.length === 0) throw new Error("RouteKit data-plane token is empty");
-  return { token: ensured.token, path };
 }
 
 export type DaemonPublicRecord = {

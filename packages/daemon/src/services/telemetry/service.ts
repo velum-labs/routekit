@@ -1,126 +1,133 @@
+import { join } from "node:path";
 import type { RouteKitControlParams } from "@velum-labs/routekit-control";
-import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import {
-  TELEMETRY_SCHEMA_INVENTORY,
-  type TelemetryStatus,
-  telemetryStatusMetadata
-} from "@velum-labs/routekit-telemetry-core";
-import { Context, Effect } from "effect";
+  RouteKitFailure,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { createConsentManager } from "@velum-labs/routekit-telemetry-core";
+import { Context, Effect, Layer } from "effect";
+
 import {
-  type DaemonTelemetry,
-  DEFAULT_TELEMETRY_HOST,
-  type GatewayTelemetryAggregator,
-  resolveTelemetryProjectKey
+  DaemonTelemetry,
+  GatewayTelemetryAggregator,
+  type TelemetryTransportFactory
 } from "../../telemetry.js";
-import { DaemonEnv } from "../../daemon-env-context.js";
-import { DaemonState } from "../../daemon-state-context.js";
 
 export type TelemetryServiceValue = {
-  consent: {
-    resolve(env: NodeJS.ProcessEnv): {
-      enabled: boolean;
-      source: "do-not-track" | "env" | "config" | "default";
-      categories: Record<"usage" | "reliability" | "adoption", boolean>;
-    };
-    enable(): unknown;
-    disable(): unknown;
-    setCategory(category: "usage" | "reliability" | "adoption", enabled: boolean): unknown;
-    resetIdentity(env: NodeJS.ProcessEnv): unknown;
-  };
-  daemon?: DaemonTelemetry;
-  gateway?: GatewayTelemetryAggregator;
-  readonly flushAndShutdown: Effect.Effect<void, Error>;
-  readonly discardDaemon: Effect.Effect<void, Error>;
+  readonly consent: ReturnType<typeof createConsentManager>;
+  readonly daemon: DaemonTelemetry;
+  readonly gateway: GatewayTelemetryAggregator;
+  readonly flushAndShutdown: Effect.Effect<void>;
+  readonly discardDaemon: Effect.Effect<void>;
   applyPreference(
     params: RouteKitControlParams["telemetry.set"],
     env: NodeJS.ProcessEnv,
     packageVersion: string
-  ): Effect.Effect<void, Error>;
-  resetIdentity(env: NodeJS.ProcessEnv, packageVersion: string): Effect.Effect<void, Error>;
+  ): Effect.Effect<void, RouteKitFailure>;
+  resetIdentity(
+    env: NodeJS.ProcessEnv,
+    packageVersion: string
+  ): Effect.Effect<void, RouteKitFailure>;
 };
 
+export type TelemetryLayerOptions = {
+  readonly home: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly packageVersion: string;
+  readonly transportFactory?: TelemetryTransportFactory;
+  readonly flushIntervalMs?: number;
+};
+
+/** Owns consent, the PostHog transport, and gateway aggregation as one lifetime. */
 export class Telemetry extends Context.Service<Telemetry, TelemetryServiceValue>()(
   "@velum-labs/routekit-daemon/Telemetry"
-) {}
-
-type TelemetryHandlers = Pick<
-  EffectRouteKitControlHandlers,
-  | "telemetry.get"
-  | "telemetry.set"
-  | "telemetry.resetIdentity"
-  | "telemetry.schema"
-  | "telemetry.captureCommand"
->;
-
-function telemetryStatus(
-  env: NodeJS.ProcessEnv,
-  consent: Telemetry["Service"]["consent"]
-): TelemetryStatus {
-  return telemetryStatusMetadata(consent.resolve(env), {
-    provider: "posthog",
-    host: env.ROUTEKIT_POSTHOG_HOST?.trim() || DEFAULT_TELEMETRY_HOST,
-    configured: resolveTelemetryProjectKey(env).length > 0
-  }) as TelemetryStatus;
-}
-
-/** Owns telemetry consent, identity reset, schema, and command capture. */
-export class TelemetryApplicationService {
-  handlers(): TelemetryHandlers {
-    return {
-      "telemetry.get": () =>
-        Effect.gen(function* () {
-          const daemonEnv = yield* DaemonEnv;
-          const telemetry = yield* Telemetry;
-          return telemetryStatusMetadata(telemetry.consent.resolve(daemonEnv.env), {
-            provider: "posthog",
-            host: daemonEnv.env.ROUTEKIT_POSTHOG_HOST?.trim() || DEFAULT_TELEMETRY_HOST,
-            configured: resolveTelemetryProjectKey(daemonEnv.env).length > 0
-          }) as TelemetryStatus;
+) {
+  static layer(options: TelemetryLayerOptions): Layer.Layer<Telemetry> {
+    return Layer.effect(
+      Telemetry,
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          const consent = createConsentManager({
+            path: () => join(options.home, "telemetry.json"),
+            environmentVariable: "ROUTEKIT_TELEMETRY"
+          });
+          const daemon = new DaemonTelemetry({
+            env: options.env,
+            resolveConsent: consent.resolve,
+            ...(options.transportFactory === undefined
+              ? {}
+              : { factory: options.transportFactory })
+          });
+          const gateway = new GatewayTelemetryAggregator({
+            telemetry: daemon,
+            version: options.packageVersion,
+            ...(options.flushIntervalMs === undefined
+              ? {}
+              : { flushIntervalMs: options.flushIntervalMs })
+          });
+          const flushAndShutdown = Effect.promise(async () => {
+            await daemon.flush();
+            await daemon.shutdown();
+          });
+          const discardDaemon = Effect.promise(() => daemon.discard());
+          return Telemetry.of({
+            consent,
+            daemon,
+            gateway,
+            flushAndShutdown,
+            discardDaemon,
+            applyPreference: (params, env, packageVersion) =>
+              Effect.try({
+                try: () => {
+                  if (params.enabled !== undefined) {
+                    if (params.enabled) consent.enable();
+                    else consent.disable();
+                  }
+                  if (params.category !== undefined && params.categoryEnabled !== undefined) {
+                    if (
+                      !params.categoryEnabled &&
+                      (params.category === "usage" || params.category === "reliability")
+                    ) {
+                      gateway.discard(params.category);
+                    }
+                    consent.setCategory(params.category, params.categoryEnabled);
+                  }
+                  const result = consent.resolve(env);
+                  if (result.enabled && result.categories.adoption) {
+                    daemon.capture("routekit.telemetry_preference_changed", {
+                      action: params.enabled !== undefined ? "master" : "category",
+                      ...(params.category !== undefined ? { category: params.category } : {}),
+                      enabled: params.enabled ?? params.categoryEnabled!,
+                      source: result.source,
+                      version: packageVersion
+                    });
+                  }
+                },
+                catch: toRouteKitFailure
+              }),
+            resetIdentity: (env, packageVersion) =>
+              Effect.try({
+                try: () => {
+                  consent.resetIdentity(env);
+                  const result = consent.resolve(env);
+                  if (result.enabled && result.categories.adoption) {
+                    daemon.capture("routekit.telemetry_preference_changed", {
+                      action: "identity-reset",
+                      enabled: true,
+                      source: result.source,
+                      version: packageVersion
+                    });
+                  }
+                },
+                catch: toRouteKitFailure
+              })
+          });
         }),
-      "telemetry.set": (params) =>
-        Effect.gen(function* () {
-          const env = yield* DaemonEnv;
-          const state = yield* DaemonState;
-          const telemetry = yield* Telemetry;
-          return yield* state.serializeEffect(
-            Effect.gen(function* () {
-              if (params.enabled === false) {
-                if (telemetry.consent.resolve(env.env).enabled) {
-                  telemetry.gateway?.flush();
-                  yield* telemetry.flushAndShutdown;
-                } else {
-                  yield* telemetry.discardDaemon;
-                }
-                telemetry.gateway?.discard();
-              }
-              yield* telemetry.applyPreference(params, env.env, env.packageVersion);
-              return telemetryStatus(env.env, telemetry.consent);
-            })
-          );
-        }),
-      "telemetry.resetIdentity": () =>
-        Effect.gen(function* () {
-          const env = yield* DaemonEnv;
-          const state = yield* DaemonState;
-          const telemetry = yield* Telemetry;
-          return yield* state.serializeEffect(
-            Effect.gen(function* () {
-              telemetry.gateway?.flush();
-              yield* telemetry.flushAndShutdown;
-              telemetry.gateway?.discard();
-              yield* telemetry.resetIdentity(env.env, env.packageVersion);
-              return telemetryStatus(env.env, telemetry.consent);
-            })
-          );
-        }),
-      "telemetry.schema": () => Effect.succeed(TELEMETRY_SCHEMA_INVENTORY),
-      "telemetry.captureCommand": (params) =>
-        Effect.gen(function* () {
-          const telemetry = yield* Telemetry;
-          return {
-            accepted: telemetry.daemon?.capture("routekit.command_completed", params) ?? false
-          };
-        })
-    };
+        (telemetry) =>
+          Effect.sync(() => telemetry.gateway.close()).pipe(
+            Effect.andThen(Effect.promise(() => telemetry.daemon.shutdown()))
+          )
+      )
+    );
   }
 }

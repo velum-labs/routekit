@@ -9,8 +9,8 @@ import { EvalSessionApplicationService } from "./services/eval-session/service.j
 import { LauncherApplicationService } from "./launcher-service.js";
 import { ProviderQueryService } from "./provider-query-service.js";
 import { RouterGenerationService } from "./router-generation-service.js";
-import { TelemetryApplicationService } from "./services/telemetry/service.js";
-import { TokenApplicationService } from "./services/tokens/service.js";
+import { TelemetryApplicationService } from "./telemetry-application-service.js";
+import { TokenApplicationService } from "./token-application-service.js";
 
 /**
  * Composes owned application services into the daemon control handler map.
