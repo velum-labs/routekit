@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 import { Effect } from "effect";
 
-import { type Backend, borrowedBackendPorts } from "../backend.js";
-import { startGateway } from "../server.js";
-import { startSwitchingGatewayProxy } from "../switching-proxy.js";
+import { type Backend, borrowedBackendPorts } from "../providers/backend.js";
+import { startGateway } from "../services/gateway/service.js";
+import { startSwitchingGatewayProxy } from "../services/switching-proxy/service.js";
 
 /**
  * Crash resilience: an upstream stream that dies mid-response (the shape of a

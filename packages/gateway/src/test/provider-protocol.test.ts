@@ -7,7 +7,7 @@ import {
   decodeOpenAiWebSearchResult,
   decodeToolResult,
   ProviderProtocolError
-} from "../provider-protocol.js";
+} from "../providers/protocol.js";
 
 const ENCODER = new TextEncoder();
 

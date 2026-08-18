@@ -16,7 +16,7 @@ import {
   type BackendModelRoute,
   type BackendRequest,
   type BackendRequestOptions
-} from "../backend.js";
+} from "../providers/backend.js";
 import { gatewayTry } from "../effect/gateway.js";
 import {
   type CompositionalRoutingRuntime,
@@ -24,10 +24,10 @@ import {
   evalAutoRouterRejection,
   evalRequestAttribution,
   resolveConfiguredAutoRoutingModel
-} from "../eval-policy.js";
-import { extractClassifiableRequestText } from "../request-classifier.js";
-import { UnknownModelError } from "../router.js";
-import { deriveRoutingRequirements } from "../routing-requirements.js";
+} from "../routing/eval-policy.js";
+import { extractClassifiableRequestText } from "../services/request-classifier/service.js";
+import { UnknownModelError } from "../routing/router.js";
+import { deriveRoutingRequirements } from "../routing/requirements.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,

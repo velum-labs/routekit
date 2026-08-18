@@ -3,9 +3,9 @@ import type { RequestAttribution } from "@velum-labs/routekit-contracts";
 import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { type Context, Effect } from "effect";
 
-import type { BackendRequest, BackendRequestOptions } from "../backend.js";
+import type { BackendRequest, BackendRequestOptions } from "../providers/backend.js";
 import { gatewayTry } from "../effect/gateway.js";
-import type { GatewayDialect } from "../provenance.js";
+import type { GatewayDialect } from "../observability/provenance.js";
 
 export type EndpointContext = Readonly<{
   method: string;

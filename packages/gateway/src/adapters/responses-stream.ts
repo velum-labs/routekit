@@ -5,7 +5,7 @@ import {
 } from "@velum-labs/routekit-contracts/protocol-ir";
 import { randomId } from "@velum-labs/routekit-runtime";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
-import { decodeOpenAiChatSseEvent, type OpenAiChatSseEvent } from "../provider-protocol.js";
+import { decodeOpenAiChatSseEvent, type OpenAiChatSseEvent } from "../providers/protocol.js";
 import { SseParseError } from "../sse/parse.js";
 import {
   type OpenAiChoice,

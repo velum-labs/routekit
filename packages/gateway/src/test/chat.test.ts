@@ -4,14 +4,14 @@ import { createServer } from "node:http";
 import { test } from "node:test";
 import { EVAL_POLICY_BYPASS_HEADER } from "@velum-labs/routekit-eval-contracts";
 import { Effect } from "effect";
-import { ROUTEKIT_PRINCIPAL_HEADER } from "../auth.js";
-import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
-import { initialAttribution } from "../catalog-service.js";
-import { collectAttribution } from "../model-call-service.js";
-import { OpenAiBackend } from "../openai-backend.js";
-import type { ModelCallRecord } from "../provenance.js";
-import { MODEL_CALL_ID_HEADER } from "../provenance.js";
-import { startGateway } from "../server.js";
+import { ROUTEKIT_PRINCIPAL_HEADER } from "../http/auth.js";
+import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../providers/backend.js";
+import { initialAttribution } from "../services/catalog/service.js";
+import { collectAttribution } from "../services/model-call/service.js";
+import { OpenAiBackend } from "../providers/openai-backend.js";
+import type { ModelCallRecord } from "../observability/provenance.js";
+import { MODEL_CALL_ID_HEADER } from "../observability/provenance.js";
+import { startGateway } from "../services/gateway/service.js";
 
 /**
  * M1 coverage: the OpenAI chat surface against a mock upstream. No mlx process

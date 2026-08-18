@@ -14,7 +14,7 @@ import {
   parseDecompositionResult,
   validateDecompositionInput,
   validateDecompositionResult
-} from "../request-classifier.js";
+} from "../services/request-classifier/service.js";
 
 const dimensions = [
   {

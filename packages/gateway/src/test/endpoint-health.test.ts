@@ -3,8 +3,8 @@ import { test } from "node:test";
 
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
-import type { UrlEndpointConfig } from "../endpoint-health.js";
-import { endpointHealthProbe, probeEndpointHealth } from "../endpoint-health.js";
+import type { UrlEndpointConfig } from "../services/endpoint-health/service.js";
+import { endpointHealthProbe, probeEndpointHealth } from "../services/endpoint-health/service.js";
 
 function endpoint(
   provider: string,

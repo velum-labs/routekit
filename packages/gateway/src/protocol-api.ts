@@ -7,7 +7,7 @@ export type {
   OpenAiChatSseEvent,
   OpenAiResponsesEvent,
   ProviderRecord
-} from "./provider-protocol.js";
+} from "./providers/protocol.js";
 export {
   decodeAnthropicSseEvent,
   decodeAnthropicWebSearchResult,
@@ -22,4 +22,4 @@ export {
   decodeToolResult,
   isProviderRecord,
   ProviderProtocolError
-} from "./provider-protocol.js";
+} from "./providers/protocol.js";

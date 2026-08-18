@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 
-import { fetchAcpRegistry, installAcpAdapters } from "../acp-registry.js";
+import { fetchAcpRegistry, installAcpAdapters } from "../acp/registry.js";
 
 const FAKE_REGISTRY = {
   agents: [

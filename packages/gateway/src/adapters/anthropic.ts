@@ -14,10 +14,10 @@
  */
 
 import { Effect } from "effect";
-import type { Backend, BackendRequest, BackendRequestOptions } from "../backend.js";
+import type { Backend, BackendRequest, BackendRequestOptions } from "../providers/backend.js";
 import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
-import { jsonResponse } from "../http-response.js";
-import { decodeOpenAiChatResponse } from "../provider-protocol.js";
+import { jsonResponse } from "../http/response.js";
+import { decodeOpenAiChatResponse } from "../providers/protocol.js";
 import {
   anthropicToChat,
   chatToAnthropicMessage,

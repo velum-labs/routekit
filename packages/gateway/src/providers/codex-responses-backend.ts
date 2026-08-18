@@ -1,0 +1,163 @@
+/**
+ * Codex Responses provider backend. Sends chat through `/v1/responses`.
+ * OpenAI Chat Completions JSON ↔ Responses translation lives in
+ * `codex-responses-codec.ts`.
+ */
+
+import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { Effect } from "effect";
+import { routeKitRequestValidationErrorOf } from "../adapters/openai-chat-wire.js";
+import type { BackendRequest, BackendRequestOptions } from "./backend.js";
+import { joinPath } from "./backend.js";
+import {
+  applyCodexForceStreamEvent,
+  codexCompletionResponse,
+  codexForceStreamResponse,
+  codexReasoningModeError,
+  codexSseToChatChunks,
+  createCodexForceStreamState,
+  createCodexStreamState,
+  responsesRequest
+} from "./codex-responses-codec.js";
+import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
+import { copyFailure, jsonResponse } from "../http/response.js";
+import {
+  bodyRecord,
+  type ChatBody,
+  HttpProviderBackend,
+  invalidReasoningControlResponse,
+  mapSse,
+  type ProviderBackendOptions,
+  providerTransport
+} from "./backend-core.js";
+import { decodeOpenAiResponsesEvent, decodeProviderJson } from "./protocol.js";
+import { SseParseError } from "../sse/parse.js";
+
+export class CodexResponsesBackend extends HttpProviderBackend {
+  readonly #accountId: string | undefined;
+  readonly #forceStream: boolean;
+  readonly #omitSampling: boolean;
+
+  constructor(options: ProviderBackendOptions & { accountId?: string }) {
+    super(options);
+    this.#accountId = options.accountId;
+    this.#forceStream = options.forceStream ?? false;
+    this.#omitSampling = options.omitSampling ?? false;
+  }
+
+  override reasoningWireShape(): string {
+    return "openai-responses";
+  }
+
+  chat(body: unknown, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
+    const validationError = routeKitRequestValidationErrorOf(body);
+    if (validationError !== undefined) {
+      return Effect.succeed(
+        invalidReasoningControlResponse(
+          validationError.message,
+          validationError.code === "invalid_reasoning_metadata",
+          validationError.path
+        )
+      );
+    }
+    return this.#chat(bodyRecord(body), signal, options);
+  }
+
+  #chat(body: ChatBody, signal?: AbortSignal, options?: BackendRequestOptions): BackendRequest {
+    const self = this;
+    return Effect.gen(function* () {
+      const model = body.model ?? self.defaultModel ?? "";
+      const reasoningError = codexReasoningModeError(body);
+      if (reasoningError !== undefined) {
+        return jsonResponse(
+          {
+            error: {
+              type: "invalid_request_error",
+              message: reasoningError
+            }
+          },
+          400
+        );
+      }
+      const response = yield* providerTransport(
+        self.transport,
+        joinPath(self.baseUrl, "/responses"),
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${self.apiKey}`,
+            ...(self.#accountId !== undefined ? { "chatgpt-account-id": self.#accountId } : {}),
+            ...self.extraHeaders
+          },
+          body: JSON.stringify(
+            responsesRequest(body, model, {
+              forceStream: self.#forceStream,
+              omitSampling: self.#omitSampling
+            })
+          ),
+          ...(signal !== undefined ? { signal } : {})
+        },
+        options
+      );
+      if (!response.ok)
+        return copyFailure(response, yield* gatewayTryPromise(() => response.text()));
+      if (body.stream === true) {
+        const streamState = createCodexStreamState();
+        return mapSse(
+          response,
+          (event, item) => codexSseToChatChunks(event, item, model, streamState),
+          (data, event) => decodeOpenAiResponsesEvent(data, event)
+        );
+      }
+      if (self.#forceStream) {
+        const forceState = createCodexForceStreamState();
+        const stream = response.body;
+        if (stream === null) {
+          return yield* Effect.fail(new SseParseError("provider SSE response had no body"));
+        }
+        yield* gatewayTryPromise(() =>
+          StreamPump.bytes(
+            StreamPump.sse(stream, {
+              onEvent(event) {
+                let payload: unknown;
+                try {
+                  payload = JSON.parse(event.data);
+                } catch {
+                  if (
+                    event.event !== "response.output_item.done" &&
+                    event.event !== "response.completed"
+                  ) {
+                    return;
+                  }
+                  throw new SseParseError(
+                    "provider SSE event contained malformed JSON",
+                    event.data.slice(0, 200)
+                  );
+                }
+                const record = decodeOpenAiResponsesEvent(payload, event.event);
+                applyCodexForceStreamEvent(event.event ?? record.type, record, forceState);
+              },
+              onEnd() {}
+            }),
+            {
+              onChunk() {
+                // The SSE pump owns decoding; this sink only drives it to completion.
+              }
+            }
+          )
+        );
+        const completed = codexForceStreamResponse(model, forceState);
+        if (completed !== undefined) return completed;
+        return yield* Effect.fail(
+          new SseParseError("provider SSE stream ended without response.completed")
+        );
+      }
+      const json = yield* gatewayTryPromise(() => response.json());
+      const payload = yield* gatewayTry(() =>
+        decodeProviderJson("openai-responses", "response", json)
+      );
+      return codexCompletionResponse(model, payload);
+    });
+  }
+}

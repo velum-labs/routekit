@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { estimateCost, lookupPricing, meterCall, parseUsage, parseUsageFromSse } from "../cost.js";
+import { estimateCost, lookupPricing, meterCall, parseUsage, parseUsageFromSse } from "../observability/cost.js";
 
 test("single-call metering normalizes provider usage and registry pricing", () => {
   assert.deepEqual(parseUsage({ input_tokens: 80, output_tokens: 20 }), {

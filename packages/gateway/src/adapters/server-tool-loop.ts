@@ -41,7 +41,7 @@ import {
 } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
 import { type Context, Effect } from "effect";
-import type { BackendRequest } from "../backend.js";
+import type { BackendRequest } from "../providers/backend.js";
 import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
 import {
   decodeOpenAiChatResponse,
@@ -49,7 +49,7 @@ import {
   decodeOpenAiToolCalls,
   isProviderRecord,
   type OpenAiChatResponse
-} from "../provider-protocol.js";
+} from "../providers/protocol.js";
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseParseError } from "../sse/parse.js";
 import {

@@ -3,14 +3,14 @@ import { test } from "node:test";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
-import type { ProviderSource } from "../provider-source.js";
+import type { ProviderSource } from "../providers/source.js";
 import {
   ModelCatalog,
   ModelResolver,
   ProviderLifecycle,
   RoutePlanner,
   RoutePolicy
-} from "../routing-core.js";
+} from "../routing/core.js";
 import { testProviderSource } from "./provider-source-fixture.js";
 
 function source(id: "openai" | "anthropic", close?: () => Promise<void>): ProviderSource {

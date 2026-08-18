@@ -28,7 +28,7 @@ import { HttpClient } from "effect/unstable/http";
 import {
   decodeAnthropicWebSearchResult,
   decodeOpenAiWebSearchResult
-} from "../provider-protocol.js";
+} from "../providers/protocol.js";
 
 export type WebSearchExecutor = {
   readonly provider: "openai" | "anthropic";

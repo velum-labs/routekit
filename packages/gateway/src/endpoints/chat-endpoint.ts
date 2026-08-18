@@ -12,16 +12,16 @@ import {
 } from "../adapters/openai-chat-wire.js";
 import type { WireRejection } from "../adapters/validate.js";
 import { validateChatRequest, validateResponsesRequest } from "../adapters/validate.js";
-import type { Backend } from "../backend.js";
+import type { Backend } from "../providers/backend.js";
 import {
   type CompositionalRoutingRuntime,
   compositionalRoutingAttribution,
   evalAutoRouterRejection,
   evalRequestAttribution,
   resolveConfiguredAutoRoutingModel
-} from "../eval-policy.js";
-import { extractClassifiableRequestText } from "../request-classifier.js";
-import { deriveRoutingRequirements } from "../routing-requirements.js";
+} from "../routing/eval-policy.js";
+import { extractClassifiableRequestText } from "../services/request-classifier/service.js";
+import { deriveRoutingRequirements } from "../routing/requirements.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,

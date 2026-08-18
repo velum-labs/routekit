@@ -5,19 +5,19 @@ export type {
   AcpRunner,
   AcpRunnerInput,
   AcpRunnerResult
-} from "./acp-agent.js";
-export { ACP_PROTOCOL_VERSION, runAcpAgent } from "./acp-agent.js";
+} from "./acp/agent.js";
+export { ACP_PROTOCOL_VERSION, runAcpAgent } from "./acp/agent.js";
 export type {
   AcpRegistry,
   AcpRegistryAgent,
   InstallAcpAdaptersOptions,
   InstalledAcpAdapter
-} from "./acp-registry.js";
+} from "./acp/registry.js";
 export {
   ACP_REGISTRY_URL,
   fetchAcpRegistry,
   installAcpAdapters
-} from "./acp-registry.js";
+} from "./acp/registry.js";
 export type {
   AnthropicRequest,
   ClaudeModelSelection,
@@ -89,7 +89,7 @@ export type {
   GatewayPrincipal,
   WorkloadJwtPrincipalPolicy,
   WorkloadJwtVerifierOptions
-} from "./auth.js";
+} from "./http/auth.js";
 export {
   authorizedRequest,
   createWorkloadJwtVerifier,
@@ -97,7 +97,7 @@ export {
   presentedCredential,
   ROUTEKIT_PRINCIPAL_HEADER,
   resolvePrincipal
-} from "./auth.js";
+} from "./http/auth.js";
 export type {
   Backend,
   BackendLifecyclePort,
@@ -110,23 +110,23 @@ export type {
   BackendResponsesPort,
   ModelRoutedBackendOptions,
   RequestAttributionUpdate
-} from "./backend.js";
+} from "./providers/backend.js";
 export {
   borrowedBackendPorts,
   joinPath,
   ModelRoutedBackend,
   staticBackendModelPort
-} from "./backend.js";
+} from "./providers/backend.js";
 export type {
   BedrockControlClient,
   BedrockProviderSourceOptions,
   BedrockRuntime
-} from "./bedrock-source.js";
+} from "./providers/bedrock-source.js";
 export {
   BedrockProviderSource,
   fromBedrockConverseOutput,
   toBedrockConverseInput
-} from "./bedrock-source.js";
+} from "./providers/bedrock-source.js";
 export type {
   CapacityLease,
   CapacityPoolMember,
@@ -138,25 +138,25 @@ export type {
   OpenRouterModelMetadata,
   OpenRouterModelMetadataClientOptions,
   ResolvedCodexStartupSelection
-} from "./codex-model-selection.js";
+} from "./providers/codex-model-selection.js";
 export {
   OpenRouterModelMetadataClient,
   resolveCodexStartupModel
-} from "./codex-model-selection.js";
+} from "./providers/codex-model-selection.js";
 export type {
   CompositionalRoutingErrorCode,
   CompositionalRoutingInput
-} from "./compositional-routing.js";
+} from "./routing/compositional.js";
 export {
   CompositionalRoutingError,
   routeCompositionalRequest
-} from "./compositional-routing.js";
+} from "./routing/compositional.js";
 export type {
   CallCostRecord,
   ModelPricing,
   ProviderCostMetadata,
   TokenUsage
-} from "./cost.js";
+} from "./observability/cost.js";
 export {
   DEFAULT_MODEL_PRICING,
   estimateCost,
@@ -165,7 +165,7 @@ export {
   meterCall,
   parseUsage,
   parseUsageFromSse
-} from "./cost.js";
+} from "./observability/cost.js";
 export type {
   AccountEndpointConfig,
   EndpointHealthProbe,
@@ -173,19 +173,19 @@ export type {
   EndpointHealthResult,
   ModelEndpointConfig,
   UrlEndpointConfig
-} from "./endpoint-health.js";
+} from "./services/endpoint-health/service.js";
 export {
   endpointHealthProbe,
   probeEndpointHealth,
   providerAuthHeaders
-} from "./endpoint-health.js";
+} from "./services/endpoint-health/service.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
 export type {
   CompositionalRoutingObservation,
   CompositionalRoutingPolicyReader,
   CompositionalRoutingRuntime
-} from "./eval-policy.js";
+} from "./routing/eval-policy.js";
 export {
   AutoRoutingUnavailableError,
   compositionalRoutingAttribution,
@@ -194,17 +194,17 @@ export {
   RoutingPolicyReadError,
   resolveCompositionalAutoRoutingModel,
   resolveConfiguredAutoRoutingModel
-} from "./eval-policy.js";
-export { invokeObservedModelCall } from "./model-call-service.js";
-export type { OpenAiBackendOptions } from "./openai-backend.js";
-export { OpenAiBackend } from "./openai-backend.js";
+} from "./routing/eval-policy.js";
+export { invokeObservedModelCall } from "./services/model-call/service.js";
+export type { OpenAiBackendOptions } from "./providers/openai-backend.js";
+export { OpenAiBackend } from "./providers/openai-backend.js";
 export type {
   GatewayDialect,
   ModelCallRecord,
   ModelGatewayCallContext,
   ModelGatewayCallResult,
   ProvenanceSink
-} from "./provenance.js";
+} from "./observability/provenance.js";
 export {
   buildModelCallRecord,
   MODEL_CALL_ID_HEADER,
@@ -213,20 +213,20 @@ export {
   resolveProducerGitSha,
   responseBodyHash,
   UNKNOWN_GIT_SHA
-} from "./provenance.js";
-export type { ProviderBackendOptions, ProviderTransport } from "./provider-backends.js";
+} from "./observability/provenance.js";
+export type { ProviderBackendOptions, ProviderTransport } from "./providers/backends.js";
 export {
   AnthropicBackend,
   CodexResponsesBackend,
   GoogleGenAiBackend
-} from "./provider-backends.js";
+} from "./providers/backends.js";
 export type {
   AnthropicSseEvent,
   OpenAiChatResponse,
   OpenAiChatSseEvent,
   OpenAiResponsesEvent,
   ProviderRecord
-} from "./provider-protocol.js";
+} from "./providers/protocol.js";
 export {
   decodeAnthropicSseEvent,
   decodeAnthropicWebSearchResult,
@@ -236,7 +236,7 @@ export {
   decodeOpenAiWebSearchResult,
   decodeToolResult,
   ProviderProtocolError
-} from "./provider-protocol.js";
+} from "./providers/protocol.js";
 export type {
   ApiProviderId,
   ApiProviderSourceOptions,
@@ -245,7 +245,7 @@ export type {
   ProviderSource,
   ProviderSourceTransport,
   SubscriptionProviderId
-} from "./provider-source.js";
+} from "./providers/source.js";
 export {
   API_PROVIDER_IDS,
   ApiProviderSource,
@@ -253,11 +253,11 @@ export {
   decodeReasoningCapabilities,
   PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_IDS
-} from "./provider-source.js";
+} from "./providers/source.js";
 export type {
   ObservedDecompositionResult,
   RequestDecomposerService
-} from "./request-classifier.js";
+} from "./services/request-classifier/service.js";
 export {
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
   ClassificationError,
@@ -270,8 +270,8 @@ export {
   RequestDecomposer,
   validateDecompositionInput,
   validateDecompositionResult
-} from "./request-classifier.js";
-export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
+} from "./services/request-classifier/service.js";
+export type { CatalogModelInfo, RoutingBackendOptions } from "./routing/router.js";
 export {
   isSubscriptionProvider,
   modelPolicyAllowsModel,
@@ -279,8 +279,8 @@ export {
   NoModelAvailableError,
   RoutingBackend,
   UnknownModelError
-} from "./router.js";
-export type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
+} from "./routing/router.js";
+export type { ModelCatalogEntry, RoutePlan } from "./routing/core.js";
 export {
   BackendExecutor,
   ModelCatalog,
@@ -288,11 +288,11 @@ export {
   ProviderLifecycle,
   RoutePlanner,
   RoutePolicy
-} from "./routing-core.js";
+} from "./routing/core.js";
 export {
   deriveRoutingRequirements,
   routingModelAvailability
-} from "./routing-requirements.js";
+} from "./routing/requirements.js";
 export type {
   Gateway,
   GatewayOptions,
@@ -302,8 +302,8 @@ export type {
   RelayLifecycle,
   RequestRelay,
   TokenCountRelay
-} from "./server.js";
-export { startGateway } from "./server.js";
+} from "./services/gateway/service.js";
+export { startGateway } from "./services/gateway/service.js";
 export { ChatStreamAssembler } from "./sse/chat-assembler.js";
 export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse/parse.js";
 export {
@@ -312,6 +312,6 @@ export {
   noticeChunk,
   reasoningChunk,
   sseResponse
-} from "./sse-wire.js";
-export type { SwitchingGatewayProxy } from "./switching-proxy.js";
-export { startSwitchingGatewayProxy } from "./switching-proxy.js";
+} from "./sse/wire.js";
+export type { SwitchingGatewayProxy } from "./services/switching-proxy/service.js";
+export { startSwitchingGatewayProxy } from "./services/switching-proxy/service.js";

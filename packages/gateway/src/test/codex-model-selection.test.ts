@@ -6,7 +6,7 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import {
   OpenRouterModelMetadataClient,
   resolveCodexStartupModel
-} from "../codex-model-selection.js";
+} from "../providers/codex-model-selection.js";
 
 function catalog(data: unknown[]): Response {
   return Response.json({ data });

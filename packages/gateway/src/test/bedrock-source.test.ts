@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { ListFoundationModelsCommand, ListInferenceProfilesCommand } from "@aws-sdk/client-bedrock";
 import { ConverseCommand, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
-import { BedrockProviderSource, toBedrockConverseInput } from "../bedrock-source.js";
+import { BedrockProviderSource, toBedrockConverseInput } from "../providers/bedrock-source.js";
 
 test("Bedrock discovery includes active Anthropic foundations and paginated backed profiles", async () => {
   const commands: unknown[] = [];
