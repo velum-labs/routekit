@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `15145865534bb2412f811a8476e2ce3518a7b6a04337af421d0d3c9f2690f5a2`
+Declaration SHA-256: `89ce743e28d8934019b2e78c4257ee9f47b20bd89fffbbf5f2f196c7cbd0faf8`
 
 ## Root declarations
 
@@ -14,9 +14,9 @@ export type { OriRouteKitGatewayAttribution, OriRouteKitGatewayBridgeOptions, Or
 export type { RouteKitEvalExecutionOptions } from "./library/routekit-execution.js";
 export type { RouteKitEvalGatewayBridgeOptions, RouteKitEvalGatewayBridgeService } from "./library/gateway-bridge.js";
 export { EvalEngineDryLoadError } from "./library/dry-load.js";
-export { discoverEvals, EvalEngine, EvalEngineDiscoveryError, EvalEngineExecutionError, EvalEngineInvalidRequestError, EvalEnginePortableImportError, EvalExecutionPort, evalExecutionModels, makeEvalEngineLayer, normalizeEvalComparisonEvidence, runEvalComparison, validateEvals } from "./library/eval-engine.js";
+export { discoverEvals, EvalEngine, EvalEngineDiscoveryError, EvalEngineExecutionError, EvalEngineInvalidRequestError, EvalEnginePortableImportError, EvalExecutionPort, evalExecutionModels, makeEvalEngine, makeEvalEngineLayer, normalizeEvalComparisonEvidence, runEvalComparison, validateEvals } from "./library/eval-engine.js";
 export { makeNodeTestExecutionPort } from "./library/node-test-execution.js";
 export { makeOriRouteKitGatewayBridge, makeOriRouteKitGatewayBridgeLayer, OriRouteKitGatewayBridge, OriRouteKitGatewayBridgeConfigurationError, OriRouteKitGatewayBridgeStartError } from "./library/ori-gateway-bridge.js";
-export { makeRouteKitEvalEngineLayer, makeRouteKitEvalExecutionPort } from "./library/routekit-execution.js";
+export { makeRouteKitEvalEngineLayer, makeRouteKitEvalExecutionPort, makeRouteKitEvalExecutionPortService } from "./library/routekit-execution.js";
 export { makeRouteKitEvalGatewayBridge, makeRouteKitEvalGatewayBridgeLayer, RouteKitEvalGatewayBridge, RouteKitEvalGatewayBridgeConfigurationError, RouteKitEvalGatewayBridgeStartError } from "./library/gateway-bridge.js";
 ```

@@ -2,18 +2,16 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `7f6b1caec0f24c2e894672f75316d098c0d3fc09b35ca4d0a9e36751655d9508`
+Declaration SHA-256: `171b559e1bc680ed51f3bee2f4559eb2b4e623fad3c37279cc347f8c35562020`
 
 ## Root declarations
 
 ```ts
-export type { CompletedOriLibraryResult, OriArtifactPromotionInput, OriAuthoredArtifactPromotionInput, OriPolicyHandoffInput, OriPolicyHandoffResult, OriStructuredEvalRun, PromotedOriAuthoredArtifacts, PromotedOriEvalArtifacts, ResolvedOriEvalRun } from "./ori-artifact-promotion.js";
-export type { EvalComparisonMode, EvalComparisonRunnerShape, EvalRunConfiguration, EvalServiceConfiguration, EvalServiceError, EvalServiceShape } from "./service.js";
-export type { RouteKitEvalComparisonRunnerOptions, RouteKitEvalSetupLayerOptions } from "./production-runner.js";
+export type { CompileDimensionEvidenceMatrixInput, CompiledDimensionEvidenceMatrix, DimensionComparisonEvidenceInput } from "./dimension-evidence.js";
+export type { DimensionMatrixQualificationInput, DimensionMatrixQualificationResult, DimensionMatrixSuite, EvalComparisonEstimate, EvalComparisonMode, EvalComparisonRunnerShape, EvalRunConfiguration, EvalServiceConfiguration, EvalServiceError, EvalServiceShape, EvalSuiteInspection } from "./service.js";
+export type { RouteKitEvalComparisonRunnerOptions } from "./production-runner.js";
 export { EvalComparisonRunner, EvalService, makeEvalService, makeEvalServiceLayer } from "./service.js";
-export { EvalComparisonRunnerCredentialError, makeEvalComparisonRunner, makeEvalComparisonRunnerLayer, makeRouteKitEvalSetupLayer } from "./production-runner.js";
-export { EvalServiceComparisonError, EvalServiceConfigurationError, EvalServiceEstimateError, EvalServicePolicyError, EvalServicePublicationError, EvalServiceValidationError } from "./errors.js";
-export { OriArtifactPromotionError, OriPolicyHandoffError, promoteOriAuthoredArtifacts, promoteOriEvalArtifacts, publishOriEvalPolicyHandoff, selectLatestSuccessfulOriEvalRun } from "./ori-artifact-promotion.js";
-export { executeOriAuthoredProfile, OriAuthoredProfileExecutionError } from "./authored-profile-executor.js";
-export { makeOriEvalSetupLayer } from "./ori-setup-layer.js";
+export { EvalComparisonRunnerCredentialError, EvalComparisonRunnerManifestError, makeEvalComparisonRunner, makeEvalComparisonRunnerLayer } from "./production-runner.js";
+export { EvalServiceComparisonError, EvalServiceConfigurationError, EvalServicePolicyError, EvalServicePublicationError, EvalServiceValidationError } from "./errors.js";
+export { compileDimensionEvidenceMatrix, DimensionEvidenceCompilationError, wilsonLowerBound95 } from "./dimension-evidence.js";
 ```
