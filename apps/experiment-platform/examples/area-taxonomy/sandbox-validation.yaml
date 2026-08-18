@@ -1,0 +1,51 @@
+# Prepared manifest. Submission and paid execution require explicit authorization.
+# Development data only; no locked-test tasks are referenced.
+schemaVersion: 1
+experimentId: area-taxonomy-backstage-sandbox-validation-v1
+objective: Validate all frozen Backstage taxonomy-pilot inputs in one optimized Vercel Sandbox job before any hosted-model call.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 55697095b99158cd187c4d0484fbe1ad8fa38a13
+dataset:
+  id: area-taxonomy-backstage-pilot-24-v1-validation
+  hash: 95d93003b597fd7063f8271607614e8797847c3347ed4adb5ae50d688f87a03f
+  role: development
+matrix:
+  treatments:
+    - id: validate_bundle
+      executor: sandbox
+      configuration:
+        vcpus: 2
+        artifactMounts:
+          - artifact: validators/area-taxonomy-bundle-v1/sha256/43/43d00818215ff898c5d4162ca57190da260ccc3fff0230c1aff7c7609d9e2a71.mjs
+            path: validate-area-taxonomy-bundle.mjs
+      image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+      command:
+        executable: node
+        args:
+          - /vercel/sandbox/routekit-job/mounts/validate-area-taxonomy-bundle.mjs
+        timeoutSeconds: 300
+      estimatedProviderCostUsd: 0
+      estimatedInfrastructureCostUsd: 0.01
+  seeds:
+    - 181081
+tasks:
+  - id: area-taxonomy-validation-bundle
+    inputArtifact: validation/area-taxonomy-backstage-pilot-24-v1/sha256/95/95d93003b597fd7063f8271607614e8797847c3347ed4adb5ae50d688f87a03f.json
+    metadata:
+      repositoryId: backstage/backstage
+      taskCount: 24
+      treatmentCount: 24
+schedule:
+  type: exhaustive
+  maximumHostedCallsInFlight: 1
+  maximumSandboxes: 1
+selection:
+  primaryMetric: sandbox_validation
+  secondaryMetrics: []
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 0
+  vercelMaximumUsd: 0.05
+dataAccess:
+  lockedTest: false

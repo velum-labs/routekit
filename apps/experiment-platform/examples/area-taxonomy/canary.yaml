@@ -1,0 +1,323 @@
+# Prepared manifest. Submission and paid execution require explicit authorization.
+# Development data only; no locked-test tasks are referenced.
+schemaVersion: 1
+experimentId: area-taxonomy-backstage-canary-10-v1
+objective: Screen Backstage Area Card content, coarse versus official versus factorized taxonomies, overlap controls, and unknown-coverage policies with direct Luna against registry-specific Sol references.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 55697095b99158cd187c4d0484fbe1ad8fa38a13
+dataset:
+  id: area-taxonomy-backstage-pilot-24-v1
+  hash: 6860f2695e6645db19171944fe5be07c679b408dbae3aa8a1996582d7e5aaf06
+  role: development
+matrix:
+  treatments:
+    - id: neutral_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: neutral_reference
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: official8__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: official8__luna_name_only
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: official8__luna_core
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: official8__luna_core_boundaries
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: official8__luna_core_anchors
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: official8__luna_boundaries_anchors
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: official8__luna_complete
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: coarse4__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: coarse4
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: coarse4__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: coarse4
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: factorized13__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: factorized13
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: factorized13__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: factorized13
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: disjoint8__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: disjoint8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: disjoint8__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: disjoint8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: redundant9__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: redundant9
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: redundant9__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: redundant9
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: parent_child9__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: parent_child9
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: parent_child9__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: parent_child9
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: coverage6__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: coverage6
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: coverage6__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: coverage6
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: coverage7_shared__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: coverage7_shared
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: coverage7_shared__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: coverage7_shared
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: coverage7_other__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: coverage7_other
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.04
+      estimatedInfrastructureCostUsd: 0
+    - id: coverage7_other__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: coverage7_other
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: backstage-pr-22093
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/backstage-pr-22093/sha256/27/274713e0295b017fca2b2ae4064aaf95b308c92ddf5ab7fbfb29b35e3fe4f518.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22561
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/backstage-pr-22561/sha256/3d/3dfd24b651cbc0287b59116e4c556650ab2a94b686f3709def3f4d2a93590b70.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22772
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/backstage-pr-22772/sha256/93/93409e23baa9f3d7f46df1e8eb08685c71499e31d54aee0e9c33d4f2dfce8b90.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23802
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/backstage-pr-23802/sha256/73/73471d69fd1f85d19f719f2b5991e949e76fdff777c59a665ae0e8649c345e73.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: synthetic-composite-01
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/synthetic-composite-01/sha256/b2/b20bd18a8b064d4a4b26036ce87c24d31552760ef86054935beb777261d1583b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-22561
+  - id: synthetic-composite-02
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/synthetic-composite-02/sha256/2f/2fac565a8125fd15cb2764329d394d5ad4ecb81a060a7bae733389d377443086.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24133
+  - id: synthetic-composite-24
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/synthetic-composite-24/sha256/62/62f2a941d3f11daef80d890d2dfbfc47b4cec6b0f03a3a9d220c5b726e7ae9de.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-23802
+  - id: synthetic-composite-25
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/synthetic-composite-25/sha256/4d/4ddd763d0640aad22896bb06972ab84b3ddca2c0bb2c0bf202aacc45b02307bf.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22561
+        - backstage-pr-23901
+  - id: synthetic-composite-31
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/synthetic-composite-31/sha256/12/124bf1cad3fed09869353b219886c7b1186ae9a5882a13fe7e33ac6128872cb3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-31255
+        - backstage-pr-33200
+  - id: synthetic-composite-32
+    inputArtifact: inputs/area-taxonomy-backstage-pilot-24-v1/synthetic-composite-32/sha256/04/04760d6ebc2c7715e6bbb1545461d2aa187f7e211962a2a68618ee78a213b97f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23802
+        - backstage-pr-34608
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_active_area_recall
+    - composition_false_positive_mass
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 3
+budget:
+  providerMaximumUsd: 4.84
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false
