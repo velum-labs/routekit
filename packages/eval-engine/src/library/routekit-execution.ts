@@ -23,45 +23,49 @@ export interface RouteKitEvalExecutionOptions
  * to the request's OpenAI-compatible RouteKit gateway, and then releases the
  * bridge, child, and temporary evidence files together.
  */
+export const makeRouteKitEvalExecutionPortService = (
+  options: RouteKitEvalExecutionOptions,
+  client: HttpClient.HttpClient
+): EvalExecutionPortService => ({
+  execute: ({ comparisonId, discovery, request }) =>
+    Effect.gen(function* () {
+      const bridge = yield* makeRouteKitEvalGatewayBridge({
+        gatewayOrigin: request.gatewayUrl,
+        bearerCredential: options.bearerCredential,
+        candidateModels: request.candidateModels,
+        comparisonId,
+        judgeModel: request.judgeModel,
+        ...(request.maxOutputTokens === undefined
+          ? {}
+          : { maxOutputTokens: request.maxOutputTokens })
+      }).pipe(Effect.provideService(HttpClient.HttpClient, client));
+      const executor = makeNodeTestExecutionPort({
+        bridgeOrigin: bridge.origin,
+        ...(options.childEnvironment === undefined
+          ? {}
+          : { childEnvironment: options.childEnvironment }),
+        ...(options.execPath === undefined ? {} : { execPath: options.execPath })
+      });
+      return yield* executor.execute({ comparisonId, discovery, request });
+    }).pipe(
+      Effect.scoped,
+      Effect.mapError((cause) =>
+        cause instanceof EvalEngineExecutionError
+          ? cause
+          : new EvalEngineExecutionError({
+              cause,
+              detail: "RouteKit Eval could not run the scoped gateway comparison."
+            })
+      )
+    )
+});
+
 export const makeRouteKitEvalExecutionPort = (
   options: RouteKitEvalExecutionOptions
 ): Effect.Effect<EvalExecutionPortService, never, HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient;
-    return {
-      execute: ({ comparisonId, discovery, request }) =>
-        Effect.gen(function* () {
-          const bridge = yield* makeRouteKitEvalGatewayBridge({
-            gatewayOrigin: request.gatewayUrl,
-            bearerCredential: options.bearerCredential,
-            candidateModels: request.candidateModels,
-            comparisonId,
-            judgeModel: request.judgeModel,
-            ...(request.maxOutputTokens === undefined
-              ? {}
-              : { maxOutputTokens: request.maxOutputTokens })
-          }).pipe(Effect.provideService(HttpClient.HttpClient, client));
-          const executor = makeNodeTestExecutionPort({
-            bridgeOrigin: bridge.origin,
-            ...(options.childEnvironment === undefined
-              ? {}
-              : { childEnvironment: options.childEnvironment }),
-            ...(options.execPath === undefined ? {} : { execPath: options.execPath })
-          });
-          return yield* executor.execute({ comparisonId, discovery, request });
-        }).pipe(
-          Effect.scoped,
-          Effect.mapError((cause) =>
-            cause instanceof EvalEngineExecutionError
-              ? cause
-              : new EvalEngineExecutionError({
-                  cause,
-                  detail: "RouteKit Eval could not run the scoped gateway comparison."
-                })
-          )
-        )
-    };
-  });
+  Effect.map(HttpClient.HttpClient, (client) =>
+    makeRouteKitEvalExecutionPortService(options, client)
+  );
 
 /**
  * Build the complete RouteKit Eval engine layer backed by the injected HTTP

@@ -125,7 +125,7 @@ export interface EvalExecutionPortService {
     readonly comparisonId: string;
     readonly discovery: EvalEngineDiscovery;
     readonly request: EvalComparisonRequest;
-  }) => Effect.Effect<EvalExecutionOutput, EvalEngineExecutionError>;
+  }) => Effect.Effect<EvalExecutionOutput, EvalEngineExecutionError, never>;
 }
 
 /**
@@ -143,12 +143,13 @@ export class EvalExecutionPort extends Context.Service<
 export interface EvalEngineService {
   readonly discover: (
     target: string
-  ) => Effect.Effect<EvalEngineDiscovery, EvalEngineDiscoveryError>;
+  ) => Effect.Effect<EvalEngineDiscovery, EvalEngineDiscoveryError, never>;
   readonly validate: (
     target: string
   ) => Effect.Effect<
     EvalEngineValidation,
-    EvalEngineDiscoveryError | EvalEngineDryLoadError | EvalEnginePortableImportError
+    EvalEngineDiscoveryError | EvalEngineDryLoadError | EvalEnginePortableImportError,
+    never
   >;
   readonly runComparison: (
     request: EvalComparisonRequest
@@ -158,7 +159,8 @@ export interface EvalEngineService {
     | EvalEngineDryLoadError
     | EvalEngineExecutionError
     | EvalEngineInvalidRequestError
-    | EvalEnginePortableImportError
+    | EvalEnginePortableImportError,
+    never
   >;
 }
 
@@ -600,46 +602,47 @@ export const normalizeEvalComparisonEvidence = (
   };
   });
 
-export const makeEvalEngineLayer = (execution: EvalExecutionPortService): Layer.Layer<EvalEngine> =>
-  Layer.succeed(
-    EvalEngine,
-    EvalEngine.of({
-      discover: (target) => provideNode(discover(target)),
-      validate: (target) => provideNode(validate(target)),
-      runComparison: (request) =>
-        provideNode(
-          Effect.gen(function* () {
-            yield* validateRequest(request);
-            const clock = yield* Clock.Clock;
-            const crypto = yield* Crypto.Crypto;
-            const startedAt = new Date(yield* clock.currentTimeMillis).toISOString();
-            const comparisonId = yield* crypto.randomUUIDv4.pipe(
-              Effect.mapError(
-                (cause) =>
-                  new EvalEngineExecutionError({
-                    cause,
-                    detail: "Could not create a RouteKit Eval comparison id."
-                  })
-              )
-            );
-            const discovery = yield* validate(request.suitePath);
-            const output = yield* execution.execute({
-              comparisonId,
-              discovery,
-              request
-            });
-            return yield* normalizeEvalComparisonEvidence({
-              comparisonId,
-              request,
-              output,
-              suiteDigest: discovery.suiteDigest,
-              startedAt,
-              finishedAt: new Date(yield* clock.currentTimeMillis).toISOString()
-            });
-          })
-        )
-    })
-  );
+export const makeEvalEngine = (execution: EvalExecutionPortService): EvalEngineService =>
+  EvalEngine.of({
+    discover: (target) => provideNode(discover(target)),
+    validate: (target) => provideNode(validate(target)),
+    runComparison: (request) =>
+      provideNode(
+        Effect.gen(function* () {
+          yield* validateRequest(request);
+          const clock = yield* Clock.Clock;
+          const crypto = yield* Crypto.Crypto;
+          const startedAt = new Date(yield* clock.currentTimeMillis).toISOString();
+          const comparisonId = yield* crypto.randomUUIDv4.pipe(
+            Effect.mapError(
+              (cause) =>
+                new EvalEngineExecutionError({
+                  cause,
+                  detail: "Could not create a RouteKit Eval comparison id."
+                })
+            )
+          );
+          const discovery = yield* validate(request.suitePath);
+          const output = yield* execution.execute({
+            comparisonId,
+            discovery,
+            request
+          });
+          return yield* normalizeEvalComparisonEvidence({
+            comparisonId,
+            request,
+            output,
+            suiteDigest: discovery.suiteDigest,
+            startedAt,
+            finishedAt: new Date(yield* clock.currentTimeMillis).toISOString()
+          });
+        })
+      )
+  });
+
+export const makeEvalEngineLayer = (
+  execution: EvalExecutionPortService
+): Layer.Layer<EvalEngine, never, never> => Layer.succeed(EvalEngine, makeEvalEngine(execution));
 
 export const discoverEvals = (
   target: string

@@ -40,16 +40,18 @@ export type EvalComparisonEstimate = {
 };
 
 export type EvalComparisonRunnerShape = {
-  readonly validate: (suitePath: string) => Effect.Effect<void, unknown>;
-  readonly inspect: (request: EvalComparisonRequest) => Effect.Effect<EvalSuiteInspection, unknown>;
+  readonly validate: (suitePath: string) => Effect.Effect<void, unknown, never>;
+  readonly inspect: (
+    request: EvalComparisonRequest
+  ) => Effect.Effect<EvalSuiteInspection, unknown, never>;
   readonly estimate: (
     request: EvalComparisonRequest,
     mode: EvalComparisonMode
-  ) => Effect.Effect<EvalComparisonEstimate, unknown>;
+  ) => Effect.Effect<EvalComparisonEstimate, unknown, never>;
   readonly runComparison: (
     request: EvalComparisonRequest,
     mode: EvalComparisonMode
-  ) => Effect.Effect<EvalComparisonResult, unknown>;
+  ) => Effect.Effect<EvalComparisonResult, unknown, never>;
 };
 
 export class EvalComparisonRunner extends Context.Service<

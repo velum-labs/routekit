@@ -195,68 +195,68 @@ function assertDimensionSuite(suite: EvalDimensionSuite): void {
 export type EvalProjectArtifactsShape = {
   readonly loadBasisProposal: (
     repositoryRoot: string
-  ) => Effect.Effect<RoutingBasis | undefined, EvalProjectArtifactError>;
+  ) => Effect.Effect<RoutingBasis | undefined, EvalProjectArtifactError, never>;
   readonly saveBasisProposal: (
     repositoryRoot: string,
     basis: RoutingBasis
-  ) => Effect.Effect<void, EvalProjectArtifactError>;
+  ) => Effect.Effect<void, EvalProjectArtifactError, never>;
   readonly loadBasisApproval: (
     repositoryRoot: string
-  ) => Effect.Effect<EvalArtifactApproval | undefined, EvalProjectArtifactError>;
+  ) => Effect.Effect<EvalArtifactApproval | undefined, EvalProjectArtifactError, never>;
   readonly saveBasisApproval: (
     repositoryRoot: string,
     approval: EvalArtifactApproval
-  ) => Effect.Effect<void, EvalProjectArtifactError>;
+  ) => Effect.Effect<void, EvalProjectArtifactError, never>;
   readonly loadEvaluationProposal: (
     repositoryRoot: string
-  ) => Effect.Effect<EvalEvaluationProposal | undefined, EvalProjectArtifactError>;
+  ) => Effect.Effect<EvalEvaluationProposal | undefined, EvalProjectArtifactError, never>;
   readonly saveEvaluationProposal: (
     repositoryRoot: string,
     proposal: EvalEvaluationProposal
-  ) => Effect.Effect<void, EvalProjectArtifactError>;
+  ) => Effect.Effect<void, EvalProjectArtifactError, never>;
   readonly loadEvaluationsApproval: (
     repositoryRoot: string
-  ) => Effect.Effect<EvalArtifactApproval | undefined, EvalProjectArtifactError>;
+  ) => Effect.Effect<EvalArtifactApproval | undefined, EvalProjectArtifactError, never>;
   readonly saveEvaluationsApproval: (
     repositoryRoot: string,
     approval: EvalArtifactApproval
-  ) => Effect.Effect<void, EvalProjectArtifactError>;
+  ) => Effect.Effect<void, EvalProjectArtifactError, never>;
   readonly savePlan: (
     repositoryRoot: string,
     plan: EvalExecutionPlan
-  ) => Effect.Effect<void, EvalProjectArtifactError>;
+  ) => Effect.Effect<void, EvalProjectArtifactError, never>;
   readonly materializePlanSuites: (
     repositoryRoot: string,
     plan: EvalExecutionPlan,
     proposal: EvalEvaluationProposal
-  ) => Effect.Effect<void, EvalProjectArtifactError>;
+  ) => Effect.Effect<void, EvalProjectArtifactError, never>;
   readonly planSuitePath: (
     repositoryRoot: string,
     planId: string,
     dimensionId: string
-  ) => Effect.Effect<string, EvalProjectArtifactError>;
+  ) => Effect.Effect<string, EvalProjectArtifactError, never>;
   readonly compositionSuitePath: (
     repositoryRoot: string,
     planId: string
-  ) => Effect.Effect<string, EvalProjectArtifactError>;
+  ) => Effect.Effect<string, EvalProjectArtifactError, never>;
   readonly loadPlan: (
     repositoryRoot: string,
     planId: string
-  ) => Effect.Effect<EvalExecutionPlan | undefined, EvalProjectArtifactError>;
+  ) => Effect.Effect<EvalExecutionPlan | undefined, EvalProjectArtifactError, never>;
   readonly listPlans: (
     repositoryRoot: string
-  ) => Effect.Effect<readonly string[], EvalProjectArtifactError>;
+  ) => Effect.Effect<readonly string[], EvalProjectArtifactError, never>;
   readonly saveRunReport: (
     repositoryRoot: string,
     report: EvalRunReport
-  ) => Effect.Effect<string, EvalProjectArtifactError>;
+  ) => Effect.Effect<string, EvalProjectArtifactError, never>;
   readonly loadRunReport: (
     repositoryRoot: string,
     runId: string
-  ) => Effect.Effect<EvalRunReport | undefined, EvalProjectArtifactError>;
+  ) => Effect.Effect<EvalRunReport | undefined, EvalProjectArtifactError, never>;
   readonly listRunReports: (
     repositoryRoot: string
-  ) => Effect.Effect<readonly string[], EvalProjectArtifactError>;
+  ) => Effect.Effect<readonly string[], EvalProjectArtifactError, never>;
 };
 
 export class EvalProjectArtifacts extends Context.Service<
@@ -273,10 +273,22 @@ export const makeFileEvalProjectArtifacts = Effect.gen(function* () {
   const artifactPath = (repositoryRoot: string, name: string): string =>
     paths.join(root(repositoryRoot), name);
 
+  const writeAtomic = (
+    target: string,
+    content: string
+  ): Effect.Effect<void, EvalProjectArtifactError, never> =>
+    writeFileAtomicEffect(target, content, {
+      mode: 0o600
+    }).pipe(
+      Effect.mapError((cause) => artifactFailure("writing", target, cause)),
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, paths)
+    ) as Effect.Effect<void, EvalProjectArtifactError, never>;
+
   const read = <A>(
     repositoryRoot: string,
     name: string,
-    decode: (value: unknown) => Effect.Effect<A, unknown>
+    decode: (value: unknown) => Effect.Effect<A, unknown, never>
   ): Effect.Effect<A | undefined, EvalProjectArtifactError> =>
     Effect.gen(function* () {
       const target = artifactPath(repositoryRoot, name);
@@ -301,7 +313,7 @@ export const makeFileEvalProjectArtifacts = Effect.gen(function* () {
     name: string,
     content: string,
     overwrite = true
-  ): Effect.Effect<void, EvalProjectArtifactError> =>
+  ): Effect.Effect<void, EvalProjectArtifactError, never> =>
     Effect.gen(function* () {
       const target = artifactPath(repositoryRoot, name);
       const exists = yield* fs
@@ -313,13 +325,7 @@ export const makeFileEvalProjectArtifacts = Effect.gen(function* () {
       yield* fs
         .makeDirectory(paths.dirname(target), { recursive: true, mode: 0o700 })
         .pipe(Effect.mapError((cause) => artifactFailure("writing", target, cause)));
-      yield* writeFileAtomicEffect(target, content, {
-        mode: 0o600
-      }).pipe(
-        Effect.mapError((cause) => artifactFailure("writing", target, cause)),
-        Effect.provideService(FileSystem.FileSystem, fs),
-        Effect.provideService(Path.Path, paths)
-      );
+      yield* writeAtomic(target, content);
     });
 
   const write = (
@@ -327,7 +333,7 @@ export const makeFileEvalProjectArtifacts = Effect.gen(function* () {
     name: string,
     value: unknown,
     overwrite = true
-  ): Effect.Effect<void, EvalProjectArtifactError> =>
+  ): Effect.Effect<void, EvalProjectArtifactError, never> =>
     writeText(repositoryRoot, name, `${JSON.stringify(value, null, 2)}\n`, overwrite);
 
   return EvalProjectArtifacts.of({

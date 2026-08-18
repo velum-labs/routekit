@@ -3,11 +3,14 @@ import path from "node:path";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import {
-  EvalEngine,
+  EvalEngineDiscoveryError,
+  EvalEngineDryLoadError,
   EvalEngineExecutionError,
-  type EvalEngineService,
-  makeEvalEngineLayer,
-  makeRouteKitEvalExecutionPort
+  EvalEnginePortableImportError,
+  type EvalEngineValidation,
+  type EvalExecutionPortService,
+  makeEvalEngine,
+  makeRouteKitEvalExecutionPortService
 } from "@velum-labs/routekit-eval-engine";
 import {
   type EvalComparisonRequest,
@@ -47,7 +50,7 @@ export class EvalComparisonRunnerManifestError extends Data.TaggedError(
   }
 }
 
-const unavailableExecution = {
+const unavailableExecution: EvalExecutionPortService = {
   execute: () =>
     Effect.fail(
       new EvalEngineExecutionError({
@@ -57,10 +60,16 @@ const unavailableExecution = {
     )
 };
 
-const withInspectionEngine = <A, E>(
-  use: (engine: EvalEngineService) => Effect.Effect<A, E>
-): Effect.Effect<A, E> =>
-  Effect.flatMap(EvalEngine, use).pipe(Effect.provide(makeEvalEngineLayer(unavailableExecution)));
+const inspectionEngine = makeEvalEngine(unavailableExecution);
+
+const validateWithInspectionEngine = (
+  suitePath: string
+): Effect.Effect<
+  EvalEngineValidation,
+  EvalEngineDiscoveryError | EvalEngineDryLoadError | EvalEnginePortableImportError,
+  never
+> =>
+  inspectionEngine.validate(suitePath);
 
 const sameStrings = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
@@ -153,8 +162,8 @@ const loadExecutionManifest = (
 
 const inspectComparisonSuite = (
   request: EvalComparisonRequest
-): Effect.Effect<EvalSuiteInspection, unknown> =>
-  withInspectionEngine((engine) => engine.validate(request.suitePath)).pipe(
+): Effect.Effect<EvalSuiteInspection, unknown, never> =>
+  validateWithInspectionEngine(request.suitePath).pipe(
     Effect.flatMap((validation) =>
       loadExecutionManifest(validation.workingDirectory, request).pipe(
         Effect.map((manifest) => ({
@@ -173,11 +182,39 @@ const inspectComparisonSuite = (
 export const makeEvalComparisonRunner = (
   options: RouteKitEvalComparisonRunnerOptions
 ): Effect.Effect<EvalComparisonRunnerShape, never, HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const httpClient = yield* HttpClient.HttpClient;
+  Effect.map(HttpClient.HttpClient, (httpClient) => {
+    const runComparison: EvalComparisonRunnerShape["runComparison"] = (request) => {
+      const bearerCredential = options.bearerCredential?.trim();
+      if (bearerCredential === undefined || bearerCredential.length === 0) {
+        return Effect.fail(
+          new EvalComparisonRunnerCredentialError({
+            detail: "RouteKit Eval comparison execution requires an injected bearer credential."
+          })
+        );
+      }
+      const execution = makeRouteKitEvalExecutionPortService(
+        {
+          bearerCredential,
+          ...(options.childEnvironment === undefined
+            ? {}
+            : { childEnvironment: options.childEnvironment }),
+          ...(options.execPath === undefined ? {} : { execPath: options.execPath })
+        },
+        httpClient
+      );
+      return Effect.flatMap(inspectComparisonSuite(request), (inspection) =>
+        makeEvalEngine(execution).runComparison({
+          ...request,
+          expectedCaseIds: [...inspection.manifest.caseIds],
+          expectedCallCount: inspection.manifest.expectedCallCount,
+          maxOutputTokens: inspection.manifest.maxOutputTokens,
+          suiteDigest: inspection.suiteDigest
+        })
+      );
+    };
     return {
       validate: (suitePath) =>
-        withInspectionEngine((engine) => engine.validate(suitePath)).pipe(Effect.asVoid),
+        validateWithInspectionEngine(suitePath).pipe(Effect.asVoid),
       inspect: (request) => inspectComparisonSuite(request),
       estimate: (request) =>
         inspectComparisonSuite(request).pipe(
@@ -186,32 +223,7 @@ export const makeEvalComparisonRunner = (
             pricingKnown: false as const
           }))
         ),
-      runComparison: (request) =>
-        Effect.gen(function* () {
-          const bearerCredential = options.bearerCredential?.trim();
-          if (bearerCredential === undefined || bearerCredential.length === 0) {
-            return yield* new EvalComparisonRunnerCredentialError({
-              detail: "RouteKit Eval comparison execution requires an injected bearer credential."
-            });
-          }
-          const execution = yield* makeRouteKitEvalExecutionPort({
-            bearerCredential,
-            ...(options.childEnvironment === undefined
-              ? {}
-              : { childEnvironment: options.childEnvironment }),
-            ...(options.execPath === undefined ? {} : { execPath: options.execPath })
-          }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
-          const inspection = yield* inspectComparisonSuite(request);
-          return yield* Effect.gen(function* () {
-            return yield* (yield* EvalEngine).runComparison({
-              ...request,
-              expectedCaseIds: [...inspection.manifest.caseIds],
-              expectedCallCount: inspection.manifest.expectedCallCount,
-              maxOutputTokens: inspection.manifest.maxOutputTokens,
-              suiteDigest: inspection.suiteDigest
-            });
-          }).pipe(Effect.provide(makeEvalEngineLayer(execution)));
-        })
+      runComparison
     } satisfies EvalComparisonRunnerShape;
   });
 

@@ -17,6 +17,7 @@ export {
   EvalEnginePortableImportError,
   EvalExecutionPort,
   evalExecutionModels,
+  makeEvalEngine,
   makeEvalEngineLayer,
   normalizeEvalComparisonEvidence,
   runEvalComparison,
@@ -51,7 +52,8 @@ export {
 export type { RouteKitEvalExecutionOptions } from "./library/routekit-execution.ts";
 export {
   makeRouteKitEvalEngineLayer,
-  makeRouteKitEvalExecutionPort
+  makeRouteKitEvalExecutionPort,
+  makeRouteKitEvalExecutionPortService
 } from "./library/routekit-execution.ts";
 
 export const routeKitEvalStandaloneBaseline = "complete" as const;
