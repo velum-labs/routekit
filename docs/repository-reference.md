@@ -27,7 +27,7 @@ The most important operational fact is the process boundary. The CLI negotiates 
 
 The root `package.json` is a private pnpm workspace named `routekit-monorepo`. Its `engines` field declares Node `>=22.22.0` and pnpm `>=11.15.1`. `.npmrc` sets `engine-strict=true`, so installs use that declared floor together with dependency engine requirements instead of allowing older 22.x runtimes. Turborepo orchestrates per-project builds and tests across `packages/*`; `pnpm check` remains the repository invariant gate and `pnpm verify` runs check, build, package lint/types, and test in order.
 
-The `packages/` directory contains the TypeScript workspace: the CLI, daemon, control plane, gateway, accounts, router, config, registry, tracing, harness-core, runtime utilities, tool integrations, contracts, and the private `testkit` support package.
+The `packages/` directory contains the TypeScript workspace: the CLI, daemon, control plane, gateway, accounts, config, registry, tracing, harness-core, runtime utilities, tool integrations, contracts, and the private `testkit` support package.
 
 The `spec/` directory contains JSON Schemas and generated registry bindings (`spec/registry/*.json`). Schema and registry changes should be treated as contract changes and coordinated with generated code.
 
