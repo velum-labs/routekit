@@ -17,7 +17,6 @@ const packageNames = [
   "gateway",
   "harness-core",
   "registry",
-  "router",
   "runtime",
   "telemetry-core",
   "testkit",
@@ -54,17 +53,12 @@ const packageLayerRules = [
   {
     name: "gateway-layer-does-not-import-applications",
     from: { path: "^packages/gateway/", pathNot: testSourcePattern },
-    to: { path: "^packages/(accounts|router|daemon|cli|tools|tool-[^/]+)/" }
+    to: { path: "^packages/(accounts|daemon|cli|tools|tool-[^/]+)/" }
   },
   {
     name: "accounts-layer-does-not-import-routing-applications",
     from: { path: "^packages/accounts/", pathNot: testSourcePattern },
-    to: { path: "^packages/(gateway|router|daemon|cli|tools|tool-[^/]+)/" }
-  },
-  {
-    name: "router-layer-does-not-import-applications",
-    from: { path: "^packages/router/", pathNot: testSourcePattern },
-    to: { path: "^packages/(daemon|cli|tools|tool-[^/]+)/" }
+    to: { path: "^packages/(gateway|daemon|cli|tools|tool-[^/]+)/" }
   },
   {
     name: "daemon-layer-does-not-import-cli",
@@ -178,36 +172,36 @@ export default {
     {
       name: "foundation-does-not-import-upward",
       comment:
-        "Foundation packages cannot depend on application, daemon, gateway, router, or tool implementation layers.",
+        "Foundation packages cannot depend on application, daemon, gateway, or tool implementation layers.",
       severity: "error",
       from: {
         path: "^packages/(contracts|runtime|registry|config-core|eval-contracts|eval-engine)/",
         pathNot: testSourcePattern
       },
       to: {
-        path: "^packages/(cli|daemon|gateway|router|accounts|tools|tool-[^/]+|eval-core|eval-store)/"
+        path: "^packages/(cli|daemon|gateway|accounts|tools|tool-[^/]+|eval-core|eval-store)/"
       }
     },
     {
       name: "eval-does-not-import-online-request-path",
       comment:
-        "Evaluation packages must not import the gateway, daemon, router, or CLI online path.",
+        "Evaluation packages must not import the gateway, daemon, or CLI online path.",
       severity: "error",
       from: {
         path: "^packages/eval-(contracts|core|engine|service|setup|store)/",
         pathNot: testSourcePattern
       },
       to: {
-        path: "^packages/(cli|daemon|gateway|router|accounts)/"
+        path: "^packages/(cli|daemon|gateway|accounts)/"
       }
     },
     {
       name: "online-request-path-does-not-import-eval-engine",
       comment:
-        "Gateway, router, daemon, and account production paths cannot consume the offline eval engine; eval-service owns that composition.",
+        "Gateway, daemon, and account production paths cannot consume the offline eval engine; eval-service owns that composition.",
       severity: "error",
       from: {
-        path: "^packages/(gateway|router|daemon|accounts)/",
+        path: "^packages/(gateway|daemon|accounts)/",
         pathNot: testSourcePattern
       },
       to: {
@@ -242,14 +236,14 @@ export default {
     },
     {
       name: "config-does-not-import-gateway",
-      comment: "Configuration ownership is below gateway and router implementation layers.",
+      comment: "Configuration ownership is below gateway implementation layers.",
       severity: "error",
       from: {
         path: "^packages/(config|config-core)/",
         pathNot: testSourcePattern
       },
       to: {
-        path: "^packages/(gateway|router)/"
+        path: "^packages/gateway/"
       }
     },
     ...packageLayerRules,
