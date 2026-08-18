@@ -9,18 +9,13 @@ import {
   makeRouteKitEvalExecutionPort
 } from "@velum-labs/routekit-eval-engine";
 import { EvalRunManifest, type EvalComparisonRequest } from "@velum-labs/routekit-eval-contracts";
-import { EvalSetup } from "@velum-labs/routekit-eval-setup";
 import { Data, Effect, FileSystem, Layer, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
-import type {
-  RouteKitEvalComparisonRunnerOptions,
-  RouteKitEvalSetupLayerOptions
-} from "./layer-options.js";
-import { makeOriEvalSetupLayer } from "./ori-setup-layer.js";
+import type { RouteKitEvalComparisonRunnerOptions } from "./layer-options.js";
 import { EvalComparisonRunner, type EvalComparisonRunnerShape } from "./service.js";
 
-export type { RouteKitEvalComparisonRunnerOptions, RouteKitEvalSetupLayerOptions };
+export type { RouteKitEvalComparisonRunnerOptions };
 
 export class EvalComparisonRunnerCredentialError extends Data.TaggedError(
   "EvalComparisonRunnerCredentialError"
@@ -198,13 +193,3 @@ export const makeEvalComparisonRunnerLayer = (
   options: RouteKitEvalComparisonRunnerOptions
 ): Layer.Layer<EvalComparisonRunner, never, HttpClient.HttpClient> =>
   Layer.effect(EvalComparisonRunner, makeEvalComparisonRunner(options));
-
-/**
- * Complete production onboarding composition used by CLI and other hosts.
- *
- * The layer is credential-optional so setup, authoring, validation, and
- * estimation remain available before the user approves a paid run.
- */
-export const makeRouteKitEvalSetupLayer = (
-  options: RouteKitEvalSetupLayerOptions
-): Layer.Layer<EvalSetup> => makeOriEvalSetupLayer(options);

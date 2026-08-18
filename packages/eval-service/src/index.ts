@@ -1,7 +1,3 @@
-export {
-  executeOriAuthoredProfile,
-  OriAuthoredProfileExecutionError
-} from "./authored-profile-executor.js";
 export type {
   CompileDimensionEvidenceMatrixInput,
   CompiledDimensionEvidenceMatrix,
@@ -15,45 +11,22 @@ export {
 export {
   EvalServiceComparisonError,
   EvalServiceConfigurationError,
-  EvalServiceEstimateError,
   EvalServicePolicyError,
   EvalServicePublicationError,
   EvalServiceValidationError
 } from "./errors.js";
-export type {
-  CompletedOriLibraryResult,
-  OriArtifactPromotionInput,
-  OriAuthoredArtifactPromotionInput,
-  OriPolicyHandoffInput,
-  OriPolicyHandoffResult,
-  OriStructuredEvalRun,
-  PromotedOriAuthoredArtifacts,
-  PromotedOriEvalArtifacts,
-  ResolvedOriEvalRun
-} from "./ori-artifact-promotion.js";
-export {
-  OriArtifactPromotionError,
-  OriPolicyHandoffError,
-  promoteOriAuthoredArtifacts,
-  promoteOriEvalArtifacts,
-  publishOriEvalPolicyHandoff,
-  selectLatestSuccessfulOriEvalRun
-} from "./ori-artifact-promotion.js";
-export { makeOriEvalSetupLayer } from "./ori-setup-layer.js";
-export type {
-  RouteKitEvalComparisonRunnerOptions,
-  RouteKitEvalSetupLayerOptions
-} from "./production-runner.js";
+export type { RouteKitEvalComparisonRunnerOptions } from "./production-runner.js";
 export {
   EvalComparisonRunnerCredentialError,
+  EvalComparisonRunnerManifestError,
   makeEvalComparisonRunner,
-  makeEvalComparisonRunnerLayer,
-  makeRouteKitEvalSetupLayer
+  makeEvalComparisonRunnerLayer
 } from "./production-runner.js";
 export type {
   DimensionMatrixQualificationInput,
   DimensionMatrixQualificationResult,
   DimensionMatrixSuite,
+  EvalComparisonEstimate,
   EvalComparisonMode,
   EvalComparisonRunnerShape,
   EvalRunConfiguration,

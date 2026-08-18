@@ -1,21 +1,17 @@
 import type {
-  CompiledRoutingPolicy,
   EvalComparisonRequest,
   EvalComparisonResult,
   EvalRunManifest,
   PublishedRoutingActivation,
-  PublishedRoutingSnapshot,
-  RoutingBasis,
   RoutingActivationConstraints,
+  RoutingBasis,
   RoutingObjectivePolicy
 } from "@velum-labs/routekit-eval-contracts";
-import { assertRoutingBasis, assertRoutingProfile } from "@velum-labs/routekit-eval-contracts";
-import { compileRoutingPolicy } from "@velum-labs/routekit-eval-core";
-import { type ScaffoldResult, type SetupEstimate } from "@velum-labs/routekit-eval-setup";
 import {
-  makeRoutingSnapshotStore,
-  makeRoutingActivationStore
-} from "@velum-labs/routekit-eval-store";
+  assertExplicitEvalModel,
+  assertRoutingBasis
+} from "@velum-labs/routekit-eval-contracts";
+import { makeRoutingActivationStore } from "@velum-labs/routekit-eval-store";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 
 import {
@@ -25,7 +21,6 @@ import {
 import {
   EvalServiceComparisonError,
   EvalServiceConfigurationError,
-  EvalServiceEstimateError,
   EvalServicePolicyError,
   EvalServicePublicationError,
   EvalServiceValidationError
@@ -38,28 +33,25 @@ export type EvalSuiteInspection = {
   readonly manifest: EvalRunManifest;
 };
 
+export type EvalComparisonEstimate = {
+  readonly callCount: number;
+  readonly maximumCostUsd?: number;
+  readonly pricingKnown: boolean;
+};
+
 export type EvalComparisonRunnerShape = {
-  /** Validate/dry-load the suite without executing its test bodies. */
   readonly validate: (suitePath: string) => Effect.Effect<void, unknown>;
-  /** Read the authoritative manifest and bind it to the validated suite digest. */
   readonly inspect: (request: EvalComparisonRequest) => Effect.Effect<EvalSuiteInspection, unknown>;
-  /** Estimate calls and spend without making candidate or judge calls. */
   readonly estimate: (
     request: EvalComparisonRequest,
     mode: EvalComparisonMode
-  ) => Effect.Effect<SetupEstimate, unknown>;
-  /** Execute the comparison in-process through the injected engine adapter. */
+  ) => Effect.Effect<EvalComparisonEstimate, unknown>;
   readonly runComparison: (
     request: EvalComparisonRequest,
     mode: EvalComparisonMode
   ) => Effect.Effect<EvalComparisonResult, unknown>;
 };
 
-/**
- * RouteKit-Effect boundary around the copied eval engine. The adapter may bridge
- * the engine's temporary Effect beta internally, but every operation exposed to
- * this package uses RouteKit's basis-pinned Effect.
- */
 export class EvalComparisonRunner extends Context.Service<
   EvalComparisonRunner,
   EvalComparisonRunnerShape
@@ -78,13 +70,12 @@ export type EvalRunConfiguration = {
 export type EvalServiceConfiguration = {
   readonly gatewayUrl: string;
   readonly snapshotRoot: string;
-  readonly pilot?: EvalRunConfiguration;
   readonly full?: EvalRunConfiguration;
 };
 
 export type DimensionMatrixSuite = {
   readonly dimensionId: string;
-  readonly scaffold: ScaffoldResult;
+  readonly suitePath: string;
 };
 
 export type DimensionMatrixQualificationInput = {
@@ -106,45 +97,11 @@ export type DimensionMatrixQualificationResult = {
 export type EvalServiceError =
   | EvalServiceComparisonError
   | EvalServiceConfigurationError
-  | EvalServiceEstimateError
   | EvalServicePolicyError
   | EvalServicePublicationError
   | EvalServiceValidationError;
 
 export type EvalServiceShape = {
-  readonly validate: (
-    input: ScaffoldResult
-  ) => Effect.Effect<void, EvalServiceConfigurationError | EvalServiceValidationError>;
-  readonly estimate: (
-    input: ScaffoldResult,
-    mode: EvalComparisonMode
-  ) => Effect.Effect<SetupEstimate, EvalServiceConfigurationError | EvalServiceEstimateError>;
-  readonly inspect: (
-    input: ScaffoldResult,
-    mode: EvalComparisonMode
-  ) => Effect.Effect<
-    EvalSuiteInspection,
-    EvalServiceConfigurationError | EvalServiceValidationError
-  >;
-  readonly runPilot: (
-    input: ScaffoldResult
-  ) => Effect.Effect<
-    EvalComparisonResult,
-    EvalServiceConfigurationError | EvalServiceComparisonError
-  >;
-  readonly runFull: (
-    input: ScaffoldResult
-  ) => Effect.Effect<
-    EvalComparisonResult,
-    EvalServiceConfigurationError | EvalServiceComparisonError
-  >;
-  readonly propose: (
-    input: ScaffoldResult,
-    comparison: EvalComparisonResult
-  ) => Effect.Effect<CompiledRoutingPolicy, EvalServicePolicyError>;
-  readonly publish: (
-    policy: CompiledRoutingPolicy
-  ) => Effect.Effect<PublishedRoutingSnapshot, EvalServicePublicationError>;
   readonly qualifyDimensionMatrix: (
     input: DimensionMatrixQualificationInput
   ) => Effect.Effect<DimensionMatrixQualificationResult, EvalServiceError>;
@@ -179,78 +136,9 @@ const validateConfiguration = (configuration: EvalServiceConfiguration): void =>
   if (configuration.snapshotRoot.trim().length === 0) {
     throw new Error("snapshotRoot must not be empty");
   }
-  for (const [mode, settings] of [
-    ["pilot", configuration.pilot],
-    ["full", configuration.full]
-  ] as const) {
-    validatePositiveOption(`${mode}.concurrency`, settings?.concurrency);
-    validatePositiveOption(`${mode}.timeoutMs`, settings?.timeoutMs);
-    validatePositiveOption(`${mode}.spendLimitUsd`, settings?.spendLimitUsd, true);
-  }
-};
-
-const validateInput = (
-  configuration: EvalServiceConfiguration,
-  input: ScaffoldResult
-): Effect.Effect<void, EvalServiceConfigurationError> =>
-  Effect.try({
-    try: () => {
-      validateConfiguration(configuration);
-      assertRoutingProfile(input.profile);
-      if (input.evalPath.trim().length === 0) throw new Error("evalPath must not be empty");
-    },
-    catch: (cause) =>
-      new EvalServiceConfigurationError({
-        operation: "validate configuration",
-        detail: detailOf(cause),
-        cause
-      })
-  });
-
-const comparisonRequest = (
-  configuration: EvalServiceConfiguration,
-  input: ScaffoldResult,
-  mode: EvalComparisonMode
-): EvalComparisonRequest => {
-  const run = configuration[mode];
-  return {
-    version: 1,
-    profileId: input.profile.id,
-    suitePath: input.evalPath,
-    candidateModels: [...input.profile.candidates],
-    judgeModel: input.profile.judge,
-    gatewayUrl: configuration.gatewayUrl,
-    ...(run?.concurrency === undefined ? {} : { concurrency: run.concurrency }),
-    ...(run?.timeoutMs === undefined ? {} : { timeoutMs: run.timeoutMs }),
-    ...(run?.spendLimitUsd === undefined ? {} : { spendLimitUsd: run.spendLimitUsd })
-  };
-};
-
-const validateComparison = (input: ScaffoldResult, comparison: EvalComparisonResult): void => {
-  if (comparison.profileId !== input.profile.id) {
-    throw new Error(
-      `comparison profile ${JSON.stringify(comparison.profileId)} does not match ${JSON.stringify(input.profile.id)}`
-    );
-  }
-  if (comparison.judgeModel !== input.profile.judge) {
-    throw new Error(
-      `comparison judge ${JSON.stringify(comparison.judgeModel)} does not match ${JSON.stringify(input.profile.judge)}`
-    );
-  }
-  const expected = new Set(input.profile.candidates);
-  const seen = new Set<string>();
-  for (const result of comparison.models) {
-    if (!expected.has(result.model)) {
-      throw new Error(`comparison contains unexpected model ${JSON.stringify(result.model)}`);
-    }
-    if (seen.has(result.model)) {
-      throw new Error(`comparison contains duplicate model ${JSON.stringify(result.model)}`);
-    }
-    seen.add(result.model);
-  }
-  if (comparison.suiteDigest.trim().length === 0) {
-    throw new Error("comparison suiteDigest must not be empty");
-  }
+  validatePositiveOption("full.concurrency", configuration.full?.concurrency);
+  validatePositiveOption("full.timeoutMs", configuration.full?.timeoutMs);
+  validatePositiveOption("full.spendLimitUsd", configuration.full?.spendLimitUsd, true);
 };
 
 const sameStrings = (left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean =>
@@ -259,25 +147,22 @@ const sameStrings = (left: ReadonlyArray<string>, right: ReadonlyArray<string>):
 const validateDimensionMatrixInput = (
   configuration: EvalServiceConfiguration,
   input: DimensionMatrixQualificationInput
-): Map<string, ScaffoldResult> => {
+): Map<string, DimensionMatrixSuite> => {
   validateConfiguration(configuration);
   assertRoutingBasis(input.basis);
-  if (input.candidateModels.length === 0) {
-    throw new Error("dimension matrix candidate model list must not be empty");
+  if (input.candidateModels.length < 2) {
+    throw new Error("dimension matrix requires at least two candidate models");
   }
-  if (input.judgeModel.trim().length === 0) {
-    throw new Error("dimension matrix judge model must not be empty");
+  if (new Set(input.candidateModels).size !== input.candidateModels.length) {
+    throw new Error("dimension matrix candidate models must be unique");
   }
-  const expectedAreas = new Set(input.basis.dimensions.map((dimension) => dimension.id));
-  const suites = new Map<string, ScaffoldResult>();
+  for (const model of input.candidateModels) assertExplicitEvalModel(model, "candidate");
+  assertExplicitEvalModel(input.classifierModel, "classifier");
+  assertExplicitEvalModel(input.judgeModel, "judge");
+  const expectedDimensions = new Set(input.basis.dimensions.map((dimension) => dimension.id));
+  const suites = new Map<string, DimensionMatrixSuite>();
   for (const entry of input.suites) {
-    assertRoutingProfile(entry.scaffold.profile);
-    if (entry.scaffold.evalPath.trim().length === 0) {
-      throw new Error(
-        `dimension matrix suite path is empty for ${JSON.stringify(entry.dimensionId)}`
-      );
-    }
-    if (!expectedAreas.has(entry.dimensionId)) {
+    if (!expectedDimensions.has(entry.dimensionId)) {
       throw new Error(
         `dimension matrix contains unknown dimension ${JSON.stringify(entry.dimensionId)}`
       );
@@ -287,32 +172,40 @@ const validateDimensionMatrixInput = (
         `dimension matrix contains duplicate dimension ${JSON.stringify(entry.dimensionId)}`
       );
     }
-    if (entry.scaffold.profile.id !== entry.dimensionId) {
-      throw new Error(
-        `dimension matrix suite profile ${JSON.stringify(
-          entry.scaffold.profile.id
-        )} does not match dimension ${JSON.stringify(entry.dimensionId)}`
-      );
+    if (entry.suitePath.trim().length === 0) {
+      throw new Error(`dimension matrix suite path is empty for ${JSON.stringify(entry.dimensionId)}`);
     }
-    if (!sameStrings(entry.scaffold.profile.candidates, input.candidateModels)) {
-      throw new Error(
-        `dimension matrix candidates do not match dimension ${JSON.stringify(entry.dimensionId)}`
-      );
-    }
-    if (entry.scaffold.profile.judge !== input.judgeModel) {
-      throw new Error(
-        `dimension matrix judge does not match dimension ${JSON.stringify(entry.dimensionId)}`
-      );
-    }
-    suites.set(entry.dimensionId, entry.scaffold);
+    suites.set(entry.dimensionId, entry);
   }
-  for (const dimensionId of expectedAreas) {
+  for (const dimensionId of expectedDimensions) {
     if (!suites.has(dimensionId)) {
       throw new Error(`dimension matrix is missing dimension ${JSON.stringify(dimensionId)}`);
     }
   }
   return suites;
 };
+
+const comparisonRequest = (
+  configuration: EvalServiceConfiguration,
+  input: DimensionMatrixQualificationInput,
+  suite: DimensionMatrixSuite
+): EvalComparisonRequest => ({
+  version: 1,
+  profileId: suite.dimensionId,
+  suitePath: suite.suitePath,
+  candidateModels: [...input.candidateModels],
+  judgeModel: input.judgeModel,
+  gatewayUrl: configuration.gatewayUrl,
+  ...(configuration.full?.concurrency === undefined
+    ? {}
+    : { concurrency: configuration.full.concurrency }),
+  ...(configuration.full?.timeoutMs === undefined
+    ? {}
+    : { timeoutMs: configuration.full.timeoutMs }),
+  ...(configuration.full?.spendLimitUsd === undefined
+    ? {}
+    : { spendLimitUsd: configuration.full.spendLimitUsd })
+});
 
 export const makeEvalService = (
   configuration: EvalServiceConfiguration
@@ -325,114 +218,7 @@ export const makeEvalService = (
     const runner = yield* EvalComparisonRunner;
     const fs = yield* FileSystem.FileSystem;
     const paths = yield* Path.Path;
-    const snapshotStore = makeRoutingSnapshotStore(configuration.snapshotRoot);
-    const snapshotStoreV2 = makeRoutingActivationStore(configuration.snapshotRoot);
-
-    const validate: EvalServiceShape["validate"] = (input) =>
-      validateInput(configuration, input).pipe(
-        Effect.andThen(runner.validate(input.evalPath)),
-        Effect.mapError((cause) =>
-          cause instanceof EvalServiceConfigurationError
-            ? cause
-            : new EvalServiceValidationError({
-                operation: "validate the generated suite",
-                detail: detailOf(cause),
-                cause
-              })
-        )
-      );
-
-    const estimate: EvalServiceShape["estimate"] = (input, mode) =>
-      validateInput(configuration, input).pipe(
-        Effect.andThen(runner.estimate(comparisonRequest(configuration, input, mode), mode)),
-        Effect.mapError((cause) =>
-          cause instanceof EvalServiceConfigurationError
-            ? cause
-            : new EvalServiceEstimateError({
-                operation: `estimate the ${mode} comparison`,
-                detail: detailOf(cause),
-                cause
-              })
-        )
-      );
-
-    const inspect: EvalServiceShape["inspect"] = (input, mode) =>
-      validateInput(configuration, input).pipe(
-        Effect.andThen(runner.inspect(comparisonRequest(configuration, input, mode))),
-        Effect.mapError((cause) =>
-          cause instanceof EvalServiceConfigurationError
-            ? cause
-            : new EvalServiceValidationError({
-                operation: `inspect the ${mode} comparison manifest`,
-                detail: detailOf(cause),
-                cause
-              })
-        )
-      );
-
-    const run = (
-      input: ScaffoldResult,
-      mode: EvalComparisonMode
-    ): Effect.Effect<
-      EvalComparisonResult,
-      EvalServiceConfigurationError | EvalServiceComparisonError
-    > =>
-      validateInput(configuration, input).pipe(
-        Effect.andThen(runner.runComparison(comparisonRequest(configuration, input, mode), mode)),
-        Effect.flatMap((comparison) =>
-          Effect.try({
-            try: () => {
-              validateComparison(input, comparison);
-              return comparison;
-            },
-            catch: (cause) =>
-              new EvalServiceComparisonError({
-                operation: `validate the ${mode} comparison`,
-                detail: detailOf(cause),
-                cause
-              })
-          })
-        ),
-        Effect.mapError((cause) =>
-          cause instanceof EvalServiceConfigurationError ||
-          cause instanceof EvalServiceComparisonError
-            ? cause
-            : new EvalServiceComparisonError({
-                operation: `run the ${mode} comparison`,
-                detail: detailOf(cause),
-                cause
-              })
-        )
-      );
-
-    const propose: EvalServiceShape["propose"] = (input, comparison) =>
-      Effect.try({
-        try: () => {
-          assertRoutingProfile(input.profile);
-          validateComparison(input, comparison);
-          return compileRoutingPolicy(input.profile, comparison);
-        },
-        catch: (cause) =>
-          new EvalServicePolicyError({
-            operation: "compile the routing policy",
-            detail: detailOf(cause),
-            cause
-          })
-      });
-
-    const publish: EvalServiceShape["publish"] = (policy) =>
-      snapshotStore.publish(policy).pipe(
-        Effect.provideService(FileSystem.FileSystem, fs),
-        Effect.provideService(Path.Path, paths),
-        Effect.mapError(
-          (cause) =>
-            new EvalServicePublicationError({
-              operation: "publish the routing snapshot",
-              detail: detailOf(cause),
-              cause
-            })
-        )
-      );
+    const activationStore = makeRoutingActivationStore(configuration.snapshotRoot);
 
     const qualifyDimensionMatrix: EvalServiceShape["qualifyDimensionMatrix"] = (input) =>
       Effect.gen(function* () {
@@ -445,12 +231,20 @@ export const makeEvalService = (
               cause
             })
         });
-        const comparisons: EvalComparisonResult[] = [];
-        const evidenceInputs: DimensionComparisonEvidenceInput[] = [];
         const inspections = new Map<string, EvalSuiteInspection>();
         for (const dimension of input.basis.dimensions) {
-          const scaffold = suites.get(dimension.id)!;
-          const inspection = yield* inspect(scaffold, "full");
+          const suite = suites.get(dimension.id)!;
+          const request = comparisonRequest(configuration, input, suite);
+          const inspection = yield* runner.inspect(request).pipe(
+            Effect.mapError(
+              (cause) =>
+                new EvalServiceValidationError({
+                  operation: "inspect the full comparison manifest",
+                  detail: detailOf(cause),
+                  cause
+                })
+            )
+          );
           if (
             inspection.manifest.profileId !== dimension.id ||
             inspection.manifest.judgeModel !== input.judgeModel ||
@@ -463,10 +257,33 @@ export const makeEvalService = (
           }
           inspections.set(dimension.id, inspection);
         }
+
+        const comparisons: EvalComparisonResult[] = [];
+        const evidenceInputs: DimensionComparisonEvidenceInput[] = [];
         for (const dimension of input.basis.dimensions) {
-          const scaffold = suites.get(dimension.id)!;
+          const suite = suites.get(dimension.id)!;
           const inspection = inspections.get(dimension.id)!;
-          const comparison = yield* run(scaffold, "full");
+          const request = comparisonRequest(configuration, input, suite);
+          const comparison = yield* runner.runComparison(request, "full").pipe(
+            Effect.mapError(
+              (cause) =>
+                new EvalServiceComparisonError({
+                  operation: "run the full comparison",
+                  detail: detailOf(cause),
+                  cause
+                })
+            )
+          );
+          if (
+            comparison.profileId !== dimension.id ||
+            comparison.judgeModel !== input.judgeModel ||
+            comparison.suiteDigest !== inspection.suiteDigest
+          ) {
+            return yield* new EvalServiceComparisonError({
+              operation: "validate the full comparison",
+              detail: `comparison identity does not match dimension ${JSON.stringify(dimension.id)}`
+            });
+          }
           comparisons.push(comparison);
           evidenceInputs.push({
             dimensionId: dimension.id,
@@ -476,6 +293,7 @@ export const makeEvalService = (
             comparison
           });
         }
+
         const compiled = yield* Effect.try({
           try: () =>
             compileDimensionEvidenceMatrix({
@@ -490,7 +308,7 @@ export const makeEvalService = (
               cause
             })
         });
-        const snapshot = yield* snapshotStoreV2
+        const snapshot = yield* activationStore
           .publish({
             basisDigest: input.basis.basisDigest,
             evidenceDigest: compiled.evidenceDigest,
@@ -517,16 +335,7 @@ export const makeEvalService = (
         return { comparisons, snapshot };
       });
 
-    return EvalService.of({
-      validate,
-      estimate,
-      inspect,
-      runPilot: (input) => run(input, "pilot"),
-      runFull: (input) => run(input, "full"),
-      propose,
-      publish,
-      qualifyDimensionMatrix
-    });
+    return EvalService.of({ qualifyDimensionMatrix });
   });
 
 export const makeEvalServiceLayer = (

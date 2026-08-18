@@ -8,10 +8,8 @@ import {
 import {
   EvalService,
   makeEvalComparisonRunnerLayer,
-  makeEvalServiceLayer,
-  promoteOriAuthoredArtifacts
+  makeEvalServiceLayer
 } from "@velum-labs/routekit-eval-service";
-import type { ScaffoldResult } from "@velum-labs/routekit-eval-setup";
 import { Effect, FileSystem, Layer } from "effect";
 
 import {
@@ -187,7 +185,7 @@ export const runTestdriveDimensionMatrix = Effect.fn("EvalRoutingTestdrive.dimen
       phase: "dimension-matrix",
       status: "authoring"
     });
-    const suites: Array<{ readonly dimensionId: string; readonly scaffold: ScaffoldResult }> = [];
+    const suites: Array<{ readonly dimensionId: string; readonly suitePath: string }> = [];
     const pendingDimensionReports: PendingTestdriveDimensionReport[] = [];
     for (const dimension of basis.dimensions) {
       const planned = plan.dimensions.find((entry) => entry.dimensionId === dimension.id);
@@ -211,28 +209,9 @@ export const runTestdriveDimensionMatrix = Effect.fn("EvalRoutingTestdrive.dimen
         judgeModel: input.judgeModel,
         repositoryRoot: input.repositoryRoot
       });
-      const promoted = yield* promoteOriAuthoredArtifacts({
-        profileId: dimension.id,
-        description: authoringContext.description,
-        repositoryRoot: input.repositoryRoot,
-        result: authored
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new TestdriveWorkflowError({
-              phase: "dimension-matrix-promotion",
-              detail: `failed to promote authored suite for ${JSON.stringify(dimension.id)}`,
-              cause
-            })
-        )
-      );
       suites.push({
         dimensionId: dimension.id,
-        scaffold: {
-          evalPath: promoted.evalPath,
-          profilePath: promoted.profilePath,
-          profile: promoted.profile
-        }
+        suitePath: authored.evalPath
       });
       pendingDimensionReports.push({
         dimensionId: dimension.id,

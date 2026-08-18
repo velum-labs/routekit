@@ -1,8 +1,3 @@
-export {
-  makeRoutingSnapshotStore,
-  ROUTING_SNAPSHOT_MAX_BYTES,
-  RoutingSnapshotStore
-} from "./routing-snapshot.js";
 export type { RoutingActivationPublication } from "./routing-activation.js";
 export {
   makeRoutingActivationStore,

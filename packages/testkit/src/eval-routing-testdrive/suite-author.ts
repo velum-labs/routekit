@@ -1,11 +1,9 @@
 import { lstat } from "node:fs/promises";
 
-import type { OriEvalResult } from "@velum-labs/routekit-eval-setup";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import { executeWebRequest } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect, Exit, FileSystem, Layer, Path, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { stringify as stringifyYaml } from "yaml";
 
 import { TestdriveWorkflowError } from "./contracts.js";
 import { TestdriveEvidence } from "./evidence.js";
@@ -92,13 +90,17 @@ export type TestdriveDimensionAuthoringContext = Readonly<{
   sourceInventory: readonly string[];
 }>;
 
+export type AuthoredTestdriveDimensionSuite = Readonly<{
+  evalPath: string;
+}>;
+
 export interface TestdriveSuiteAuthorService {
   readonly author: (input: {
     readonly dimension: TestdriveDimensionAuthoringContext;
     readonly candidateModels: readonly string[];
     readonly judgeModel: string;
     readonly repositoryRoot: string;
-  }) => Effect.Effect<OriEvalResult, TestdriveWorkflowError>;
+  }) => Effect.Effect<AuthoredTestdriveDimensionSuite, TestdriveWorkflowError>;
 }
 
 export class TestdriveSuiteAuthor extends Context.Service<
@@ -382,7 +384,6 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             "evals",
             input.dimension.id
           );
-          const routingDirectory = paths.join(scratchWorkspace, ".routekit", "routing");
           const evalSource = renderSuite();
           const casesJson = `${JSON.stringify(cases, null, 2)}\n`;
           const manifestJson = `${JSON.stringify(
@@ -399,24 +400,10 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             null,
             2
           )}\n`;
-          const routingProfileYaml = stringifyYaml({
-            version: 1,
-            id: input.dimension.id,
-            suite: `.routekit/evals/${input.dimension.id}/${input.dimension.id}.eval.ts`,
-            candidates: input.candidateModels,
-            judge: input.judgeModel,
-            eligibility: {
-              minimumPassRate: 0.8,
-              minimumJudgeScore: 0.8
-            },
-            objective: "highest-quality",
-            description: input.dimension.description
-          });
           yield* fs.makeDirectory(paths.join(evalDirectory, "data"), {
             recursive: true,
             mode: 0o700
           });
-          yield* fs.makeDirectory(routingDirectory, { recursive: true, mode: 0o700 });
           yield* fs.writeFileString(
             paths.join(evalDirectory, `${input.dimension.id}.eval.ts`),
             evalSource,
@@ -430,11 +417,6 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
           yield* fs.writeFileString(
             paths.join(evalDirectory, "routekit.eval-manifest.json"),
             manifestJson,
-            { mode: 0o600 }
-          );
-          yield* fs.writeFileString(
-            paths.join(routingDirectory, `${input.dimension.id}.yaml`),
-            routingProfileYaml,
             { mode: 0o600 }
           );
           yield* evidence.writeGeneratedSuite({
@@ -451,10 +433,8 @@ export const makeTestdriveSuiteAuthorLayer = (options: {
             status: String(cases.length)
           });
           return {
-            ok: true,
-            status: "completed",
-            scratchWorkspace
-          } satisfies OriEvalResult;
+            evalPath: paths.join(evalDirectory, `${input.dimension.id}.eval.ts`)
+          } satisfies AuthoredTestdriveDimensionSuite;
         }).pipe(
           Effect.provide(httpContext),
           Effect.mapError((cause) =>

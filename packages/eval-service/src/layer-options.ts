@@ -1,9 +1,6 @@
 import type {
-  NodeTestExecutionOptions,
-  OriRouteKitModelAllowance
+  NodeTestExecutionOptions
 } from "@velum-labs/routekit-eval-engine";
-
-import type { EvalServiceConfiguration } from "./service.js";
 
 export type RouteKitEvalComparisonRunnerOptions = Omit<NodeTestExecutionOptions, "bridgeOrigin"> & {
   /**
@@ -14,11 +11,3 @@ export type RouteKitEvalComparisonRunnerOptions = Omit<NodeTestExecutionOptions,
    */
   readonly bearerCredential?: string;
 };
-
-export type RouteKitEvalSetupLayerOptions = EvalServiceConfiguration &
-  RouteKitEvalComparisonRunnerOptions & {
-    readonly allowModel?: OriRouteKitModelAllowance;
-    readonly authorHarness?: "pi" | "claude" | "codex";
-    readonly authorModel?: string;
-    readonly judgeModel?: string;
-  };

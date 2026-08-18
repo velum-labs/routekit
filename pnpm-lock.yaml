@@ -660,24 +660,15 @@ importers:
       '@velum-labs/routekit-eval-contracts':
         specifier: workspace:*
         version: link:../eval-contracts
-      '@velum-labs/routekit-eval-core':
-        specifier: workspace:*
-        version: link:../eval-core
       '@velum-labs/routekit-eval-engine':
         specifier: workspace:*
         version: link:../eval-engine
-      '@velum-labs/routekit-eval-setup':
-        specifier: workspace:*
-        version: link:../eval-setup
       '@velum-labs/routekit-eval-store':
         specifier: workspace:*
         version: link:../eval-store
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.108
-      yaml:
-        specifier: 'catalog:'
-        version: 2.9.0
     devDependencies:
       typescript:
         specifier: catalog:tsgo
