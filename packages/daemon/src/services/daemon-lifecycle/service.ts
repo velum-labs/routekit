@@ -7,9 +7,9 @@ import {
 } from "@velum-labs/routekit-runtime";
 import { durationBucket } from "@velum-labs/routekit-telemetry-core";
 import { Effect } from "effect";
-import { controlTry, controlTryPromise } from "./control-effect.js";
-import { ActiveGateway, DaemonEnv, DaemonHost, DaemonState, Telemetry } from "./effect/services.js";
-import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
+import { controlTry, controlTryPromise } from "../../control-effect.js";
+import { ActiveGateway, DaemonEnv, DaemonHost, DaemonState, Telemetry } from "../../effect/services.js";
+import { DAEMON_HOST_PROTOCOL_VERSION } from "../../host-protocol.js";
 
 type LifecycleHandlers = Pick<
   EffectRouteKitControlHandlers,

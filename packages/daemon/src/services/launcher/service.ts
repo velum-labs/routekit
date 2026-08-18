@@ -2,8 +2,8 @@ import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control
 import { resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
 import { ControlError } from "@velum-labs/routekit-runtime";
 import { Effect } from "effect";
-import { dataTokenForPrincipal } from "./daemon-state.js";
-import { ActiveGateway, DataPlane, Tokens } from "./effect/services.js";
+import { dataTokenForPrincipal } from "../../daemon-state.js";
+import { ActiveGateway, DataPlane, Tokens } from "../../effect/services.js";
 
 type LauncherHandlers = Pick<EffectRouteKitControlHandlers, "launcher.prepare">;
 

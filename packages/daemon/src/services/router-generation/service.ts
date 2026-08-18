@@ -2,18 +2,18 @@ import type { ConfigSnapshot } from "@velum-labs/routekit-control";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { controlTry } from "./control-effect.js";
+import { controlTry } from "../../control-effect.js";
 import {
   canonicalConfigDocument,
   parseConfigDocument,
   revisionConflict
-} from "./daemon-maintenance.js";
+} from "../../daemon-maintenance.js";
 import {
   DaemonEnv,
   DaemonState,
   type DaemonStateService,
   Generations
-} from "./effect/services.js";
+} from "../../effect/services.js";
 
 type RouterHandlers = Pick<
   EffectRouteKitControlHandlers,

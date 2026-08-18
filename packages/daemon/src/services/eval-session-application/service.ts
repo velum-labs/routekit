@@ -2,7 +2,7 @@ import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control
 import { ControlError } from "@velum-labs/routekit-runtime";
 import { Effect } from "effect";
 
-import { ActiveGateway, DaemonEnv, EvalSessions } from "./effect/services.js";
+import { ActiveGateway, DaemonEnv, EvalSessions } from "../../effect/services.js";
 
 type EvalSessionHandlers = Pick<
   EffectRouteKitControlHandlers,

@@ -5,9 +5,9 @@ import {
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
 import { Effect } from "effect";
-import { controlTry, controlTryPromise } from "./control-effect.js";
-import { DaemonEnv, DaemonState, Telemetry } from "./effect/services.js";
-import { DEFAULT_TELEMETRY_HOST, resolveTelemetryProjectKey } from "./telemetry.js";
+import { controlTry, controlTryPromise } from "../../control-effect.js";
+import { DaemonEnv, DaemonState, Telemetry } from "../../effect/services.js";
+import { DEFAULT_TELEMETRY_HOST, resolveTelemetryProjectKey } from "../../telemetry.js";
 
 type TelemetryHandlers = Pick<
   EffectRouteKitControlHandlers,

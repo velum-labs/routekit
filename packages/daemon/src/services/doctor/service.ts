@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { Effect } from "effect";
-import { accountEntries } from "./daemon-maintenance.js";
+import { accountEntries } from "../../daemon-maintenance.js";
 import {
   AccountRecovery,
   ActiveGateway,
@@ -10,7 +10,7 @@ import {
   DaemonPolicy,
   DaemonState,
   Sidecar
-} from "./effect/services.js";
+} from "../../effect/services.js";
 
 type DoctorHandlers = Pick<EffectRouteKitControlHandlers, "doctor.run">;
 

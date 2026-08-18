@@ -95,7 +95,7 @@ import {
 import { type DaemonLive, daemonLive } from "./effect/daemon-live.js";
 import { ActiveGateway, type ActiveGatewayValue, Generations } from "./effect/services.js";
 import { makeCompositionalRoutingPolicyReader } from "./eval-routing-policy.js";
-import { EvalSessionManager } from "./eval-session-service.js";
+import { EvalSessionManager } from "./services/eval-session-manager/service.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import { LeaderboardRollupStore } from "./leaderboard.js";
 import {

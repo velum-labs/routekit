@@ -45,6 +45,35 @@ caveats.
   calls remain gated by `ROUTEKIT_LIVE_E2E=1`. Maintainer docs under `docs/`
   describe RouteKit only.
 
+### Source architecture
+
+- Effect services live under `src/services/<service>/`. Keep exactly one
+  service-directory level: use `services/account-query/`, not
+  `services/accounts/query/`.
+- A service directory normally has a `service.ts` module that owns the public
+  interface, `Context.Service` identity, constructors, and primary open layer.
+  Add sibling modules such as `errors.ts` or `layer.ts` only when they represent
+  a real reusable boundary.
+- Do not add `services/index.ts` barrels. Import the precise service module.
+  Package root and documented subpath exports are compatibility facades, not
+  the default path for internal imports.
+- Schemas, protocols, stores, transport adapters, formatting, and generic
+  utilities are not services. Keep them in shallow, explicitly named source
+  areas beside `services/`.
+- Prefer `Effect.gen` for composition, `Effect.fn("Domain.operation")` for
+  named service operations, and `Effect.fnUntraced` for reusable internal
+  Effect helpers. Expected failures should have typed error channels.
+- Effect-owned resources use `Effect.acquireRelease` or finalizers; background
+  work uses scoped fibers. Raw Node filesystem, process, clock, and HTTP APIs
+  belong at platform adapter or application-entry boundaries when an Effect
+  platform service is available.
+- Give each shared domain value one canonical schema identity. Protocol modules
+  compose canonical schemas instead of redefining equivalent records, and
+  legacy contracts use explicit versioned entrypoints.
+- Split files around ownership, lifecycle, protocol, and portability
+  boundaries. Do not extract single-use helpers or create packages solely to
+  satisfy line-count limits.
+
 ### Running the app
 
 - Build first (`pnpm build`), then run the built CLI via

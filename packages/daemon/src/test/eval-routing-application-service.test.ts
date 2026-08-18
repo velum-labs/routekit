@@ -13,7 +13,7 @@ import { Effect, Layer } from "effect";
 
 import { DaemonRuntimeState } from "../daemon-runtime-state.js";
 import { ActiveGateway, DaemonEnv, DaemonState } from "../effect/services.js";
-import { EvalRoutingApplicationService } from "../eval-routing-application-service.js";
+import { EvalRoutingApplicationService } from "../services/eval-routing/service.js";
 
 function activation(evidenceDigest: string): PublishedRoutingActivation {
   const dimensions = [

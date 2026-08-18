@@ -19,15 +19,15 @@ import {
   markAccountTransactionCommitted,
   prepareAccountTransaction,
   rollbackAccountTransaction
-} from "./account-transaction.js";
-import { controlTry } from "./control-effect.js";
-import { DaemonHost, daemonAccountServices } from "./effect/services.js";
+} from "../../account-transaction.js";
+import { controlTry } from "../../control-effect.js";
+import { DaemonHost, daemonAccountServices } from "../../effect/services.js";
 import {
   parseConfigDocument,
   safeCliproxyCredentialBlob,
   safeCliproxyLabel,
   safeCredentialBlob
-} from "./daemon-maintenance.js";
+} from "../../daemon-maintenance.js";
 
 type AccountEnrollHandlers = Pick<
   EffectRouteKitControlHandlers,

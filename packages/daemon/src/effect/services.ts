@@ -19,7 +19,7 @@ import type { CallAttributionStore } from "../call-attribution-store.js";
 import type { CliproxySidecar } from "../cliproxy-sidecar.js";
 import type { DaemonGenerationManager, DaemonGenerationStage } from "../daemon-generations.js";
 import type { DaemonRuntimeState } from "../daemon-runtime-state.js";
-import type { EvalSessionManager } from "../eval-session-service.js";
+import type { EvalSessionManager } from "../services/eval-session-manager/service.js";
 import type { LeaderboardRollupStore } from "../leaderboard.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "../telemetry.js";
 

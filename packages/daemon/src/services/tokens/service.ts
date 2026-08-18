@@ -1,9 +1,9 @@
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { ControlError, encodeJoinCredential } from "@velum-labs/routekit-runtime";
 import { Effect } from "effect";
-import { controlTry } from "./control-effect.js";
-import { daemonPublicRecordPath } from "./daemon-state.js";
-import { DaemonEnv, DataPlane, Tokens } from "./effect/services.js";
+import { controlTry } from "../../control-effect.js";
+import { daemonPublicRecordPath } from "../../daemon-state.js";
+import { DaemonEnv, DataPlane, Tokens } from "../../effect/services.js";
 
 type TokenHandlers = Pick<
   EffectRouteKitControlHandlers,

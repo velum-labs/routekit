@@ -1,7 +1,7 @@
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { Effect } from "effect";
-import { AccountRecovery, daemonAccountServices } from "./effect/services.js";
-import { accountEntries } from "./daemon-maintenance.js";
+import { AccountRecovery, daemonAccountServices } from "../../effect/services.js";
+import { accountEntries } from "../../daemon-maintenance.js";
 
 type AccountQueryHandlers = Pick<
   EffectRouteKitControlHandlers,
