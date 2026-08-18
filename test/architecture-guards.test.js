@@ -262,6 +262,13 @@ test("retired ENG-814 protocol and runner identifiers cannot return", () => {
     ),
     []
   );
+  assert.deepEqual(
+    retiredEng814SourceViolations(
+      "packages/eval-service/src/production-runner.ts",
+      "export const enforce = (spendLimitUsd) => spendLimitUsd;"
+    ),
+    []
+  );
 });
 
 test("RouteKit source guard targets production paths, declarations, and imports", () => {

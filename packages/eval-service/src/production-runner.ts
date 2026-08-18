@@ -55,6 +55,16 @@ export class EvalComparisonRunnerManifestError extends Data.TaggedError(
   }
 }
 
+export class EvalComparisonRunnerSpendLimitError extends Data.TaggedError(
+  "EvalComparisonRunnerSpendLimitError"
+)<{
+  readonly detail: string;
+}> {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
 const unavailableExecution: EvalExecutionPortService = {
   execute: () =>
     Effect.fail(
@@ -131,6 +141,32 @@ function estimateComparison(manifest: EvalRunManifestType) {
     pricingKnown: true as const
   };
 }
+
+const enforceSpendLimit = (
+  request: EvalComparisonRequest,
+  manifest: EvalRunManifestType
+): Effect.Effect<void, EvalComparisonRunnerSpendLimitError> => {
+  if (request.spendLimitUsd === undefined) return Effect.void;
+  const estimate = estimateComparison(manifest);
+  if (!estimate.pricingKnown || estimate.maximumCostUsd === undefined) {
+    return Effect.fail(
+      new EvalComparisonRunnerSpendLimitError({
+        detail:
+          "RouteKit Eval cannot enforce spendLimitUsd because pricing is unknown for one or more manifest models."
+      })
+    );
+  }
+  if (estimate.maximumCostUsd > request.spendLimitUsd) {
+    return Effect.fail(
+      new EvalComparisonRunnerSpendLimitError({
+        detail:
+          `RouteKit Eval maximum estimated cost $${estimate.maximumCostUsd.toFixed(6)} ` +
+          `exceeds spendLimitUsd $${request.spendLimitUsd.toFixed(6)}.`
+      })
+    );
+  }
+  return Effect.void;
+};
 
 const loadExecutionManifest = (
   workingDirectory: string,
@@ -257,13 +293,17 @@ export const makeEvalComparisonRunner = (
         httpClient
       );
       return Effect.flatMap(inspectComparisonSuite(request), (inspection) =>
-        makeEvalEngine(execution).runComparison({
-          ...request,
-          expectedCaseIds: [...inspection.manifest.caseIds],
-          expectedCallCount: inspection.manifest.expectedCallCount,
-          maxOutputTokens: inspection.manifest.maxOutputTokens,
-          suiteDigest: inspection.suiteDigest
-        })
+        enforceSpendLimit(request, inspection.manifest).pipe(
+          Effect.flatMap(() =>
+            makeEvalEngine(execution).runComparison({
+              ...request,
+              expectedCaseIds: [...inspection.manifest.caseIds],
+              expectedCallCount: inspection.manifest.expectedCallCount,
+              maxOutputTokens: inspection.manifest.maxOutputTokens,
+              suiteDigest: inspection.suiteDigest
+            })
+          )
+        )
       );
     };
     return {

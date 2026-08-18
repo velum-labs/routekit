@@ -221,7 +221,14 @@ export function retiredEng814SourceViolations(file, source) {
       violations.push(`${file} contains retired ENG-814 identifier ${identifier}`);
     }
   }
-  if (!file.startsWith("packages/eval-engine/") && /\bspendLimitUsd\b/u.test(source)) {
+  const spendLimitOwner =
+    file === "packages/eval-contracts/src/index.ts" ||
+    file === "packages/eval-service/src/production-runner.ts";
+  if (
+    !file.startsWith("packages/eval-engine/") &&
+    !spendLimitOwner &&
+    /\bspendLimitUsd\b/u.test(source)
+  ) {
     violations.push(`${file} contains unenforced spendLimitUsd`);
   }
   return violations;
