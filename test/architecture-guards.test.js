@@ -5,8 +5,10 @@ import {
   CANONICAL_SHARED_PACKAGES,
   canonicalSharedPackageViolations,
   polynomialTrailingSlashRegexViolations,
+  retiredEng814SourceViolations,
   routekitDependencyViolations,
   routekitSourceViolations,
+  runtimeRootImportViolations,
   toolRegistryCliSourceViolations,
   toolRegistryCompositionViolations,
   toolRegistryConstructionViolations,
@@ -204,6 +206,59 @@ test("trailing slash guard rejects polynomial regexes but allows fixed /v1 match
     polynomialTrailingSlashRegexViolations(
       file,
       'export const withoutV1 = (url) => url.replace(/\\/v1\\/?$/, "");'
+    ),
+    []
+  );
+});
+
+test("Runtime root façade imports are rejected in production source", () => {
+  assert.deepEqual(
+    runtimeRootImportViolations(
+      "packages/example/src/process.ts",
+      'import { buildChildEnv } from "@velum-labs/routekit-runtime";'
+    ),
+    [
+      "packages/example/src/process.ts must import a named @velum-labs/routekit-runtime subpath"
+    ]
+  );
+  assert.deepEqual(
+    runtimeRootImportViolations(
+      "packages/example/src/process.ts",
+      'import { buildChildEnv } from "@velum-labs/routekit-runtime/environment";'
+    ),
+    []
+  );
+  assert.deepEqual(
+    runtimeRootImportViolations(
+      "packages/eval-engine/src/library/gateway-bridge.ts",
+      'import { buildChildEnv } from "@velum-labs/routekit-runtime";'
+    ),
+    []
+  );
+});
+
+test("retired ENG-814 protocol and runner identifiers cannot return", () => {
+  assert.deepEqual(
+    retiredEng814SourceViolations(
+      "packages/example/src/old.ts",
+      "export type RoutingProfile = {}; export const runEvalSuite = () => undefined;"
+    ),
+    [
+      "packages/example/src/old.ts contains retired ENG-814 identifier RoutingProfile",
+      "packages/example/src/old.ts contains retired ENG-814 identifier runEvalSuite"
+    ]
+  );
+  assert.deepEqual(
+    retiredEng814SourceViolations(
+      "packages/example/src/executor.ts",
+      "export const request = { spendLimitUsd: 1 };"
+    ),
+    ["packages/example/src/executor.ts contains unenforced spendLimitUsd"]
+  );
+  assert.deepEqual(
+    retiredEng814SourceViolations(
+      "packages/eval-engine/src/library/eval-engine.ts",
+      "export const request = { spendLimitUsd: 1 };"
     ),
     []
   );

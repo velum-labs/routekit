@@ -6,7 +6,7 @@
  */
 
 import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
-import { randomId } from "@velum-labs/routekit-runtime";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
 import type { OpenAiChatResponse } from "../providers/protocol.js";
 import { droppedField } from "./dropped.js";
 import {

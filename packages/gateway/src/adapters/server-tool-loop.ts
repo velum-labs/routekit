@@ -32,7 +32,7 @@ import {
   type ToolResult,
   type Usage
 } from "@velum-labs/routekit-contracts/protocol-ir";
-import { randomId } from "@velum-labs/routekit-runtime";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
 import {
   RouteKitFailure,
   type RouteKitPlatform,

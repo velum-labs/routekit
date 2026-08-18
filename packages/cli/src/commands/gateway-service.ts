@@ -17,7 +17,7 @@ import {
   waitForProcessExitEffect,
   waitForServiceReadyEffect
 } from "@velum-labs/routekit-runtime/service";
-import { spawnTool } from "@velum-labs/routekit-runtime";
+import { spawnTool } from "@velum-labs/routekit-runtime/process";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import type { Command } from "commander";
 import { Effect } from "effect";

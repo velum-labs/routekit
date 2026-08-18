@@ -25,7 +25,7 @@ import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import { buildChildEnv, commandOnPath } from "@velum-labs/routekit-runtime";
+import { buildChildEnv, commandOnPath } from "@velum-labs/routekit-runtime/environment";
 import { superviseSpawn } from "@velum-labs/routekit-runtime/process";
 
 import { defaultSubscriptionAccountDirectory, sanitizeSubscriptionLabel } from "./credentials.js";

@@ -11,7 +11,7 @@ import {
   runRouteKitDaemonWorker,
   startRouteKitDaemonHost
 } from "@velum-labs/routekit-daemon";
-import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime";
+import { sanitizeServiceEnvironment } from "@velum-labs/routekit-runtime/environment";
 import { Command } from "commander";
 import { Effect } from "effect";
 import { cliTryPromise, runCliEffect } from "../cli-session.js";

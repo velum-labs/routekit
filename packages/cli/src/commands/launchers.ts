@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { type CliRuntime, contextFor, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import type { LaunchPreparation } from "@velum-labs/routekit-control";
-import { commandOnPath } from "@velum-labs/routekit-runtime";
+import { commandOnPath } from "@velum-labs/routekit-runtime/environment";
 import { isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import type { Command } from "commander";
 import { Effect } from "effect";

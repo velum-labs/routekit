@@ -21,7 +21,7 @@ import {
   generateControlToken
 } from "@velum-labs/routekit-runtime/control";
 import { createPortlessSession, gatewayPath } from "@velum-labs/routekit-runtime/network";
-import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
+import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime/lifecycle";
 import {
   executeWebRequest,
   makeRouteKitRuntime,

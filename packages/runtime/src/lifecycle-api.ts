@@ -1,3 +1,4 @@
+export { extendCleanupGrace, registerCleanup, runCleanups } from "./lifecycle/cleanup.js";
 export type {
   OwnedResourceOptions,
   ResourceFinalizer,

@@ -4,7 +4,7 @@ import {
   probeBinaryVersion,
   processCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import { commandOnPath } from "@velum-labs/routekit-runtime";
+import { commandOnPath } from "@velum-labs/routekit-runtime/environment";
 import type { Command } from "commander";
 import { Effect } from "effect";
 import { runCliClient } from "../cli-client.js";

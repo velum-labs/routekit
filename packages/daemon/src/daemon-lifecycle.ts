@@ -4,7 +4,7 @@ import type {
 } from "@velum-labs/routekit-accounts/effect";
 import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
-import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
+import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime/lifecycle";
 import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
 import { ResourceDisposalTimeoutError } from "@velum-labs/routekit-runtime/lifecycle";
 import {

@@ -6,9 +6,11 @@ import {
   canonicalSharedPackageViolations,
   isInternalWorkspaceDependency,
   polynomialTrailingSlashRegexViolations,
+  retiredEng814SourceViolations,
   routekitDependencyViolations,
   routekitProductionSources,
   routekitSourceViolations,
+  runtimeRootImportViolations,
   toolRegistryCliSourceViolations,
   toolRegistryCompositionViolations,
   toolRegistryConstructionViolations
@@ -89,6 +91,30 @@ const fail = (message) => {
 
 for (const file of requiredFiles) {
   if (!existsSync(file)) fail(`missing ${file}`);
+}
+
+const retiredEng814Paths = [
+  ".routekit/routing/docs.yaml",
+  "apps/eval-worker",
+  "packages/router",
+  "packages/eval-core/src/run.ts",
+  "packages/daemon/src/effect/services.ts",
+  "packages/daemon/src/services/eval-session-application",
+  "packages/daemon/src/services/eval-session-manager",
+  "packages/daemon/src/services/eval-sessions",
+  "packages/daemon/src/services/telemetry-context",
+  "packages/daemon/src/services/token-store",
+  "packages/gateway/src/services/request-classifier"
+];
+const retiredEng814Listing = spawnSync("git", ["ls-files", "--", ...retiredEng814Paths], {
+  encoding: "utf8"
+});
+if (retiredEng814Listing.status !== 0) {
+  fail(`could not inspect retired ENG-814 paths: ${retiredEng814Listing.stderr}`);
+} else {
+  for (const path of retiredEng814Listing.stdout.split("\n").filter(Boolean)) {
+    fail(`retired ENG-814 path returned: ${path}`);
+  }
 }
 
 function runOptionalCheck(scriptPath, label, args = ["--check"], requiredInputs = []) {
@@ -377,6 +403,28 @@ for (const violation of toolRegistryConstructionViolations(productionSources)) {
 for (const { file, source } of productionSources) {
   for (const violation of polynomialTrailingSlashRegexViolations(file, source)) {
     fail(`unsafe trailing-slash normalization: ${violation}`);
+  }
+  for (const violation of runtimeRootImportViolations(file, source)) {
+    fail(`Runtime façade import: ${violation}`);
+  }
+  for (const violation of retiredEng814SourceViolations(file, source)) {
+    fail(`retired ENG-814 source: ${violation}`);
+  }
+}
+
+const docsEvalPath = ".routekit/evals/docs/docs.eval.ts";
+const docsEvalManifestPath = ".routekit/evals/docs/routekit.eval-manifest.json";
+if (!existsSync(docsEvalManifestPath)) fail(`missing ${docsEvalManifestPath}`);
+if (existsSync(docsEvalPath)) {
+  const docsEvalSource = readFileSync(docsEvalPath, "utf8");
+  if (!/import\s+manifest\s+from\s+["']\.\/routekit\.eval-manifest\.json["']/u.test(docsEvalSource)) {
+    fail(`${docsEvalPath} must import candidate and judge model IDs from the eval manifest`);
+  }
+  if (
+    /candidateModels\s*=\s*\[/u.test(docsEvalSource) ||
+    /setupAgent\s*\(\s*\{\s*model:\s*["']/u.test(docsEvalSource)
+  ) {
+    fail(`${docsEvalPath} must not hardcode candidate or judge model IDs`);
   }
 }
 

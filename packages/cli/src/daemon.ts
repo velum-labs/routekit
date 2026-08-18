@@ -18,7 +18,7 @@ import {
 import { PROVIDERS, SUBSCRIPTIONS } from "@velum-labs/routekit-registry";
 import type { ServiceUnitSpec } from "@velum-labs/routekit-runtime/service";
 import { launchdPlistPath, serviceLogPath } from "@velum-labs/routekit-runtime/service";
-import { SERVICE_UNSET_ENV } from "@velum-labs/routekit-runtime";
+import { SERVICE_UNSET_ENV } from "@velum-labs/routekit-runtime/environment";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
 
 import { routekitHome } from "./config.js";

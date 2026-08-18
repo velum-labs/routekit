@@ -16,7 +16,7 @@
  */
 
 import type { ToolResult } from "@velum-labs/routekit-contracts/protocol-ir";
-import { withDeadline } from "@velum-labs/routekit-runtime";
+import { withDeadline } from "@velum-labs/routekit-runtime/timing";
 import {
   executeWebRequest,
   RouteKitFailure,

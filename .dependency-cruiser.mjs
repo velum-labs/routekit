@@ -113,6 +113,19 @@ export default {
       }
     },
     {
+      name: "no-runtime-root-facade-imports",
+      comment:
+        "Production modules import a named Runtime subpath rather than the published root façade.",
+      severity: "error",
+      from: {
+        path: productionSource.path,
+        pathNot: [productionSource.pathNot, "^packages/eval-engine/"]
+      },
+      to: {
+        path: "^packages/runtime/src/index\\.ts$"
+      }
+    },
+    {
       name: "production-does-not-import-test-code",
       comment: "Production modules must not depend on test fixtures or test-only helpers.",
       severity: "error",

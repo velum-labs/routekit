@@ -3,7 +3,7 @@ import type {
   AccountReadinessState,
   ProviderFailure
 } from "@velum-labs/routekit-contracts";
-import type { CapacityPoolStrategy } from "@velum-labs/routekit-runtime";
+import type { CapacityPoolStrategy } from "@velum-labs/routekit-runtime/capacity";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
 
 export type SubscriptionSelectionStrategy = CapacityPoolStrategy;

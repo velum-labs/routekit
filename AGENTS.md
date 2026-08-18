@@ -1,143 +1,71 @@
-# AGENTS.md
+# RouteKit agent contract
 
-## Cursor Cloud specific instructions
+RouteKit is a TypeScript pnpm/Turborepo monorepo for a CLI and singleton daemon
+that expose an authenticated OpenAI-compatible gateway across LLM providers.
 
-RouteKit is a TypeScript pnpm/Turborepo monorepo: a CLI + singleton daemon that
-serves a stable OpenAI-compatible gateway in front of multiple LLM providers.
-Standard commands live in `README.md` and root `package.json` scripts
-(`check`, `build`, `test`, `verify`); this section only captures non-obvious
-caveats.
+## Required verification
 
-### Node / toolchain (important)
+- Use Node >= 22.22.0 and pnpm 11.15.1 through Corepack.
+- Run `pnpm check` after source, dependency, or architecture changes.
+- Run the offline `pnpm test` before declaring work complete. It requires no
+  network, database, provider credentials, or external service.
+- Run focused package builds and tests while iterating.
+- Third-party dependency versions belong in the root catalog; package manifests
+  use `catalog:`.
 
-- The repo needs **Node >= 22.22.0** (`.npmrc` has `engine-strict=true`, and
-  the workspace dependency graph includes packages that require it). Package
-  manager is **pnpm 11.15.1** via Corepack (pinned in `package.json`).
-- Non-login shells on this VM resolve `node` to an older `/exec-daemon/node`
-  (v22.14.0), which fails the engine check on `pnpm install`. Login/interactive
-  shells (and the startup update script) load `nvm` and select **node v22.22.2**,
-  which is correct. If any command hits an engine error, run
-  `. "$HOME/.nvm/nvm.sh" && nvm use 22.22.2` first.
-- tmux sessions started with a login shell already get the correct node.
+## ENG-814 glossary
 
-### Tests / build
+- **service** — an Effect-owned capability under
+  `src/services/<service>/service.ts`; keep exactly one directory level.
+- **store** — durable or in-memory state access, separate from a service unless
+  the service owns its lifecycle.
+- **protocol** — canonical schemas and wire values shared across a boundary.
+- **adapter** — translation between a protocol or platform API and a service.
+- **façade** — a thin published root or documented subpath that only re-exports
+  its owned public surface.
+- **eval-engine** — the offline evaluation implementation in
+  `packages/eval-engine`; do not modify it for ENG-814.
+- **eval-service** — the Effect composition in `packages/eval-service` and the
+  only production owner allowed to compose eval-engine.
+- **activation** — the published compositional routing value
+  `PublishedRoutingActivation`.
+- **profile (deleted)** — the retired v1 routing-profile protocol; do not
+  recreate its types, files, or imports.
+- **auto** — gateway compositional routing for `model: "auto"`; classifier,
+  eval-policy, and activation remain in the gateway path.
 
-- `pnpm test` runs entirely in Node with **no external services, no network, no
-  database** (`PORTLESS=0`). `pnpm check` validates repo/registry invariants,
-  Biome lint, Effect language-service diagnostics, syncpack catalogs, and
-  dependency-cruiser boundaries. `pnpm verify`
-  also runs publint + attw after build.
-- Third-party pins live in `pnpm-workspace.yaml` `catalog:`; manifests use
-  `"pkg": "catalog:"`. Do not add literal version strings for third-party deps.
-- Releases use Changesets. Add release intent with `pnpm changeset`; after it
-  reaches `main`, `changesets/action` maintains the Version Packages PR.
-  Merging that PR runs `pnpm release`, publishes through npm OIDC, and creates
-  package tags and GitHub releases. The fixed group is in `.changeset/config.json`.
-  CLI release history is in `packages/cli/CHANGELOG.md`.
-- Public docs site: `pnpm docs:dev` / `pnpm docs:build` (`apps/docs`, Next.js +
-  Fumadocs). API reference is generated on demand into gitignored
-  `apps/docs/generated/api` via `pnpm docs:generate-code`; it is not part of
-  `pnpm check`.
-- The E2E matrix (`pnpm test:e2e:matrix`) uses RouteKit's private TypeScript
-  provider simulator from `packages/testkit`. It requires no external service,
-  Python runtime, sibling checkout, network, or provider credentials. Real
-  coding-agent CLI cases self-skip when their binaries are absent; live account
-  calls remain gated by `ROUTEKIT_LIVE_E2E=1`. Maintainer docs under `docs/`
-  describe RouteKit only.
+See [`docs/internals/glossary.md`](docs/internals/glossary.md) for file links.
 
-### Source architecture
+## Source conventions
 
-- Effect services live under `src/services/<service>/`. Keep exactly one
-  service-directory level: use `services/account-query/`, not
-  `services/accounts/query/`.
-- A service directory normally has a `service.ts` module that owns the public
-  interface, `Context.Service` identity, constructors, and primary open layer.
-  Add sibling modules such as `errors.ts` or `layer.ts` only when they represent
-  a real reusable boundary.
-- Do not add `services/index.ts` barrels. Import the precise service module.
-  Package root and documented subpath exports are compatibility facades, not
-  the default path for internal imports.
-- Schemas, protocols, stores, transport adapters, formatting, and generic
-  utilities are not services. Keep them in shallow, explicitly named source
-  areas beside `services/`.
-- Prefer `Effect.gen` for composition, `Effect.fn("Domain.operation")` for
-  named service operations, and `Effect.fnUntraced` for reusable internal
-  Effect helpers. Expected failures should have typed error channels.
-- Effect-owned resources use `Effect.acquireRelease` or finalizers; background
-  work uses scoped fibers. Raw Node filesystem, process, clock, and HTTP APIs
-  belong at platform adapter or application-entry boundaries when an Effect
-  platform service is available.
-- The daemon owns gateway-generation composition and its closeable Effect
-  scopes. Do not recreate a standalone router package or a parallel manual
-  resource-scope abstraction.
-- Give each shared domain value one canonical schema identity. Protocol modules
-  compose canonical schemas instead of redefining equivalent records, and
-  legacy contracts use explicit versioned entrypoints.
-- Split files around ownership, lifecycle, protocol, and portability
-  boundaries. Do not extract single-use helpers or create packages solely to
-  satisfy line-count limits.
+- Keep services in `src/services/<service>/service.ts`; no deeper grouping and
+  no `services/index.ts` barrels.
+- Internal imports use the precise service file or a named Runtime subpath such
+  as `@velum-labs/routekit-runtime/filesystem`; never import through a package's
+  own root façade.
+- Schemas, protocols, stores, adapters, formatting, and generic utilities are
+  not services.
+- Prefer `Effect.gen`, named `Effect.fn("Domain.operation")` operations, and
+  `Effect.fnUntraced` for reusable internal helpers.
+- Expected failures use typed error channels. Effect-owned resources use
+  `Effect.acquireRelease`, finalizers, and scoped fibers.
+- Raw Node filesystem, process, clock, and HTTP APIs stay at platform adapter
+  or application-entry boundaries when an Effect platform service exists.
+- Split files only at ownership, lifecycle, protocol, or portability
+  boundaries; do not extract single-use helpers to satisfy line-count limits.
 
-### Running the app
+## Hard do-nots
 
-- Build first (`pnpm build`), then run the built CLI via
-  `node packages/cli/dist/index.js <cmd>` (published bin: `routekit`), or
-  `pnpm dev:run-routekit`.
-- Lifecycle: `routekit start` launches a **detached singleton daemon** (control
-  listener + OpenAI-compatible gateway) per `ROUTEKIT_HOME` (default
-  `~/.routekit`); `routekit status` prints the gateway URL (e.g.
-  `http://127.0.0.1:8080`); `routekit stop`. Canonical config is global at
-  `~/.config/routekit/router.yaml`, not per-project.
-- The data gateway requires a bearer token. The owner token lives at
-  `$ROUTEKIT_HOME/secrets/data-token` and is also registered in
-  `$ROUTEKIT_HOME/secrets/tokens.json`. Named tokens are issued with
-  `routekit token issue <label>`; for direct HTTP calls send
-  `Authorization: Bearer <token>`.
-- The gateway defaults to binding `127.0.0.1:8080`. `--host` can bind
-  non-loopback addresses when an auth token is present
-  (`assertAuthenticatedBind`). Remote enrollment still requires HTTPS for any
-  non-loopback `--url`.
-- Startup **fails if any configured provider cannot authenticate or discover
-  models**, so only enable providers you can actually reach. To exercise the
-  gateway without real keys/egress, point a provider at a local OpenAI-compatible
-  mock via its base-URL env override (e.g. `OPENAI_BASE_URL` + `OPENAI_API_KEY`);
-  the daemon forwards configured providers' key/base-URL env vars to itself.
+- Do not modify `packages/eval-engine`.
+- Do not restore `packages/router` unless `pnpm check` or offline tests prove
+  `model: "auto"` is broken. Do not delete any other package.
+- Do not delete or rewrite gateway classifier, eval-policy, compositional auto
+  routing, or `PublishedRoutingActivation`.
+- Do not change `control.v2`, HTTP/SSE wire behavior, CLI output, persisted
+  formats, or published npm roots except where the task explicitly requires it.
+- Do not recreate deleted profile protocol, `apps/eval-worker`, or
+  `runEvalSuite`.
+- Do not add a parallel manual resource-scope abstraction; the daemon owns
+  gateway generations and closeable Effect scopes.
 
-### Docker (for testing remote features)
-
-- **Docker CE 28.5.2 is installed** in the VM image. systemd is not active, so
-  start the daemon manually each session (it does not auto-start), e.g. in a
-  tmux window: `sudo dockerd > /tmp/dockerd.log 2>&1`. It is configured for the
-  **`fuse-overlayfs` storage driver** (`/etc/docker/daemon.json`) and
-  **iptables-legacy** — both required for docker-in-docker in this VM; do not
-  switch them to overlay2/nftables. `ubuntu` is in the `docker` group (takes
-  effect in a fresh login shell); otherwise use `sudo docker`.
-- If Docker is ever missing on a fresh VM, reinstall `docker-ce`,
-  `docker-ce-cli`, `containerd.io`, and `fuse-overlayfs`, then re-apply the
-  `daemon.json` + iptables-legacy config above.
-
-### Testing RouteKit remote features over SSH
-
-`routekit remote add <name> --url <gateway> --ssh <host>` SSHes to `<host>` and
-issues a named data-plane token via `tokens.issue` over the control relay
-(no legacy shared-owner-token fallback), health-checks `<gateway>/health`, then
-relays control calls over `ssh <host> routekit --local daemon exec`. Peer
-accounts can pass `--join rk1_…` so the SSH account is enrolled as a peer first.
-Constraints that matter for a test container:
-
-- The daemon defaults to loopback (`127.0.0.1`); `--url` must be **HTTPS or a
-  loopback host**. So run the test container with **`--network host`** (shares
-  the host loopback): the container gateway is reachable at
-  `http://127.0.0.1:8080` and its sshd at `127.0.0.1:22`. First **stop the host's
-  own `routekit` daemon** to free `:8080`.
-- SSH must be non-interactive: key auth + a `~/.ssh/config` alias with
-  `BatchMode yes`, `StrictHostKeyChecking no`, and the `IdentityFile`.
-- Reusable testbed recipe (verified working): image from `node:22-bookworm-slim`
-  - `openssh-server` + `npm install -g @velum-labs/routekit` (or the public
-  `install.sh` one-liner); inject an SSH pubkey into
-  `/root/.ssh/authorized_keys`; entrypoint runs `ssh-keygen -A`, writes
-  `~/.config/routekit/router.yaml` (openai provider, `defaultModel
-  openai/gpt-4o-mini`), exports `OPENAI_API_KEY` + `OPENAI_BASE_URL` (point at a
-  local OpenAI-compatible mock so no real egress is needed), `routekit start`,
-  then `exec /usr/sbin/sshd -D`. Then from the host:
-  `routekit remote add testvm --url http://127.0.0.1:8080 --ssh testvm`,
-  `routekit remote use testvm`, `routekit --remote testvm status`.
+Cloud VM, nvm, Docker, and SSH notes live in [`.cursor/CLOUD.md`](.cursor/CLOUD.md).

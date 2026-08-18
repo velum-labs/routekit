@@ -195,6 +195,38 @@ export function polynomialTrailingSlashRegexViolations(file, source) {
   ];
 }
 
+export function runtimeRootImportViolations(file, source) {
+  if (file.startsWith("packages/eval-engine/")) return [];
+  const rootImport =
+    /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']@velum-labs\/routekit-runtime["']/;
+  return rootImport.test(source)
+    ? [`${file} must import a named @velum-labs/routekit-runtime subpath`]
+    : [];
+}
+
+const RETIRED_ENG814_IDENTIFIERS = [
+  "RoutingProfile",
+  "CompiledRoutingPolicy",
+  "PublishedRoutingSnapshot",
+  "ROUTING_SNAPSHOT_VERSION",
+  "EvalWorkerRequest",
+  "generatedProfilePath",
+  "runEvalSuite"
+];
+
+export function retiredEng814SourceViolations(file, source) {
+  const violations = [];
+  for (const identifier of RETIRED_ENG814_IDENTIFIERS) {
+    if (new RegExp(`\\b${identifier}\\b`, "u").test(source)) {
+      violations.push(`${file} contains retired ENG-814 identifier ${identifier}`);
+    }
+  }
+  if (!file.startsWith("packages/eval-engine/") && /\bspendLimitUsd\b/u.test(source)) {
+    violations.push(`${file} contains unenforced spendLimitUsd`);
+  }
+  return violations;
+}
+
 export function routekitSourceViolations(file, source) {
   const violations = [];
   const normalized = file.split(sep).join("/");

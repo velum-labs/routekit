@@ -6,7 +6,7 @@
  */
 
 import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
-import { estimateTokens, randomId } from "@velum-labs/routekit-runtime";
+import { estimateTokens, randomId } from "@velum-labs/routekit-runtime/timing";
 import type { OpenAiChatResponse } from "../providers/protocol.js";
 import { decodeToolResult } from "../providers/protocol.js";
 import type {

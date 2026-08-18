@@ -6,7 +6,7 @@ import {
   reasoningSelectionFromEffort
 } from "@velum-labs/routekit-contracts";
 import { resolveCodexStartupModel } from "@velum-labs/routekit-gateway";
-import { commandOnPath } from "@velum-labs/routekit-runtime";
+import { commandOnPath } from "@velum-labs/routekit-runtime/environment";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { toolRegistry as routekitToolRegistry } from "@velum-labs/routekit-tool-registry";
 import type {

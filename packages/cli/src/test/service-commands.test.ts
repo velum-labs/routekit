@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { parseRouterConfig, type RouterConfig } from "@velum-labs/routekit-config";
-import { SERVICE_UNSET_ENV } from "@velum-labs/routekit-runtime";
+import { SERVICE_UNSET_ENV } from "@velum-labs/routekit-runtime/environment";
 
 import { daemonServeArgs } from "../client.js";
 import { drainGraceMs } from "../commands/serve-options.js";

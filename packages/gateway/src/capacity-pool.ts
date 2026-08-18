@@ -3,5 +3,5 @@ export type {
   CapacityPoolMember,
   CapacityPoolOptions,
   CapacityPoolStrategy
-} from "@velum-labs/routekit-runtime";
-export { CapacityPool } from "@velum-labs/routekit-runtime";
+} from "@velum-labs/routekit-runtime/capacity";
+export { CapacityPool } from "@velum-labs/routekit-runtime/capacity";

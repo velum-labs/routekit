@@ -11,5 +11,5 @@
   provider translation, and routing decisions.
 - Large provider or codec files may remain cohesive. Split only at a genuine
   protocol, lifecycle, or ownership boundary.
-- Preserve the root, `./protocol`, `./routing`, `./server`, and `./effect`
-  package facades while narrowing internal imports.
+- Keep the root, `./protocol`, `./routing`, `./server`, and `./effect` as thin
+  published façades. Internal modules import precise files.

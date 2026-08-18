@@ -14,7 +14,7 @@ import type {
   Tool
 } from "@aws-sdk/client-bedrock-runtime";
 import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
-import { randomId } from "@velum-labs/routekit-runtime";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
 import {
   anthropicReasoningDetailsOf,
   anthropicReasoningExtension,

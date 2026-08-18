@@ -2,7 +2,7 @@
 /** Executable entrypoint for the independent RouteKit router CLI. */
 import { CliError, emitJson, renderCliError } from "@velum-labs/routekit-cli-core";
 import { configureBrand, uiStream } from "@velum-labs/routekit-cli-ui";
-import { registerCleanup, runCleanups } from "@velum-labs/routekit-runtime";
+import { registerCleanup, runCleanups } from "@velum-labs/routekit-runtime/lifecycle";
 import { CommanderError } from "commander";
 
 import { buildProgram, routekitVersion } from "./cli.js";

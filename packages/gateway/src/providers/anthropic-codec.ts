@@ -8,7 +8,7 @@
  */
 
 import type { Reasoning } from "@velum-labs/routekit-contracts/protocol-ir";
-import { randomId } from "@velum-labs/routekit-runtime";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
 import { droppedField } from "../adapters/dropped.js";
 import {
   type AnthropicNativeContentBlock,

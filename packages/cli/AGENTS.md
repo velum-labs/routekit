@@ -8,5 +8,5 @@
   implementations are platform adapters rather than application services.
 - Avoid adding ambient CLI state. Pass values explicitly or provide an Effect
   service; keep Promise execution at the CLI/process boundary.
-- The published CLI entrypoint is a compatibility boundary. Internal file moves
-  must not alter command names, options, output, or exit behavior.
+- The published CLI entrypoint is a thin façade. Internal file moves must not
+  alter command names, options, output, or exit behavior.

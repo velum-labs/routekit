@@ -14,5 +14,5 @@
   `src/services/gateway-generation/service.ts`. Keep its account sets, provider
   backend, and listener in one native Effect scope; do not reintroduce the
   standalone router package.
-- Preserve the public root, `./state`, and `./effect` package facades when
-  moving internal modules.
+- Keep the public root, `./state`, and `./effect` as thin published façades.
+  Internal modules import precise service files instead.

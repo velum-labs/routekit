@@ -7,7 +7,7 @@
  * adapter lives under `adapters/responses-codec.ts`.
  */
 
-import { randomId } from "@velum-labs/routekit-runtime";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
 import { droppedField } from "../adapters/dropped.js";
 import {
   attachResponsesReasoningMetadata,

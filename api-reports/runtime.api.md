@@ -2,18 +2,11 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `7fb7b5179ee0313847f0bb432fc7dde2889661295e2529a04af0ee6010d2afa0`
+Declaration SHA-256: `071e920259fe0f4ec965b192153854e2da46b6955500a84af10a7acfa731d4e6`
 
 ## Root declarations
 
 ```ts
-export declare function spawnLogged(command: string, args: string[], options?: LoggedSpawnOptions): LoggedChild;
-export declare function spawnTool(command: string, args: string[], env: Record<string, string>, cwd?: string): Promise<number>;
-export declare function terminate(child: ChildProcess, graceMs?: number): void;
-export declare function waitForHttp(probeUrl: string, proc: LoggedChild, options: {
-export declare function waitForOutput(proc: LoggedChild, pattern: RegExp, options: {
-export type LoggedChild = {
-export type LoggedSpawnOptions = SpawnOptions & {
 export type { BuildChildEnvInput } from "./environment.js";
 export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPoolStrategy } from "./capacity-pool.js";
 export type { CliCaptureOptions, CliCaptureResult } from "./process/cli-capture.js";
@@ -26,6 +19,7 @@ export type { ExitInfo, Spawned, SuperviseSpawnOptions } from "./process/process
 export type { FileLock } from "./filesystem/runtime-files.js";
 export type { IssuedToken, JoinCredential, TokenListEntry, TokenPlane, TokenPrincipal, TokenRecord, TokenRole, TokenStore } from "./tokens/store.js";
 export type { LifecycleLock } from "./services/authority/service.js";
+export type { LoggedChild, LoggedSpawnOptions } from "./process/managed-process.js";
 export type { OwnedResourceOptions, ResourceFinalizer, ResourceOwnership, ResourceScopeOptions } from "./lifecycle/resource-scope.js";
 export type { ReservedPort } from "./runtime-ports.js";
 export type { ServiceDaemonSpec, StartDaemonOptions, StartDaemonResult, StopDaemonResult } from "./services/daemon/service.js";
@@ -59,6 +53,7 @@ export { hasFlag } from "./args.js";
 export { planUpgrade, upgradeDetachedDaemon } from "./services/upgrade/service.js";
 export { readLogTail, rotateLogFile, serviceLogPath, startDaemon, stopDaemonProcess, waitForProcessExit, waitForProcessExitEffect, waitForServiceReady, waitForServiceReadyEffect } from "./services/daemon/service.js";
 export { runCliCapture } from "./process/cli-capture.js";
+export { spawnLogged, spawnTool, terminate, waitForHttp, waitForOutput } from "./process/managed-process.js";
 export { startControlServer } from "./services/control-server/service.js";
 export { superviseSpawn, terminateGroup, terminateProcessGroup } from "./process/process.js";
 ```
