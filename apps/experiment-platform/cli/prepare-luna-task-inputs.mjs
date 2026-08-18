@@ -8,11 +8,11 @@ import {
   buildEnrichedAreaCards,
   buildLunaPerformancePrompt,
   renderLunaPerformanceEvidence
-} from "../vendor/coding-router-lab/dist/src/luna-performance-experiment.js";
+} from "../vendor/coding-router-lab/runtime/src/luna-performance-experiment.js";
 import {
   buildLunaDistributionalResponseSchema,
   scopeTargetForLabel
-} from "../vendor/coding-router-lab/dist/src/luna-distributional.js";
+} from "../vendor/coding-router-lab/runtime/src/luna-distributional.js";
 
 const argv = process.argv.slice(2);
 const repositoryRoot = path.resolve(import.meta.dirname, "../../..");

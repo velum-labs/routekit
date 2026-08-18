@@ -386,382 +386,382 @@
       "size": 1182
     },
     {
-      "path": "dist/src/adjudication.js",
+      "path": "runtime/src/adjudication.js",
       "sha256": "8b88a47f7b2586825eae8fe52066dc78c96604bde81bae0bbdcbc936619a21e2",
       "size": 1918
     },
     {
-      "path": "dist/src/area-text.js",
+      "path": "runtime/src/area-text.js",
       "sha256": "5672a9bb63bf6a9816dcfa81118c8abf471d885a01e0e77db68efe93a1c4cd3a",
       "size": 703
     },
     {
-      "path": "dist/src/budget.js",
+      "path": "runtime/src/budget.js",
       "sha256": "2cfcefe2a9c1ca7e0f25bf7e61373a7ca3dc6d8c1a0d49aabe114fb37129367c",
       "size": 8111
     },
     {
-      "path": "dist/src/canary.js",
+      "path": "runtime/src/canary.js",
       "sha256": "14dce77c6f13d3f69c3e9a3b94158d2c68873724c3988784de1ca95e7375df52",
       "size": 4001
     },
     {
-      "path": "dist/src/classifiers.js",
+      "path": "runtime/src/classifiers.js",
       "sha256": "3aaed2d9680c76d8e9eab75ddd379a261e7458da16711bc8fd8e4a72fa1e3964",
       "size": 2404
     },
     {
-      "path": "dist/src/cli.js",
+      "path": "runtime/src/cli.js",
       "sha256": "3331394d78c5d5bb0782e30f930cd950c4a8b018fc03866aae27ecd813671174",
       "size": 127569
     },
     {
-      "path": "dist/src/codex-collector.js",
+      "path": "runtime/src/codex-collector.js",
       "sha256": "1c17c31e25a82fa209229a540efba0c558910f3b005a9cf19a158176f76ba335",
       "size": 16828
     },
     {
-      "path": "dist/src/codex-harness.js",
+      "path": "runtime/src/codex-harness.js",
       "sha256": "9de1dd3c60e64f078ce73a547670b7ae4509062aaa3f3d5d816c1d04b2b62769",
       "size": 16996
     },
     {
-      "path": "dist/src/codex-inventory.js",
+      "path": "runtime/src/codex-inventory.js",
       "sha256": "3ee9dcaa2b4a7513d66328d7e421f461e850c0116de33d0d84cbe03888f7c29a",
       "size": 4133
     },
     {
-      "path": "dist/src/cohort-construction-cli.js",
+      "path": "runtime/src/cohort-construction-cli.js",
       "sha256": "763f74675d30e6248bca1900b90a21047d9c31c31e679f0e60dad4b73769a135",
       "size": 2694
     },
     {
-      "path": "dist/src/cohort-construction.js",
+      "path": "runtime/src/cohort-construction.js",
       "sha256": "37ef5b376d74cda064f2c31bb4b1e964202f823155b42fdcd7d8fa73b628bb38",
       "size": 68721
     },
     {
-      "path": "dist/src/config.js",
+      "path": "runtime/src/config.js",
       "sha256": "0ad0ad3ca2cdb78f363e191d953a5f167e73e7ab79a694624eef5bbb97a106df",
       "size": 428
     },
     {
-      "path": "dist/src/cost.js",
+      "path": "runtime/src/cost.js",
       "sha256": "7921ab46274241e664681d9fd654a0a3269b6fe7b19ff4faa6b4910d546e7e09",
       "size": 1560
     },
     {
-      "path": "dist/src/curation.js",
+      "path": "runtime/src/curation.js",
       "sha256": "dabe3aa376683db5583daff8078b60a33d2797415843f14dcffa7f2fc2440587",
       "size": 5900
     },
     {
-      "path": "dist/src/dataset-prep.js",
+      "path": "runtime/src/dataset-prep.js",
       "sha256": "85a959c8d8b1482bf492dca1578adf97127b153e1c0477f20fbea1b08ca802f7",
       "size": 38268
     },
     {
-      "path": "dist/src/dataset-quality.js",
+      "path": "runtime/src/dataset-quality.js",
       "sha256": "a167c1c304ae3593015936712a08953eaceec5ed296c4eeac1fae29f80bd71e7",
       "size": 16031
     },
     {
-      "path": "dist/src/embedding-cache.js",
+      "path": "runtime/src/embedding-cache.js",
       "sha256": "3f46c8be5733b707be43c3150749d30fce7d1c1e56cbb5789536bf9fa1c20ec3",
       "size": 1350
     },
     {
-      "path": "dist/src/embedding-run.js",
+      "path": "runtime/src/embedding-run.js",
       "sha256": "046b3b033388d1bb5b1b1d4a12e62c76aeb0e57d10f5e741638dd05684705ec9",
       "size": 3938
     },
     {
-      "path": "dist/src/environment.js",
+      "path": "runtime/src/environment.js",
       "sha256": "ea5fae689395170ef29eb3edb11447854c85f65bc6dacb96d445e72ad5806e66",
       "size": 832
     },
     {
-      "path": "dist/src/experiment-metrics.js",
+      "path": "runtime/src/experiment-metrics.js",
       "sha256": "f45dcaf41b526a6e5038c36287aa312694fe87ec643da1725ca253c3ea60e104",
       "size": 9645
     },
     {
-      "path": "dist/src/experiment-runner.js",
+      "path": "runtime/src/experiment-runner.js",
       "sha256": "7ecae5a05e0c3f364b284bcddbb7ec62c392d75e8c94e030501b3831ee998bfd",
       "size": 14940
     },
     {
-      "path": "dist/src/git-snapshot-hydration.js",
+      "path": "runtime/src/git-snapshot-hydration.js",
       "sha256": "77469f5eff32ef9eed15c5ea4b0502f573da7c15d9d9ad71387bab7410149fc6",
       "size": 4658
     },
     {
-      "path": "dist/src/gitnexus-retrieval-experiment-cli.js",
+      "path": "runtime/src/gitnexus-retrieval-experiment-cli.js",
       "sha256": "d47bdb4695c3babb336c75b77e7f0b0fb3029dbf90ac20a1a966d3eb610c87f8",
       "size": 16534
     },
     {
-      "path": "dist/src/gitnexus-retrieval-experiment.js",
+      "path": "runtime/src/gitnexus-retrieval-experiment.js",
       "sha256": "86b35a61f793a1409944877d41b5bbbfc3e754132b35ee9abe802fc1d428ecfd",
       "size": 18196
     },
     {
-      "path": "dist/src/gitnexus-retrieval-report-cli.js",
+      "path": "runtime/src/gitnexus-retrieval-report-cli.js",
       "sha256": "5893ae3244272bc9ea9f0ef3db9a2ec7b6294d6f8605c41013fdba8c41aeacff",
       "size": 20046
     },
     {
-      "path": "dist/src/group-report.js",
+      "path": "runtime/src/group-report.js",
       "sha256": "0c1eb658b50737028311c0522b0f42243f792580291f4b9060f99896ab092941",
       "size": 2061
     },
     {
-      "path": "dist/src/hash.js",
+      "path": "runtime/src/hash.js",
       "sha256": "15df83c3acd47f5fabc4da15aac9333d4701a4cde7838e1065b57c45ccc8e991",
       "size": 569
     },
     {
-      "path": "dist/src/jsonl.js",
+      "path": "runtime/src/jsonl.js",
       "sha256": "96e8a2930322eccd3817f63087d1c1315ae50fa005eec2963d3623b107f0d41d",
       "size": 1381
     },
     {
-      "path": "dist/src/luna-accuracy-attestation.js",
+      "path": "runtime/src/luna-accuracy-attestation.js",
       "sha256": "1ad509246341b628157bd55d4a01663219c7c83e6b213a90d67ac32a0ad53a6c",
       "size": 10534
     },
     {
-      "path": "dist/src/luna-accuracy-challenges.js",
+      "path": "runtime/src/luna-accuracy-challenges.js",
       "sha256": "65d72ad7316bf8289b76edaa2f0e65fa8ca82e2df102b05dbb22c4315d5813f0",
       "size": 16535
     },
     {
-      "path": "dist/src/luna-accuracy-coding-annotations.js",
+      "path": "runtime/src/luna-accuracy-coding-annotations.js",
       "sha256": "5791865b00fff4f834ef76b39d2adc3f2c2d1a135816b94f7edb15048f6875c8",
       "size": 10644
     },
     {
-      "path": "dist/src/luna-accuracy-coding-development.js",
+      "path": "runtime/src/luna-accuracy-coding-development.js",
       "sha256": "54efa3ea1da644634d4f9fafa697d1689fb8a507006ac50271067e22c102d1ba",
       "size": 29306
     },
     {
-      "path": "dist/src/luna-accuracy-coding-stress.js",
+      "path": "runtime/src/luna-accuracy-coding-stress.js",
       "sha256": "39074aac63e18d138b00ee3835c514ba703f60ab7cc85d0e2a4c3209ee385da4",
       "size": 35051
     },
     {
-      "path": "dist/src/luna-accuracy-confirmation.js",
+      "path": "runtime/src/luna-accuracy-confirmation.js",
       "sha256": "183e05744ca3e4fb8876036d4e2343416203e814d231ebca1f5de488c0c3aa66",
       "size": 31148
     },
     {
-      "path": "dist/src/luna-accuracy-context-exposure-cli.js",
+      "path": "runtime/src/luna-accuracy-context-exposure-cli.js",
       "sha256": "bde8efc6d76b88d983b6bb3466d03753281c5b9b4b5f6b4e50519be2b2e7bcbe",
       "size": 4476
     },
     {
-      "path": "dist/src/luna-accuracy-context-exposure.js",
+      "path": "runtime/src/luna-accuracy-context-exposure.js",
       "sha256": "470ecde603a4bad135338821e7473008049e19de01aa0eea161e35c40adc4ceb",
       "size": 18413
     },
     {
-      "path": "dist/src/luna-accuracy-context.js",
+      "path": "runtime/src/luna-accuracy-context.js",
       "sha256": "67ba41c414ce6ad5672d9d27afff540c510979c88355851a45655b470252bff3",
       "size": 24269
     },
     {
-      "path": "dist/src/luna-accuracy-design.js",
+      "path": "runtime/src/luna-accuracy-design.js",
       "sha256": "25e9935ae26cfc6d9d3226b4846805c28ce522adf22a1bb83ffb0c9ee3cfa2a5",
       "size": 27583
     },
     {
-      "path": "dist/src/luna-accuracy-distinctness.js",
+      "path": "runtime/src/luna-accuracy-distinctness.js",
       "sha256": "67006888cd9b0b20b235178f6004e1d2294f26fcf72ee153b41219c636e75835",
       "size": 7041
     },
     {
-      "path": "dist/src/luna-accuracy-metrics.js",
+      "path": "runtime/src/luna-accuracy-metrics.js",
       "sha256": "8e8bb028c1a19af5a1ec5c1c347d11054aa51020686c7dcc9a4088b2c11f6475",
       "size": 24062
     },
     {
-      "path": "dist/src/luna-accuracy-openrouter.js",
+      "path": "runtime/src/luna-accuracy-openrouter.js",
       "sha256": "62080579039625f354225f6770651058dd77b52f85b3ac1a3607f0e22d4b7501",
       "size": 42101
     },
     {
-      "path": "dist/src/luna-accuracy-phase-transitions.js",
+      "path": "runtime/src/luna-accuracy-phase-transitions.js",
       "sha256": "82fc5043b2c9398e1d3ddc233a299916051546e2b090c902aea1cd9a753fa41b",
       "size": 2373
     },
     {
-      "path": "dist/src/luna-accuracy-phase3.js",
+      "path": "runtime/src/luna-accuracy-phase3.js",
       "sha256": "34e6422c0eab4b8cf3fb3f8efaabeb96aee87efca880a724c6b196aaee94266c",
       "size": 40851
     },
     {
-      "path": "dist/src/luna-accuracy-report.js",
+      "path": "runtime/src/luna-accuracy-report.js",
       "sha256": "116c33f0825e7868a7eb526972428a695d875efa71d98becdfe660d3c3225014",
       "size": 37880
     },
     {
-      "path": "dist/src/luna-accuracy-repository-retrieval-cli.js",
+      "path": "runtime/src/luna-accuracy-repository-retrieval-cli.js",
       "sha256": "55bd2af445e3235c23b1da98426e829ca095b63c27885257dc69f9078328d527",
       "size": 2868
     },
     {
-      "path": "dist/src/luna-accuracy-repository-retrieval.js",
+      "path": "runtime/src/luna-accuracy-repository-retrieval.js",
       "sha256": "8a6e345d898dc942cc5f068ab484447a9b40430eb5a4079b4243ee73f9a3e5d6",
       "size": 30307
     },
     {
-      "path": "dist/src/luna-accuracy-runner.js",
+      "path": "runtime/src/luna-accuracy-runner.js",
       "sha256": "67b5d18f3d9b41bc4698f3d4b5fe08462ca483b27019799fb0beb842577c6e9d",
       "size": 64507
     },
     {
-      "path": "dist/src/luna-accuracy-workflow.js",
+      "path": "runtime/src/luna-accuracy-workflow.js",
       "sha256": "49e4c7fcfd09ef4347c97d58da1669c22abdfd1c9bc6a069fe0d6ce4360b1d09",
       "size": 20158
     },
     {
-      "path": "dist/src/luna-benchmark.js",
+      "path": "runtime/src/luna-benchmark.js",
       "sha256": "218f5060df90eda5b0290811b723f0945132c2650337f24fd7997f0cf68518d4",
       "size": 15436
     },
     {
-      "path": "dist/src/luna-bounded-repository-tools.js",
+      "path": "runtime/src/luna-bounded-repository-tools.js",
       "sha256": "e252e8a76e0732e9c4003b6b6d8e0a7bbec2b4da606f173a3d74d8257069e602",
       "size": 21982
     },
     {
-      "path": "dist/src/luna-bounded-tool-experiment-cli.js",
+      "path": "runtime/src/luna-bounded-tool-experiment-cli.js",
       "sha256": "a572889c431eb8fc49eb661cd3d0c6b22be9a6e9eb0227a4c06ecf709735256d",
       "size": 25617
     },
     {
-      "path": "dist/src/luna-bounded-tool-harness.js",
+      "path": "runtime/src/luna-bounded-tool-harness.js",
       "sha256": "7ba5a2954af2d8a2f81d8299dc5607340b93ac2307ac9999ce7eaa473f38f54e",
       "size": 24830
     },
     {
-      "path": "dist/src/luna-cascade.js",
+      "path": "runtime/src/luna-cascade.js",
       "sha256": "89b6c6d4457f962bca2da7da9efeffde6bf799b085c57f5935b08b3bfc017dd4",
       "size": 8756
     },
     {
-      "path": "dist/src/luna-context.js",
+      "path": "runtime/src/luna-context.js",
       "sha256": "7fbfac06a1375b11c98f01f22529a0f7263ae09a12d4acfcb9435e258ff1c658",
       "size": 7617
     },
     {
-      "path": "dist/src/luna-distributional.js",
+      "path": "runtime/src/luna-distributional.js",
       "sha256": "e6879517a07ff8f9bca2b9edc3f30cea3b233b846b13d0e2a6f8463b31040cab",
       "size": 18025
     },
     {
-      "path": "dist/src/luna-performance-experiment-cli.js",
+      "path": "runtime/src/luna-performance-experiment-cli.js",
       "sha256": "6414bd9721ec647deafd3c468884a6c7aecee97d2bf99073125cb83b985301e6",
       "size": 41546
     },
     {
-      "path": "dist/src/luna-performance-experiment.js",
+      "path": "runtime/src/luna-performance-experiment.js",
       "sha256": "3c5018fd5fbd0038d9e68227a80324a1dbd519cb05a73a1c75a32cd458689dd4",
       "size": 28299
     },
     {
-      "path": "dist/src/luna-performance-retrieval.js",
+      "path": "runtime/src/luna-performance-retrieval.js",
       "sha256": "ee99a719761446fa8f0ff041877fe79f389d9321361015abac9f53632f895e28",
       "size": 28966
     },
     {
-      "path": "dist/src/metrics.js",
+      "path": "runtime/src/metrics.js",
       "sha256": "97ce073d23c4f1749b6ab3204d249c1bb3b573e1e25531b32c9b97fb192ee1ba",
       "size": 2754
     },
     {
-      "path": "dist/src/openrouter.js",
+      "path": "runtime/src/openrouter.js",
       "sha256": "134e356dabad31c7cbe4ea62735c9ade092463eb66e3fcfd336721caa20635f4",
       "size": 15523
     },
     {
-      "path": "dist/src/oracle-snippet-materialization-cli.js",
+      "path": "runtime/src/oracle-snippet-materialization-cli.js",
       "sha256": "f90328ab6f05b8fe7a0e17124445a719ca6f965d46c8430c131790a437509906",
       "size": 6929
     },
     {
-      "path": "dist/src/oracle-trace-audit.js",
+      "path": "runtime/src/oracle-trace-audit.js",
       "sha256": "461dbcbe532c6d917e2fec98a52024bfcd62302fd5a3e7df72a7b8bbd6d553c3",
       "size": 23508
     },
     {
-      "path": "dist/src/oracle.js",
+      "path": "runtime/src/oracle.js",
       "sha256": "b5e561edaacf66e8d61e0ef18a31ae7b3f221aead34da559e351df4956dbee72",
       "size": 4572
     },
     {
-      "path": "dist/src/public-pr-benchmark-cli.js",
+      "path": "runtime/src/public-pr-benchmark-cli.js",
       "sha256": "d8027bdb981383b677e1f4a5adae4b98a23b8b248d0819c31a7096134b0adece",
       "size": 1348
     },
     {
-      "path": "dist/src/public-pr-benchmark.js",
+      "path": "runtime/src/public-pr-benchmark.js",
       "sha256": "c2e6f2116eeca8657627477be31daeb9dc054739a0f8d5f5a1a2bc1621aadf0b",
       "size": 49857
     },
     {
-      "path": "dist/src/registry-builder.js",
+      "path": "runtime/src/registry-builder.js",
       "sha256": "57c3979b1c301e0c43a946fd60f7719b371cab6a1020463526c55d0a978bb79e",
       "size": 10575
     },
     {
-      "path": "dist/src/registry-freeze.js",
+      "path": "runtime/src/registry-freeze.js",
       "sha256": "6849f93ee509bdb788dd43dd471f93ec4f7b4e3143de96381d74399aea30be45",
       "size": 4008
     },
     {
-      "path": "dist/src/report.js",
+      "path": "runtime/src/report.js",
       "sha256": "fb957c7f9a1e8bf6010a153c64ba3a57a0c330f620437129e492d530c2151e48",
       "size": 2912
     },
     {
-      "path": "dist/src/routekit-seed.js",
+      "path": "runtime/src/routekit-seed.js",
       "sha256": "f5b335748f617dfe1e5e87569b7ccef939e5d99224fe918e893bdacccdba9708",
       "size": 14908
     },
     {
-      "path": "dist/src/run-artifacts.js",
+      "path": "runtime/src/run-artifacts.js",
       "sha256": "b427e1a79d6e25a1077b8ab9b8b75902339dbf7b201c3081d5d25182f1a9fb6e",
       "size": 804
     },
     {
-      "path": "dist/src/serialization.js",
+      "path": "runtime/src/serialization.js",
       "sha256": "eea6ea5a12d328c292e7657adde7f86b441765f1d7b97047704fe6a2286254a9",
       "size": 1797
     },
     {
-      "path": "dist/src/slice-report.js",
+      "path": "runtime/src/slice-report.js",
       "sha256": "e1e0b0904211a124591105e0c5ed68eb678fc871cc9cfad4502860049c31ed3f",
       "size": 4402
     },
     {
-      "path": "dist/src/transfer.js",
+      "path": "runtime/src/transfer.js",
       "sha256": "4bc747b30bdaa5428a7f6ccea55f6033311c52f3c9bdb91300dc4a41938ad661",
       "size": 4676
     },
     {
-      "path": "dist/src/types.js",
+      "path": "runtime/src/types.js",
       "sha256": "80c07bc17155efb61df143a724dd7b3d4244ddc407f236b2d99bf1feb2b6052d",
       "size": 79
     },
     {
-      "path": "dist/src/validation.js",
+      "path": "runtime/src/validation.js",
       "sha256": "9c1ddeddaed995128cad80b1f4daeba67bb643a601b2eada660ef37abb62c350",
       "size": 11159
     },
     {
-      "path": "dist/src/vectors.js",
+      "path": "runtime/src/vectors.js",
       "sha256": "bfe78bb1835d70464761df8c78216ea00058de4a8cb6392c2fd9565e9c5b8723",
       "size": 1116
     }

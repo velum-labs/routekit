@@ -8,7 +8,7 @@ const inputPath = process.env.ROUTEKIT_EXPERIMENT_INPUT;
 const outputPath = process.env.ROUTEKIT_EXPERIMENT_OUTPUT;
 const jobDirectory = path.dirname(inputPath ?? "/vercel/sandbox/routekit-job/input.bin");
 const assetRoot = path.join(jobDirectory, "assets");
-const moduleRoot = process.env.CODING_ROUTER_LAB_DIST ?? "/opt/coding-router-lab/dist/src";
+const moduleRoot = process.env.CODING_ROUTER_LAB_DIST ?? "/opt/coding-router-lab/runtime/src";
 
 const allowedModules = new Set([
   "cohort-construction-cli",

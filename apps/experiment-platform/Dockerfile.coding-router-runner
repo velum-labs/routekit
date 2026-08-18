@@ -27,5 +27,5 @@ COPY apps/experiment-platform/runner/coding-router-runner.mjs /opt/routekit-expe
 RUN chown -R node:node /opt/routekit-experiment /opt/coding-router-lab
 
 USER node
-ENV CODING_ROUTER_LAB_DIST=/opt/coding-router-lab/dist/src
+ENV CODING_ROUTER_LAB_DIST=/opt/coding-router-lab/runtime/src
 ENTRYPOINT ["node", "/opt/routekit-experiment/runner.mjs"]
