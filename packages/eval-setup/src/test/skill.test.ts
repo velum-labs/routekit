@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("onboarding skill is RouteKit-branded and preserves approval boundaries", async () => {
+test("onboarding skill uses the public CLI and preserves approval boundaries", async () => {
   const skill = await readFile(
     path.join(packageRoot, "skills", "setup-eval-routing", "SKILL.md"),
     "utf8"
@@ -14,6 +14,13 @@ test("onboarding skill is RouteKit-branded and preserves approval boundaries", a
   assert.match(skill, /setup-eval-routing/u);
   assert.match(skill, /one question per turn/iu);
   assert.match(skill, /Never spend or publish silently/u);
-  assert.match(skill, /thin façade/u);
+  assert.match(skill, /public `routekit eval` CLI/u);
+  assert.match(skill, /\$ROUTEKIT eval --help/u);
+  for (const command of ["prepare", "status", "answer", "validate", "estimate", "run", "publish"]) {
+    assert.match(skill, new RegExp(`eval ${command}`, "u"));
+  }
+  assert.match(skill, /compositional v2 routing/u);
+  assert.doesNotMatch(skill, /Use RouteKit's `EvalSetup` operations/u);
+  assert.doesNotMatch(skill, /test:e2e:eval-routing/u);
   assert.doesNotMatch(skill, /OPENROUTER_API_KEY/u);
 });

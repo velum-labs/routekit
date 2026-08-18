@@ -1,49 +1,123 @@
 ---
 name: setup-eval-routing
-description: Set up eval-driven RouteKit model routing for one model-backed workflow. Trigger when the user asks which model to use, wants model:auto backed by measurements, asks to compare models for an application flow, or asks RouteKit to create the evals needed for routing. Do not trigger merely to run an existing eval or for model-free unit tests.
-metadata:
-  command-aliases:
-    - eval-routing
+description: >-
+  Onboard a repository into RouteKit eval-driven model routing through the
+  public routekit eval CLI. Use when the user wants to create or resume eval
+  setup, author and review routing evals, compare explicit models, estimate a
+  billed run, publish measured routing evidence, or configure trustworthy
+  model:auto. Do not use for merely running an existing model-free test suite.
 ---
 
 # Set Up Eval Routing
 
-Create one measured routing profile at a time. RouteKit is a thin façade over
-the supported eval authoring library. Interview questions, case selection,
-execution, and judging come from that library. RouteKit keeps profile id,
-objective, eligibility, and publication.
+Use the public `routekit eval` CLI as the sole product boundary. Do not call internal
+`EvalSetup` services, invoke a standalone eval executable, or run testkit live
+qualification commands as a substitute for a missing product command.
 
-Use RouteKit's `EvalSetup` operations. Do not reproduce engine, storage, or
-policy logic in this skill, and do not invoke a standalone eval executable.
+When working inside the RouteKit source checkout, build first and invoke:
 
-## Workflow
+```text
+node packages/cli/dist/index.js
+```
 
-1. Call `prepare(repositoryRoot, profileId)`. It creates or resumes durable
-   authoring state. It does not spend.
-2. Call `runApproved` to start one author turn. Relay exactly the returned
-   `question` and `question.context`. Ask one question and stop.
-3. Pass the user's answer unchanged to `answer`. Never answer a setup question
-   yourself. If the user asks for clarification, explain and ask the same open
-   question again without submitting an answer.
-4. Continue one question per turn. Do not invent RouteKit stages, case counts,
-   or candidate lists. The library owns five-candidate and 10-15-case defaults.
-5. When the run is `completed`, the suite lives in the scratch workspace until
-   publication copies it under `.routekit/evals/<profile>/`.
-6. Call `validate` only after an authored artifact exists. It dry-loads that
-   suite and must not execute test bodies.
-7. Call `estimate` only after the library has reported totals. State those
-   reported values. Missing cost is unknown, never zero.
-8. Call `publishApproved` only after the user explicitly approves publication.
-   Publication compiles already-measured evidence. It does not rerun paid calls.
+For an installed release, invoke:
 
-## Safety and quality rules
+```text
+routekit
+```
 
-- One question per turn. Never combine questions or continue on an assumed answer.
-- Never send sensitive data without the user's decision that it is safe.
+Refer to either form below as `$ROUTEKIT`.
+
+## Start
+
+1. Run `$ROUTEKIT eval --help`. Use only commands exposed by that CLI version;
+   never invent flags or subcommands.
+2. Choose a stable lowercase `--profile` ID with the user.
+3. Run:
+
+   ```text
+   $ROUTEKIT --json eval status --profile <id> --repository <root>
+   ```
+
+4. If no state exists, run:
+
+   ```text
+   $ROUTEKIT --json eval prepare --profile <id> --repository <root>
+   ```
+
+Setup is durable. Resume existing state instead of starting over after an
+interruption.
+
+## Authoring interview
+
+- Relay exactly one returned question and its context. Ask one question per turn.
+- Never answer an authoring question for the user.
+- Submit the answer unchanged with `eval answer`. Prefer a private temporary
+  `--answer-file` for multiline content; remove it after the command finishes.
+- If the state is waiting for an answer, do not call `eval run`.
+- Before any `eval run`, explain the next billed/model-backed step, show the
+  selected gateway and explicit model roles, and obtain user approval.
+- Candidate, author, classifier, and judge roles must use explicit
+  `provider/model` IDs. Eval traffic must never use `model: auto`.
+
+Use `eval status` after every interruption or ambiguous command result. Do not
+repeat accepted answers or duplicate a completed paid run.
+
+## Validate, estimate, run
+
+After the CLI reports an authored eval artifact:
+
+1. Run `eval validate`. This must dry-load the suite without executing cases.
+2. Run `eval estimate --mode pilot` or `--mode full`.
+3. Report the CLI's exact call count and pricing status. Missing pricing is
+   unknown, never zero.
+4. Obtain explicit approval for the reported run scope.
+5. Run `eval run` with exactly one dedicated credential source:
+   `--token-file`, `--token`, or the documented environment source. Prefer a
+   private regular `0600` token file.
+6. Report failures without exposing credentials, request bodies, provider
+   responses, headers, or raw child output.
+
+Do not silently reduce case counts, change candidates, replace failed rows, or
+publish incomplete evidence.
+
+## Publish
+
+Run `eval publish` only after all of the following are true:
+
+- the authored suite validates;
+- the measured run completed successfully;
+- candidate and judge evidence is complete;
+- the user reviewed the result; and
+- the user explicitly approved publication.
+
+Publication must compile already-measured evidence and must not trigger another
+paid run.
+
+## Compositional routing boundary
+
+The current public CLI may expose only the single-profile workflow. If
+`$ROUTEKIT eval --help` does not expose the compositional area-catalog,
+classifier-qualification, full matrix, and routing-explanation operations the
+user requested:
+
+- state the CLI capability gap clearly;
+- do not claim that repeated single-profile setup creates compositional v2 routing;
+- do not bypass the gap with internal services or the live testdrive; and
+- offer to implement the missing RouteKit CLI surface.
+
+When the installed CLI does expose compositional operations, preserve the v2
+protocol boundary: classification receives only the request and reviewed area
+definitions; deterministic scoring receives the resulting area vector,
+requirements, objective, and published model-by-area evidence.
+
+## Safety
+
 - Never spend or publish silently.
-- Candidate and judge roles stay separate and always use explicit model IDs.
-- Eval traffic must bypass `model: auto`; the measured router must not evaluate
-  itself recursively.
-- Do not log, persist, echo, or place credentials in generated artifacts.
-- After interruption, call `status` or `prepare` and resume the existing open
-  question. Do not repeat completed answers or duplicate a paid run.
+- Never send repository material until the user approves the model-backed
+  authoring step.
+- Never log, echo, or commit credentials.
+- Never describe unknown cost as zero.
+- Never evaluate the router recursively through `model: auto`.
+- Keep generated evals and sanitized structured results reviewable in the
+  repository when the user approves committing them.
