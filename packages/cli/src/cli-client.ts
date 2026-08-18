@@ -20,11 +20,11 @@ export const CliLive = Layer.effect(
 /** Effect-native daemon-client program for CLI command handlers. */
 export function withCliClient<A, E, R>(
   run: (client: DaemonClientService) => Effect.Effect<A, E, R>
-): Effect.Effect<A, E | unknown, Exclude<R, DaemonClient>> {
+): Effect.Effect<A, E | unknown, R> {
   return DaemonClient.use(run).pipe(Effect.provide(CliLive)) as Effect.Effect<
     A,
     E | unknown,
-    Exclude<R, DaemonClient>
+    R
   >;
 }
 
