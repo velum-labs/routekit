@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "profileId": "observability-attribution",
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "judgeModel": "openai/gpt-5.6-terra",
+  "caseCount": 5,
+  "caseIds": [
+    "call-inspection-redaction-and-retention",
+    "multi-step-usage-and-attempt-semantics",
+    "telemetry-versus-local-inspection",
+    "requested-effective-native-model-routing",
+    "billing-mode-and-attribution-limits"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 30
+}

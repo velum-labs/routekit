@@ -56,7 +56,7 @@ The first complete eight-dimension billed qualification passed on August 17,
 under:
 
 ```text
-docs/evidence/eval-routing/2026-08-17-562483cd6669/
+docs/evidence/eval-routing/2026-08-18-866a9716e888/
 ```
 
 That run used five authored cases per dimension, which qualifies the testdrive

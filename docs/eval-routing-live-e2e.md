@@ -120,11 +120,11 @@ the exact authored suite, artifacts do not retain credentials, headers,
 provider request bodies, provider responses, free-form child output, or
 absolute temporary paths.
 
-The first complete passing run, including its exact generated eval suites and
+The latest complete passing run, including its exact generated eval suites and
 sanitized results, is committed for review at:
 
 ```text
-docs/evidence/eval-routing/2026-08-17-562483cd6669/
+docs/evidence/eval-routing/2026-08-18-866a9716e888/
 ```
 
 ## Passing contract

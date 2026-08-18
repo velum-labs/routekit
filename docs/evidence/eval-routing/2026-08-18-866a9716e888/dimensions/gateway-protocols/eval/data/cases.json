@@ -1,0 +1,32 @@
+[
+  {
+    "id": "authenticated-call-attribution",
+    "prompt": "After an authenticated OpenAI Chat request completes successfully, what response correlation mechanism should RouteKit provide, and what information should an operator be able to inspect with it?",
+    "context": "RouteKit request attribution evidence:\n\nEvery completed RouteKit model request receives an `x-routekit-model-call-id` correlation header. The singleton daemon retains a bounded, expiry-limited attribution record that the operator can inspect with `routekit calls inspect <call-id>` in human or JSON mode. The result identifies the effective and provider-native models, provider, opaque process-local subscription seat when applicable, billing mode, attempts/retries/account failovers, usage, estimated cost or explicit unknown state, status, and timing.\n\nThe inspection projection excludes credentials, authorization/request headers, account labels/IDs, account source paths, prompts, response text, raw provider errors, and unrelated metadata.",
+    "rubric": "The answer must say that the completed response includes an `x-routekit-model-call-id` correlation header and that the ID can be used to inspect a bounded, expiry-limited daemon attribution record in human or JSON form. It must identify relevant inspectable categories, including effective/native model, provider, billing, attempts/retries or failovers, usage/cost (including unknown), status, and timing. It should state that sensitive data such as credentials, request/authorization headers, prompts, response text, raw provider errors, and account identifiers/paths are excluded. Semantically equivalent wording is acceptable."
+  },
+  {
+    "id": "streaming-tool-accounting",
+    "prompt": "For a streaming request that enters a server-side tool loop and causes multiple provider steps, how should RouteKit account for usage and estimated cost in the final attribution record?",
+    "context": "RouteKit request attribution evidence:\n\nRetry and redaction coverage includes: \"Buffered and streaming server-tool-loop tests prove usage and estimated cost include every provider step rather than only the terminal response.\"\n\nThe request attribution result identifies usage and estimated cost or explicit unknown state, along with attempts/retries/account failovers, status, and timing.",
+    "rubric": "The answer must state that usage and estimated cost must cover every provider step in the streaming server-tool loop, not merely the terminal response. It may also note that cost/usage can be represented as explicitly unknown when unavailable. No unsupported requirements about tool selection or route policy are required."
+  },
+  {
+    "id": "safe-upstream-failure",
+    "prompt": "An upstream provider throws an error containing a credential-shaped secret. What should RouteKit retain in the publicly inspectable call record, and what should it avoid exposing?",
+    "context": "RouteKit request attribution evidence:\n\nThe inspection projection excludes credentials, authorization/request headers, account labels/IDs, account source paths, prompts, response text, raw provider errors, and unrelated metadata.\n\nProvenance tests inject a credential-shaped secret into a thrown upstream error and assert the record contains only the safe normalized failure. Call-store tests inject credential and source-path fields into internal metadata and assert the public projection drops them.",
+    "rubric": "The answer must say that the public record should retain only a safe, normalized failure rather than the raw upstream error. It must say that the credential-shaped secret must not be exposed, and should identify that credentials and raw provider errors are excluded; it may additionally mention dropping authorization/request headers, prompts, response text, account identifiers/labels, and source paths. Semantically equivalent descriptions of sanitization and redaction are acceptable."
+  },
+  {
+    "id": "call-id-through-router-hotswap",
+    "prompt": "A request completes while the router generation is being replaced. Should its call attribution remain inspectable, and what is the stated persistence boundary for such records?",
+    "context": "RouteKit request attribution evidence:\n\nRecords remain in memory across router hot-swaps and intentionally do not survive daemon restarts.\n\nThe daemon integration test completes a request while a router generation is being replaced, then proves the same call remains inspectable through the control protocol.\n\nThe singleton daemon retains a bounded, expiry-limited attribution record.",
+    "rubric": "The answer must state that the completed request's attribution remains inspectable across a router hot-swap/replacement, including through the control protocol. It must state that records are in-memory and intentionally do not survive daemon restarts. It should also recognize that retention is bounded and expiry-limited. Equivalent wording is acceptable."
+  },
+  {
+    "id": "gateway-scope-and-protocol-role",
+    "prompt": "Based on the gateway package description and keywords, what responsibilities does the RouteKit gateway package cover, and which protocol-related capability is explicitly indicated?",
+    "context": "packages/gateway/package.json:\n\n`description`: \"Product-neutral model router, provider egress, wire dialect translation, streaming, catalog, and call provenance.\"\n\n`keywords`: \"routekit\", \"llm\", \"coding-agent\", \"gateway\", \"openai-compatible\", \"streaming\".\n\nThe package exports a `./protocol` entry point in addition to its main, routing, server, and effect entry points.",
+    "rubric": "The answer must identify the package responsibilities stated in the description: product-neutral model routing, provider egress, wire-dialect translation, streaming, catalog, and call provenance. It must state that OpenAI compatibility is explicitly indicated by the `openai-compatible` keyword, and may note the dedicated `./protocol` export. It must not infer unsupported specifics about route-selection policy or particular provider wire formats."
+  }
+]

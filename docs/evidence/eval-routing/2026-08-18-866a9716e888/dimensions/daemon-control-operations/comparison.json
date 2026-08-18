@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "comparisonId": "637e7e56-3877-494b-879b-cbdeb8025fa6",
+  "profileId": "daemon-control-operations",
+  "suiteDigest": "aeb83d61fe6e2ede761fb66e39a7cd7cfadf74ea2806658744d21aab89887232",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-18T12:02:16.155Z",
+  "finishedAt": "2026-08-18T12:04:18.308Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "canonical-config-preservation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2601.577117,
+            "judgeScore": 1,
+            "inputTokens": 175,
+            "outputTokens": 132
+          }
+        },
+        {
+          "caseId": "safe-startup-race-diagnosis",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 9087.29553,
+            "judgeScore": 0.55,
+            "inputTokens": 169,
+            "outputTokens": 647
+          }
+        },
+        {
+          "caseId": "control-plane-config-mutation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4295.560425,
+            "judgeScore": 1,
+            "inputTokens": 141,
+            "outputTokens": 283
+          }
+        },
+        {
+          "caseId": "startup-health-interpretation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3177.2679419999986,
+            "judgeScore": 1,
+            "inputTokens": 140,
+            "outputTokens": 226
+          }
+        },
+        {
+          "caseId": "bounded-recovery-and-process-ownership",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4638.141695999999,
+            "judgeScore": 1,
+            "inputTokens": 225,
+            "outputTokens": 354
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "canonical-config-preservation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2318.336310999999,
+            "judgeScore": 1,
+            "inputTokens": 175,
+            "outputTokens": 141
+          }
+        },
+        {
+          "caseId": "safe-startup-race-diagnosis",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 5928.630959000002,
+            "judgeScore": 0.62,
+            "inputTokens": 169,
+            "outputTokens": 419
+          }
+        },
+        {
+          "caseId": "control-plane-config-mutation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3799.2664189999996,
+            "judgeScore": 1,
+            "inputTokens": 141,
+            "outputTokens": 138
+          }
+        },
+        {
+          "caseId": "startup-health-interpretation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3364.9144400000077,
+            "judgeScore": 1,
+            "inputTokens": 140,
+            "outputTokens": 158
+          }
+        },
+        {
+          "caseId": "bounded-recovery-and-process-ownership",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4256.861835000003,
+            "judgeScore": 1,
+            "inputTokens": 225,
+            "outputTokens": 334
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "canonical-config-preservation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2940.449028999996,
+            "judgeScore": 1,
+            "inputTokens": 175,
+            "outputTokens": 143
+          }
+        },
+        {
+          "caseId": "safe-startup-race-diagnosis",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 12794.191061999998,
+            "judgeScore": 0.72,
+            "inputTokens": 169,
+            "outputTokens": 469
+          }
+        },
+        {
+          "caseId": "control-plane-config-mutation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4270.899207999988,
+            "judgeScore": 1,
+            "inputTokens": 141,
+            "outputTokens": 122
+          }
+        },
+        {
+          "caseId": "startup-health-interpretation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4911.724686999994,
+            "judgeScore": 1,
+            "inputTokens": 140,
+            "outputTokens": 210
+          }
+        },
+        {
+          "caseId": "bounded-recovery-and-process-ownership",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6957.5968250000005,
+            "judgeScore": 0.99,
+            "inputTokens": 225,
+            "outputTokens": 359
+          }
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "canonical-config-preservation",
+      "measurement": {
+        "durationMs": 2601.577117,
+        "judgeScore": 1,
+        "inputTokens": 175,
+        "outputTokens": 132
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "canonical-config-preservation",
+      "measurement": {
+        "durationMs": 8634.847559000002,
+        "inputTokens": 550,
+        "outputTokens": 79
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "safe-startup-race-diagnosis",
+      "measurement": {
+        "durationMs": 9087.29553,
+        "judgeScore": 0.55,
+        "inputTokens": 169,
+        "outputTokens": 647
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "safe-startup-race-diagnosis",
+      "measurement": {
+        "durationMs": 6345.199622,
+        "inputTokens": 693,
+        "outputTokens": 182
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "control-plane-config-mutation",
+      "measurement": {
+        "durationMs": 4295.560425,
+        "judgeScore": 1,
+        "inputTokens": 141,
+        "outputTokens": 283
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "control-plane-config-mutation",
+      "measurement": {
+        "durationMs": 1709.5495950000004,
+        "inputTokens": 506,
+        "outputTokens": 66
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "startup-health-interpretation",
+      "measurement": {
+        "durationMs": 3177.2679419999986,
+        "judgeScore": 1,
+        "inputTokens": 140,
+        "outputTokens": 226
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "startup-health-interpretation",
+      "measurement": {
+        "durationMs": 2453.9142900000006,
+        "inputTokens": 547,
+        "outputTokens": 68
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "bounded-recovery-and-process-ownership",
+      "measurement": {
+        "durationMs": 4638.141695999999,
+        "judgeScore": 1,
+        "inputTokens": 225,
+        "outputTokens": 354
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "bounded-recovery-and-process-ownership",
+      "measurement": {
+        "durationMs": 1817.459922999995,
+        "inputTokens": 754,
+        "outputTokens": 77
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "canonical-config-preservation",
+      "measurement": {
+        "durationMs": 2318.336310999999,
+        "judgeScore": 1,
+        "inputTokens": 175,
+        "outputTokens": 141
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "canonical-config-preservation",
+      "measurement": {
+        "durationMs": 1972.723036999996,
+        "inputTokens": 559,
+        "outputTokens": 76
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "safe-startup-race-diagnosis",
+      "measurement": {
+        "durationMs": 5928.630959000002,
+        "judgeScore": 0.62,
+        "inputTokens": 169,
+        "outputTokens": 419
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "safe-startup-race-diagnosis",
+      "measurement": {
+        "durationMs": 4553.204199,
+        "inputTokens": 751,
+        "outputTokens": 172
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "control-plane-config-mutation",
+      "measurement": {
+        "durationMs": 3799.2664189999996,
+        "judgeScore": 1,
+        "inputTokens": 141,
+        "outputTokens": 138
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "control-plane-config-mutation",
+      "measurement": {
+        "durationMs": 1975.0315279999995,
+        "inputTokens": 501,
+        "outputTokens": 72
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "startup-health-interpretation",
+      "measurement": {
+        "durationMs": 3364.9144400000077,
+        "judgeScore": 1,
+        "inputTokens": 140,
+        "outputTokens": 158
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "startup-health-interpretation",
+      "measurement": {
+        "durationMs": 2130.6658190000016,
+        "inputTokens": 544,
+        "outputTokens": 71
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "bounded-recovery-and-process-ownership",
+      "measurement": {
+        "durationMs": 4256.861835000003,
+        "judgeScore": 1,
+        "inputTokens": 225,
+        "outputTokens": 334
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "bounded-recovery-and-process-ownership",
+      "measurement": {
+        "durationMs": 1974.8279330000078,
+        "inputTokens": 846,
+        "outputTokens": 74
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "canonical-config-preservation",
+      "measurement": {
+        "durationMs": 2940.449028999996,
+        "judgeScore": 1,
+        "inputTokens": 175,
+        "outputTokens": 143
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "canonical-config-preservation",
+      "measurement": {
+        "durationMs": 2173.361567999993,
+        "inputTokens": 561,
+        "outputTokens": 66
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "safe-startup-race-diagnosis",
+      "measurement": {
+        "durationMs": 12794.191061999998,
+        "judgeScore": 0.72,
+        "inputTokens": 169,
+        "outputTokens": 469
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "safe-startup-race-diagnosis",
+      "measurement": {
+        "durationMs": 5297.967890999993,
+        "inputTokens": 664,
+        "outputTokens": 335
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "control-plane-config-mutation",
+      "measurement": {
+        "durationMs": 4270.899207999988,
+        "judgeScore": 1,
+        "inputTokens": 141,
+        "outputTokens": 122
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "control-plane-config-mutation",
+      "measurement": {
+        "durationMs": 1559.2519319999992,
+        "inputTokens": 485,
+        "outputTokens": 64
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "startup-health-interpretation",
+      "measurement": {
+        "durationMs": 4911.724686999994,
+        "judgeScore": 1,
+        "inputTokens": 140,
+        "outputTokens": 210
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "startup-health-interpretation",
+      "measurement": {
+        "durationMs": 1641.498768999998,
+        "inputTokens": 596,
+        "outputTokens": 65
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "bounded-recovery-and-process-ownership",
+      "measurement": {
+        "durationMs": 6957.5968250000005,
+        "judgeScore": 0.99,
+        "inputTokens": 225,
+        "outputTokens": 359
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "bounded-recovery-and-process-ownership",
+      "measurement": {
+        "durationMs": 2069.2582609999954,
+        "inputTokens": 757,
+        "outputTokens": 75
+      }
+    }
+  ]
+}

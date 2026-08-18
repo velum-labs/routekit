@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "profileId": "gateway-protocols",
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "judgeModel": "openai/gpt-5.6-terra",
+  "caseCount": 5,
+  "caseIds": [
+    "authenticated-call-attribution",
+    "streaming-tool-accounting",
+    "safe-upstream-failure",
+    "call-id-through-router-hotswap",
+    "gateway-scope-and-protocol-role"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 30
+}

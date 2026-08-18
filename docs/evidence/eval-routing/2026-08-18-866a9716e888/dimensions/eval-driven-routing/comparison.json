@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "comparisonId": "544ac3c6-e2e9-4acf-9ae5-26ac18634358",
+  "profileId": "eval-driven-routing",
+  "suiteDigest": "2c705287ee1efb6d52af88d646d83f65f4193e7627a62dea3253697d8053717f",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-18T12:06:23.022Z",
+  "finishedAt": "2026-08-18T12:08:08.452Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "fail-closed-incomplete-evidence",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2519.956476,
+            "judgeScore": 1,
+            "inputTokens": 163,
+            "outputTokens": 143
+          }
+        },
+        {
+          "caseId": "manifest-validation-mismatch",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3876.2566970000007,
+            "judgeScore": 0.99,
+            "inputTokens": 140,
+            "outputTokens": 268
+          }
+        },
+        {
+          "caseId": "unpriced-call-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2113.0176469999988,
+            "judgeScore": 1,
+            "inputTokens": 183,
+            "outputTokens": 161
+          }
+        },
+        {
+          "caseId": "matrix-and-snapshot-completeness",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 7383.233816,
+            "judgeScore": 0.99,
+            "inputTokens": 178,
+            "outputTokens": 677
+          }
+        },
+        {
+          "caseId": "reproducible-auto-routing",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5834.615221,
+            "judgeScore": 0.99,
+            "inputTokens": 294,
+            "outputTokens": 557
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "fail-closed-incomplete-evidence",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2470.5228209999987,
+            "judgeScore": 1,
+            "inputTokens": 163,
+            "outputTokens": 155
+          }
+        },
+        {
+          "caseId": "manifest-validation-mismatch",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3864.9171320000023,
+            "judgeScore": 0.99,
+            "inputTokens": 140,
+            "outputTokens": 270
+          }
+        },
+        {
+          "caseId": "unpriced-call-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2695.3450019999946,
+            "judgeScore": 1,
+            "inputTokens": 183,
+            "outputTokens": 177
+          }
+        },
+        {
+          "caseId": "matrix-and-snapshot-completeness",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5179.298613999999,
+            "judgeScore": 1,
+            "inputTokens": 178,
+            "outputTokens": 484
+          }
+        },
+        {
+          "caseId": "reproducible-auto-routing",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5782.446827,
+            "judgeScore": 0.99,
+            "inputTokens": 294,
+            "outputTokens": 460
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "fail-closed-incomplete-evidence",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3115.2158209999907,
+            "judgeScore": 1,
+            "inputTokens": 163,
+            "outputTokens": 87
+          }
+        },
+        {
+          "caseId": "manifest-validation-mismatch",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6246.257123999996,
+            "judgeScore": 1,
+            "inputTokens": 140,
+            "outputTokens": 294
+          }
+        },
+        {
+          "caseId": "unpriced-call-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5714.9215939999995,
+            "judgeScore": 1,
+            "inputTokens": 183,
+            "outputTokens": 177
+          }
+        },
+        {
+          "caseId": "matrix-and-snapshot-completeness",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 8795.926057999997,
+            "judgeScore": 1,
+            "inputTokens": 178,
+            "outputTokens": 418
+          }
+        },
+        {
+          "caseId": "reproducible-auto-routing",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 7989.693622999999,
+            "judgeScore": 0.99,
+            "inputTokens": 294,
+            "outputTokens": 379
+          }
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "fail-closed-incomplete-evidence",
+      "measurement": {
+        "durationMs": 2519.956476,
+        "judgeScore": 1,
+        "inputTokens": 163,
+        "outputTokens": 143
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "fail-closed-incomplete-evidence",
+      "measurement": {
+        "durationMs": 1715.9656319999995,
+        "inputTokens": 478,
+        "outputTokens": 67
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "manifest-validation-mismatch",
+      "measurement": {
+        "durationMs": 3876.2566970000007,
+        "judgeScore": 0.99,
+        "inputTokens": 140,
+        "outputTokens": 268
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "manifest-validation-mismatch",
+      "measurement": {
+        "durationMs": 1807.542988000001,
+        "inputTokens": 564,
+        "outputTokens": 79
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "unpriced-call-accounting",
+      "measurement": {
+        "durationMs": 2113.0176469999988,
+        "judgeScore": 1,
+        "inputTokens": 183,
+        "outputTokens": 161
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "unpriced-call-accounting",
+      "measurement": {
+        "durationMs": 2023.7836009999992,
+        "inputTokens": 616,
+        "outputTokens": 56
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "matrix-and-snapshot-completeness",
+      "measurement": {
+        "durationMs": 7383.233816,
+        "judgeScore": 0.99,
+        "inputTokens": 178,
+        "outputTokens": 677
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "matrix-and-snapshot-completeness",
+      "measurement": {
+        "durationMs": 1863.0754840000009,
+        "inputTokens": 758,
+        "outputTokens": 84
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "reproducible-auto-routing",
+      "measurement": {
+        "durationMs": 5834.615221,
+        "judgeScore": 0.99,
+        "inputTokens": 294,
+        "outputTokens": 557
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "reproducible-auto-routing",
+      "measurement": {
+        "durationMs": 1823.640486999997,
+        "inputTokens": 1028,
+        "outputTokens": 78
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "fail-closed-incomplete-evidence",
+      "measurement": {
+        "durationMs": 2470.5228209999987,
+        "judgeScore": 1,
+        "inputTokens": 163,
+        "outputTokens": 155
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "fail-closed-incomplete-evidence",
+      "measurement": {
+        "durationMs": 1683.7340320000003,
+        "inputTokens": 546,
+        "outputTokens": 68
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "manifest-validation-mismatch",
+      "measurement": {
+        "durationMs": 3864.9171320000023,
+        "judgeScore": 0.99,
+        "inputTokens": 140,
+        "outputTokens": 270
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "manifest-validation-mismatch",
+      "measurement": {
+        "durationMs": 3966.7949369999988,
+        "inputTokens": 589,
+        "outputTokens": 78
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "unpriced-call-accounting",
+      "measurement": {
+        "durationMs": 2695.3450019999946,
+        "judgeScore": 1,
+        "inputTokens": 183,
+        "outputTokens": 177
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "unpriced-call-accounting",
+      "measurement": {
+        "durationMs": 2235.670339999997,
+        "inputTokens": 631,
+        "outputTokens": 89
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "matrix-and-snapshot-completeness",
+      "measurement": {
+        "durationMs": 5179.298613999999,
+        "judgeScore": 1,
+        "inputTokens": 178,
+        "outputTokens": 484
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "matrix-and-snapshot-completeness",
+      "measurement": {
+        "durationMs": 1946.4664810000031,
+        "inputTokens": 837,
+        "outputTokens": 85
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "reproducible-auto-routing",
+      "measurement": {
+        "durationMs": 5782.446827,
+        "judgeScore": 0.99,
+        "inputTokens": 294,
+        "outputTokens": 460
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "reproducible-auto-routing",
+      "measurement": {
+        "durationMs": 2442.16229,
+        "inputTokens": 984,
+        "outputTokens": 144
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "fail-closed-incomplete-evidence",
+      "measurement": {
+        "durationMs": 3115.2158209999907,
+        "judgeScore": 1,
+        "inputTokens": 163,
+        "outputTokens": 87
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "fail-closed-incomplete-evidence",
+      "measurement": {
+        "durationMs": 1894.8972070000018,
+        "inputTokens": 478,
+        "outputTokens": 68
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "manifest-validation-mismatch",
+      "measurement": {
+        "durationMs": 6246.257123999996,
+        "judgeScore": 1,
+        "inputTokens": 140,
+        "outputTokens": 294
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "manifest-validation-mismatch",
+      "measurement": {
+        "durationMs": 1392.1497459999955,
+        "inputTokens": 545,
+        "outputTokens": 72
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "unpriced-call-accounting",
+      "measurement": {
+        "durationMs": 5714.9215939999995,
+        "judgeScore": 1,
+        "inputTokens": 183,
+        "outputTokens": 177
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "unpriced-call-accounting",
+      "measurement": {
+        "durationMs": 1702.64276599999,
+        "inputTokens": 631,
+        "outputTokens": 50
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "matrix-and-snapshot-completeness",
+      "measurement": {
+        "durationMs": 8795.926057999997,
+        "judgeScore": 1,
+        "inputTokens": 178,
+        "outputTokens": 418
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "matrix-and-snapshot-completeness",
+      "measurement": {
+        "durationMs": 3231.976907000004,
+        "inputTokens": 661,
+        "outputTokens": 161
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "reproducible-auto-routing",
+      "measurement": {
+        "durationMs": 7989.693622999999,
+        "judgeScore": 0.99,
+        "inputTokens": 294,
+        "outputTokens": 379
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "reproducible-auto-routing",
+      "measurement": {
+        "durationMs": 1729.469167000003,
+        "inputTokens": 893,
+        "outputTokens": 76
+      }
+    }
+  ]
+}

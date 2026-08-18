@@ -1,0 +1,516 @@
+{
+  "version": 2,
+  "generatedAt": "2026-08-18T12:11:59.264Z",
+  "basisDigest": "01a76499cbfa6b3dd5aa77971943c1a4e493b5cec899189e8435c60707a08a44",
+  "evidenceDigest": "677cfa09300b280333cd7593e10a3f6929fa87e525b8a4c733c9d965dda5549c",
+  "classifierModel": "openai/gpt-5.6-luna",
+  "objective": {
+    "kind": "highest-quality"
+  },
+  "maximumUnknownWeight": 0.2,
+  "dimensions": [
+    {
+      "id": "gateway-protocols",
+      "description": "Compatibility and translation at RouteKit's authenticated HTTP data plane, including OpenAI Chat Completions, OpenAI Responses, Anthropic messages, streaming, tool calls, and response metadata.",
+      "includes": [
+        "request and response schema compatibility",
+        "streaming frame and termination behavior",
+        "tool-call encoding and translation",
+        "authentication and data-plane headers",
+        "protocol-specific errors and response metadata"
+      ],
+      "excludes": [
+        "choosing a provider or model route",
+        "subscription account scheduling",
+        "client installation and launch commands",
+        "evaluation policy compilation"
+      ]
+    },
+    {
+      "id": "model-routing-registry",
+      "description": "Discovery and deterministic resolution of namespaced provider/model routes, default models, advertised availability, aliases, fallbacks, and registry metadata.",
+      "includes": [
+        "provider/model namespace resolution",
+        "model discovery and advertised catalogs",
+        "default-model and explicit-model route selection",
+        "route availability and fallback ordering",
+        "registry metadata and model capabilities"
+      ],
+      "excludes": [
+        "subscription account rotation within a selected route",
+        "HTTP protocol translation",
+        "semantic model: auto classification",
+        "call usage and cost reporting"
+      ]
+    },
+    {
+      "id": "subscription-pooling",
+      "description": "Enrollment, quota awareness, eligibility, scheduling, rotation, retry, and recovery for multiple coding-tool subscription accounts.",
+      "includes": [
+        "account enrollment and activation",
+        "usage windows and quota state",
+        "eligible-account selection and rotation",
+        "retry after account-specific throttling",
+        "pool health and account recovery"
+      ],
+      "excludes": [
+        "generic provider/model route resolution",
+        "API-key provider billing",
+        "gateway protocol schemas",
+        "post-call attribution display"
+      ]
+    },
+    {
+      "id": "daemon-control-operations",
+      "description": "Local singleton daemon lifecycle, control-plane commands, canonical configuration, process ownership, readiness, health, and safe operational recovery.",
+      "includes": [
+        "start, stop, status, and doctor behavior",
+        "singleton process and state ownership",
+        "control listener and command execution",
+        "canonical configuration loading and reload",
+        "local health and operational recovery"
+      ],
+      "excludes": [
+        "remote peer enrollment",
+        "data-plane protocol translation",
+        "coding-client-specific launch behavior",
+        "evaluation suite scoring"
+      ]
+    },
+    {
+      "id": "remote-gateways-security",
+      "description": "Secure access to RouteKit across hosts, including SSH control relays, peer enrollment, token issuance and revocation, authenticated binds, TLS requirements, and trust boundaries.",
+      "includes": [
+        "remote add and remote use flows",
+        "SSH relay and peer enrollment",
+        "named data-plane tokens",
+        "non-loopback bind authentication",
+        "TLS and remote trust requirements"
+      ],
+      "excludes": [
+        "ordinary local daemon lifecycle",
+        "model quality evaluation",
+        "provider-specific account scheduling",
+        "client prompt or response content"
+      ]
+    },
+    {
+      "id": "eval-driven-routing",
+      "description": "Authoring and executing evaluation suites, validating comparison evidence, compiling and publishing routing snapshots, classifying model: auto requests, and reproducing routing decisions.",
+      "includes": [
+        "eval interview and suite authoring",
+        "candidate and judge comparison execution",
+        "complete evidence validation",
+        "routing snapshot compilation and publication",
+        "semantic dimension decomposition and model: auto decisions"
+      ],
+      "excludes": [
+        "general model discovery without eval evidence",
+        "ordinary explicit-model routing",
+        "operational call usage reporting",
+        "coding-client installation"
+      ]
+    },
+    {
+      "id": "client-tool-integration",
+      "description": "Connecting and launching Codex, Claude Code, Cursor, OpenCode, and generic OpenAI-compatible clients through RouteKit, including client-specific environment and compatibility behavior.",
+      "includes": [
+        "coding-agent launch commands",
+        "client environment configuration",
+        "client compatibility and endpoint selection",
+        "tool-specific authentication handoff",
+        "client-specific model naming constraints"
+      ],
+      "excludes": [
+        "provider implementation internals",
+        "generic route selection policy",
+        "subscription quota scheduling",
+        "remote gateway peer authorization"
+      ]
+    },
+    {
+      "id": "observability-attribution",
+      "description": "Privacy-preserving inspection of routed calls, including call IDs, effective models, provider attempts, token usage, known cost, billing mode, account attribution, telemetry, and retention boundaries.",
+      "includes": [
+        "call inspection and route provenance",
+        "token usage and known-cost accounting",
+        "provider attempts and retry attribution",
+        "billing mode and account attribution",
+        "telemetry privacy and retention"
+      ],
+      "excludes": [
+        "choosing the next subscription account",
+        "eval judge quality scores",
+        "HTTP schema compatibility",
+        "remote peer enrollment"
+      ]
+    }
+  ],
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "evidence": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "dimensionId": "client-tool-integration",
+      "suiteDigest": "e942670e144bf532900494a20ed89a2fa1490c2a61b17a80a4c23857866513b7",
+      "evidenceDigest": "f3777552a9fa5b0246e17d84bb27b4451c6765d9e32c8d37143a8145f404bba6",
+      "quality": {
+        "passRate": 0.6,
+        "lowerConfidenceBound": 0.23072428127601285,
+        "sampleCount": 5
+      },
+      "failureRate": 0.4,
+      "averageJudgeScore": 0.8800000000000001,
+      "p95DurationMs": 6788.411417,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "dimensionId": "daemon-control-operations",
+      "suiteDigest": "aeb83d61fe6e2ede761fb66e39a7cd7cfadf74ea2806658744d21aab89887232",
+      "evidenceDigest": "34e8d30cf38597fabc97596ce2328aa7251c303b7f63f5358ad9376cfbd296fa",
+      "quality": {
+        "passRate": 0.8,
+        "lowerConfidenceBound": 0.37553462976252533,
+        "sampleCount": 5
+      },
+      "failureRate": 0.2,
+      "averageJudgeScore": 0.9099999999999999,
+      "p95DurationMs": 9087.29553,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "dimensionId": "eval-driven-routing",
+      "suiteDigest": "2c705287ee1efb6d52af88d646d83f65f4193e7627a62dea3253697d8053717f",
+      "evidenceDigest": "e2b02bb5d31a2ee889f265dedb3b4d4ae61df6f05fbdfb04cf46d5a7c19be0ab",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9940000000000001,
+      "p95DurationMs": 7383.233816,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "dimensionId": "gateway-protocols",
+      "suiteDigest": "1f5f3e500c3e6c16ee23147234c3465cecc675094b210930cb8d4dfbb5b672a2",
+      "evidenceDigest": "965004168126ebc70103e2fc541b90147921cc9c99b8d4ec2046314ba7a5c9d9",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9960000000000001,
+      "p95DurationMs": 7453.769149,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "dimensionId": "model-routing-registry",
+      "suiteDigest": "e7b7ba58a6bce832895e21575e89437dbc923c5bc27d87ea712781e44a98a28f",
+      "evidenceDigest": "3a8ed769e3bd930f8f31e50a59652c88376045e9cf1a61298787bb59b292daf3",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.998,
+      "p95DurationMs": 8049.722681,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "dimensionId": "observability-attribution",
+      "suiteDigest": "e878a5358afe12216f8bc8d90e3128eb6283427cbb625960ffdcf6ce7d3e8510",
+      "evidenceDigest": "adb0a566011affb79ae8f0f14cb1214a09f93270ca7d1f077dcb8e1efcc79048",
+      "quality": {
+        "passRate": 0.6,
+        "lowerConfidenceBound": 0.23072428127601285,
+        "sampleCount": 5
+      },
+      "failureRate": 0.4,
+      "averageJudgeScore": 0.7379999999999999,
+      "p95DurationMs": 11186.335390999999,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "dimensionId": "remote-gateways-security",
+      "suiteDigest": "0361b4234fbd7324fcbfddabd5c3d0920cc66270c79c13bc7d4e12c19cb5619b",
+      "evidenceDigest": "460f8b5808585d5054d0ec48106670e2c51b796d278a2fa13eef3a2522f68cc0",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9960000000000001,
+      "p95DurationMs": 10148.210869,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "dimensionId": "subscription-pooling",
+      "suiteDigest": "0ef80a52328101c3ca1237943eae538ca113f6bfc0949d593658fca12cda941a",
+      "evidenceDigest": "fcae6a1315e8164e6d2030c5f24a0f07e193c88c4a4e36335bf9f6c7b163565e",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9899999999999999,
+      "p95DurationMs": 6505.076518,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "dimensionId": "client-tool-integration",
+      "suiteDigest": "e942670e144bf532900494a20ed89a2fa1490c2a61b17a80a4c23857866513b7",
+      "evidenceDigest": "23ced8ab5b1e085dc8685ef661544b8b36acbf8c1926b71abe41ef995c1ccd58",
+      "quality": {
+        "passRate": 0.8,
+        "lowerConfidenceBound": 0.37553462976252533,
+        "sampleCount": 5
+      },
+      "failureRate": 0.2,
+      "averageJudgeScore": 0.942,
+      "p95DurationMs": 4475.547143000003,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "dimensionId": "daemon-control-operations",
+      "suiteDigest": "aeb83d61fe6e2ede761fb66e39a7cd7cfadf74ea2806658744d21aab89887232",
+      "evidenceDigest": "578c35e8601e979bb7047c78ef97e7b17aea8d695b4684c7184fab5735678c5b",
+      "quality": {
+        "passRate": 0.8,
+        "lowerConfidenceBound": 0.37553462976252533,
+        "sampleCount": 5
+      },
+      "failureRate": 0.2,
+      "averageJudgeScore": 0.942,
+      "p95DurationMs": 12794.191061999998,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "dimensionId": "eval-driven-routing",
+      "suiteDigest": "2c705287ee1efb6d52af88d646d83f65f4193e7627a62dea3253697d8053717f",
+      "evidenceDigest": "65e51017048cfae198d12eeba10973eaa11d400f5f789198df8a687f96bc8eae",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.998,
+      "p95DurationMs": 8795.926057999997,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "dimensionId": "gateway-protocols",
+      "suiteDigest": "1f5f3e500c3e6c16ee23147234c3465cecc675094b210930cb8d4dfbb5b672a2",
+      "evidenceDigest": "ba92e6ebff329f6ed349bc201cdf4fd7f04ddeb290d3f6a33f415b9bf5c19790",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9960000000000001,
+      "p95DurationMs": 5742.127729000007,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "dimensionId": "model-routing-registry",
+      "suiteDigest": "e7b7ba58a6bce832895e21575e89437dbc923c5bc27d87ea712781e44a98a28f",
+      "evidenceDigest": "31a67c19de94e110f19b5ea62e648cab542df23fcdb8402dc43f8e27479d67bb",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9960000000000001,
+      "p95DurationMs": 5767.167965000001,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "dimensionId": "observability-attribution",
+      "suiteDigest": "e878a5358afe12216f8bc8d90e3128eb6283427cbb625960ffdcf6ce7d3e8510",
+      "evidenceDigest": "6773423505f66ee5e4ec901eec2607487ba6a1c6873338550334402dd933a943",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9860000000000001,
+      "p95DurationMs": 13089.303304000001,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "dimensionId": "remote-gateways-security",
+      "suiteDigest": "0361b4234fbd7324fcbfddabd5c3d0920cc66270c79c13bc7d4e12c19cb5619b",
+      "evidenceDigest": "09d69c9d5eee8a49a1f924624e0a82695a988f7b61897b60a61888a26dd33aa9",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9940000000000001,
+      "p95DurationMs": 12308.235368999987,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "dimensionId": "subscription-pooling",
+      "suiteDigest": "0ef80a52328101c3ca1237943eae538ca113f6bfc0949d593658fca12cda941a",
+      "evidenceDigest": "2ef769d11d658478cd9a5caaf6633e6a6e438ea734e967c7a0da716cf445045a",
+      "quality": {
+        "passRate": 0.8,
+        "lowerConfidenceBound": 0.37553462976252533,
+        "sampleCount": 5
+      },
+      "failureRate": 0.2,
+      "averageJudgeScore": 0.9199999999999999,
+      "p95DurationMs": 8473.208150999999,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "dimensionId": "client-tool-integration",
+      "suiteDigest": "e942670e144bf532900494a20ed89a2fa1490c2a61b17a80a4c23857866513b7",
+      "evidenceDigest": "d1d9af085e27bcd97d576d8068a41cdd1b675dde070ce34da4d3d6e31a03ce6c",
+      "quality": {
+        "passRate": 0.6,
+        "lowerConfidenceBound": 0.23072428127601285,
+        "sampleCount": 5
+      },
+      "failureRate": 0.4,
+      "averageJudgeScore": 0.884,
+      "p95DurationMs": 3652.9049319999976,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "dimensionId": "daemon-control-operations",
+      "suiteDigest": "aeb83d61fe6e2ede761fb66e39a7cd7cfadf74ea2806658744d21aab89887232",
+      "evidenceDigest": "2d18ed2939259343ab1eef1a6da8fdd4288901359e6d73d7cbdfbb68fe87fb51",
+      "quality": {
+        "passRate": 0.8,
+        "lowerConfidenceBound": 0.37553462976252533,
+        "sampleCount": 5
+      },
+      "failureRate": 0.2,
+      "averageJudgeScore": 0.924,
+      "p95DurationMs": 5928.630959000002,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "dimensionId": "eval-driven-routing",
+      "suiteDigest": "2c705287ee1efb6d52af88d646d83f65f4193e7627a62dea3253697d8053717f",
+      "evidenceDigest": "0af2f8f28fbd1623431f719e261ef65473d1eca347eed387ec11a0a10bb4bd35",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9960000000000001,
+      "p95DurationMs": 5782.446827,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "dimensionId": "gateway-protocols",
+      "suiteDigest": "1f5f3e500c3e6c16ee23147234c3465cecc675094b210930cb8d4dfbb5b672a2",
+      "evidenceDigest": "099af7c2f7f7865f2e336c3250580c1ec104480e68aab1b032758b5350b67bac",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9940000000000001,
+      "p95DurationMs": 4873.257675000001,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "dimensionId": "model-routing-registry",
+      "suiteDigest": "e7b7ba58a6bce832895e21575e89437dbc923c5bc27d87ea712781e44a98a28f",
+      "evidenceDigest": "46f1d829840f43208dd2b0a518a4c7cbd2f7c32393b58598be8bc154cf5f5418",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.998,
+      "p95DurationMs": 6389.195323,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "dimensionId": "observability-attribution",
+      "suiteDigest": "e878a5358afe12216f8bc8d90e3128eb6283427cbb625960ffdcf6ce7d3e8510",
+      "evidenceDigest": "9bf5fadcc538b10852b1d1ec8d6c8d5de259bd68e99010891abcc7a40e178e9a",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.984,
+      "p95DurationMs": 8554.494876999997,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "dimensionId": "remote-gateways-security",
+      "suiteDigest": "0361b4234fbd7324fcbfddabd5c3d0920cc66270c79c13bc7d4e12c19cb5619b",
+      "evidenceDigest": "0b473191491cc66550f85861c36146818cff1f7e28747b0d5b9e2e91b11e1b49",
+      "quality": {
+        "passRate": 1,
+        "lowerConfidenceBound": 0.5655175352168252,
+        "sampleCount": 5
+      },
+      "failureRate": 0,
+      "averageJudgeScore": 0.9960000000000001,
+      "p95DurationMs": 8993.228370000004,
+      "unpricedCalls": 5
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "dimensionId": "subscription-pooling",
+      "suiteDigest": "0ef80a52328101c3ca1237943eae538ca113f6bfc0949d593658fca12cda941a",
+      "evidenceDigest": "b2ae7e7b0fcdaaaf14a1cc3baa0ab271397599f6323e3aa2ea5087bba5516b0a",
+      "quality": {
+        "passRate": 0.8,
+        "lowerConfidenceBound": 0.37553462976252533,
+        "sampleCount": 5
+      },
+      "failureRate": 0.2,
+      "averageJudgeScore": 0.9259999999999999,
+      "p95DurationMs": 5554.430831000005,
+      "unpricedCalls": 5
+    }
+  ]
+}

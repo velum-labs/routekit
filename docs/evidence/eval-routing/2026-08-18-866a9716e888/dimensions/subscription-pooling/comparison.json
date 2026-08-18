@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "comparisonId": "08945fb5-5114-4b09-a21b-8cf1f9ae0a95",
+  "profileId": "subscription-pooling",
+  "suiteDigest": "0ef80a52328101c3ca1237943eae538ca113f6bfc0949d593658fca12cda941a",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-18T12:00:26.209Z",
+  "finishedAt": "2026-08-18T12:02:15.927Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "quota-429-account-cooldown-retry",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6505.076518,
+            "judgeScore": 0.99,
+            "inputTokens": 160,
+            "outputTokens": 436
+          }
+        },
+        {
+          "caseId": "model-scoped-403-eligibility",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5676.949472,
+            "judgeScore": 0.98,
+            "inputTokens": 182,
+            "outputTokens": 403
+          }
+        },
+        {
+          "caseId": "credential-recovery-bounded-attempt",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4295.161967,
+            "judgeScore": 1,
+            "inputTokens": 199,
+            "outputTokens": 334
+          }
+        },
+        {
+          "caseId": "transaction-interruption-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4036.595078000002,
+            "judgeScore": 0.98,
+            "inputTokens": 211,
+            "outputTokens": 268
+          }
+        },
+        {
+          "caseId": "codex-banked-reset-scheduling",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2858.390343999996,
+            "judgeScore": 1,
+            "inputTokens": 179,
+            "outputTokens": 167
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "quota-429-account-cooldown-retry",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5554.430831000005,
+            "judgeScore": 1,
+            "inputTokens": 160,
+            "outputTokens": 261
+          }
+        },
+        {
+          "caseId": "model-scoped-403-eligibility",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 2542.7048170000053,
+            "judgeScore": 0.64,
+            "inputTokens": 182,
+            "outputTokens": 107
+          }
+        },
+        {
+          "caseId": "credential-recovery-bounded-attempt",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4036.0171709999995,
+            "judgeScore": 1,
+            "inputTokens": 199,
+            "outputTokens": 264
+          }
+        },
+        {
+          "caseId": "transaction-interruption-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4669.187465999996,
+            "judgeScore": 0.99,
+            "inputTokens": 211,
+            "outputTokens": 301
+          }
+        },
+        {
+          "caseId": "codex-banked-reset-scheduling",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2407.331478,
+            "judgeScore": 1,
+            "inputTokens": 179,
+            "outputTokens": 142
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "quota-429-account-cooldown-retry",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 8473.208150999999,
+            "judgeScore": 0.99,
+            "inputTokens": 160,
+            "outputTokens": 313
+          }
+        },
+        {
+          "caseId": "model-scoped-403-eligibility",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 5672.58486599999,
+            "judgeScore": 0.62,
+            "inputTokens": 182,
+            "outputTokens": 229
+          }
+        },
+        {
+          "caseId": "credential-recovery-bounded-attempt",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4772.672885000007,
+            "judgeScore": 1,
+            "inputTokens": 199,
+            "outputTokens": 214
+          }
+        },
+        {
+          "caseId": "transaction-interruption-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6751.373254999999,
+            "judgeScore": 0.99,
+            "inputTokens": 211,
+            "outputTokens": 381
+          }
+        },
+        {
+          "caseId": "codex-banked-reset-scheduling",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3068.5557240000053,
+            "judgeScore": 1,
+            "inputTokens": 179,
+            "outputTokens": 113
+          }
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "quota-429-account-cooldown-retry",
+      "measurement": {
+        "durationMs": 6505.076518,
+        "judgeScore": 0.99,
+        "inputTokens": 160,
+        "outputTokens": 436
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "quota-429-account-cooldown-retry",
+      "measurement": {
+        "durationMs": 2231.3010299999996,
+        "inputTokens": 586,
+        "outputTokens": 76
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "model-scoped-403-eligibility",
+      "measurement": {
+        "durationMs": 5676.949472,
+        "judgeScore": 0.98,
+        "inputTokens": 182,
+        "outputTokens": 403
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "model-scoped-403-eligibility",
+      "measurement": {
+        "durationMs": 3323.4238510000014,
+        "inputTokens": 545,
+        "outputTokens": 168
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "credential-recovery-bounded-attempt",
+      "measurement": {
+        "durationMs": 4295.161967,
+        "judgeScore": 1,
+        "inputTokens": 199,
+        "outputTokens": 334
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "credential-recovery-bounded-attempt",
+      "measurement": {
+        "durationMs": 1935.3279729999995,
+        "inputTokens": 718,
+        "outputTokens": 88
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "transaction-interruption-recovery",
+      "measurement": {
+        "durationMs": 4036.595078000002,
+        "judgeScore": 0.98,
+        "inputTokens": 211,
+        "outputTokens": 268
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "transaction-interruption-recovery",
+      "measurement": {
+        "durationMs": 2814.449288,
+        "inputTokens": 642,
+        "outputTokens": 136
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "codex-banked-reset-scheduling",
+      "measurement": {
+        "durationMs": 2858.390343999996,
+        "judgeScore": 1,
+        "inputTokens": 179,
+        "outputTokens": 167
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "codex-banked-reset-scheduling",
+      "measurement": {
+        "durationMs": 1670.5729500000016,
+        "inputTokens": 560,
+        "outputTokens": 88
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "quota-429-account-cooldown-retry",
+      "measurement": {
+        "durationMs": 5554.430831000005,
+        "judgeScore": 1,
+        "inputTokens": 160,
+        "outputTokens": 261
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "quota-429-account-cooldown-retry",
+      "measurement": {
+        "durationMs": 2110.684720999998,
+        "inputTokens": 579,
+        "outputTokens": 57
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "model-scoped-403-eligibility",
+      "measurement": {
+        "durationMs": 2542.7048170000053,
+        "judgeScore": 0.64,
+        "inputTokens": 182,
+        "outputTokens": 107
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "model-scoped-403-eligibility",
+      "measurement": {
+        "durationMs": 3128.1758550000013,
+        "inputTokens": 540,
+        "outputTokens": 168
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "credential-recovery-bounded-attempt",
+      "measurement": {
+        "durationMs": 4036.0171709999995,
+        "judgeScore": 1,
+        "inputTokens": 199,
+        "outputTokens": 264
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "credential-recovery-bounded-attempt",
+      "measurement": {
+        "durationMs": 2579.8746699999974,
+        "inputTokens": 722,
+        "outputTokens": 111
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "transaction-interruption-recovery",
+      "measurement": {
+        "durationMs": 4669.187465999996,
+        "judgeScore": 0.99,
+        "inputTokens": 211,
+        "outputTokens": 301
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "transaction-interruption-recovery",
+      "measurement": {
+        "durationMs": 2340.832172000002,
+        "inputTokens": 761,
+        "outputTokens": 103
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "codex-banked-reset-scheduling",
+      "measurement": {
+        "durationMs": 2407.331478,
+        "judgeScore": 1,
+        "inputTokens": 179,
+        "outputTokens": 142
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "codex-banked-reset-scheduling",
+      "measurement": {
+        "durationMs": 2108.1448979999914,
+        "inputTokens": 572,
+        "outputTokens": 88
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "quota-429-account-cooldown-retry",
+      "measurement": {
+        "durationMs": 8473.208150999999,
+        "judgeScore": 0.99,
+        "inputTokens": 160,
+        "outputTokens": 313
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "quota-429-account-cooldown-retry",
+      "measurement": {
+        "durationMs": 2876.121530999997,
+        "inputTokens": 544,
+        "outputTokens": 66
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "model-scoped-403-eligibility",
+      "measurement": {
+        "durationMs": 5672.58486599999,
+        "judgeScore": 0.62,
+        "inputTokens": 182,
+        "outputTokens": 229
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "model-scoped-403-eligibility",
+      "measurement": {
+        "durationMs": 3315.149276000011,
+        "inputTokens": 509,
+        "outputTokens": 167
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "credential-recovery-bounded-attempt",
+      "measurement": {
+        "durationMs": 4772.672885000007,
+        "judgeScore": 1,
+        "inputTokens": 199,
+        "outputTokens": 214
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "credential-recovery-bounded-attempt",
+      "measurement": {
+        "durationMs": 3406.730163,
+        "inputTokens": 672,
+        "outputTokens": 79
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "transaction-interruption-recovery",
+      "measurement": {
+        "durationMs": 6751.373254999999,
+        "judgeScore": 0.99,
+        "inputTokens": 211,
+        "outputTokens": 381
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "transaction-interruption-recovery",
+      "measurement": {
+        "durationMs": 2098.3383040000044,
+        "inputTokens": 646,
+        "outputTokens": 89
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "codex-banked-reset-scheduling",
+      "measurement": {
+        "durationMs": 3068.5557240000053,
+        "judgeScore": 1,
+        "inputTokens": 179,
+        "outputTokens": 113
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "codex-banked-reset-scheduling",
+      "measurement": {
+        "durationMs": 2116.6110730000073,
+        "inputTokens": 543,
+        "outputTokens": 103
+      }
+    }
+  ]
+}

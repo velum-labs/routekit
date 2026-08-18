@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "profileId": "daemon-control-operations",
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "judgeModel": "openai/gpt-5.6-terra",
+  "caseCount": 5,
+  "caseIds": [
+    "canonical-config-preservation",
+    "safe-startup-race-diagnosis",
+    "control-plane-config-mutation",
+    "startup-health-interpretation",
+    "bounded-recovery-and-process-ownership"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 30
+}
