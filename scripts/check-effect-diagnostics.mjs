@@ -16,9 +16,23 @@ if (!existsSync(evalEngineTypes)) {
     console.error("check failed: cannot build eval-engine declarations without npm_execpath");
     process.exit(1);
   }
+  const clean = spawnSync(
+    process.execPath,
+    [packageManager, "--filter", "@velum-labs/routekit-eval-engine...", "run", "clean"],
+    {
+      cwd: root,
+      encoding: "utf8"
+    }
+  );
+  if (clean.stdout?.trim()) console.log(clean.stdout.trim());
+  if (clean.stderr?.trim()) console.error(clean.stderr.trim());
+  if (clean.status !== 0) {
+    console.error("check failed: clean eval-engine declaration dependencies");
+    process.exit(clean.status === null ? 1 : clean.status);
+  }
   const build = spawnSync(
     process.execPath,
-    [packageManager, "--filter", "@velum-labs/routekit-eval-engine", "build"],
+    [packageManager, "--filter", "@velum-labs/routekit-eval-engine...", "run", "build"],
     {
       cwd: root,
       encoding: "utf8"
