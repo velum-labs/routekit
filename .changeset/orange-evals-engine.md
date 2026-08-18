@@ -13,16 +13,21 @@
 "@velum-labs/routekit-router": minor
 ---
 
-Vendor the complete standalone evaluation distribution as the migration baseline; migrate the copied closure to RouteKit's single catalog-pinned Effect installation; add Effect-native comparison, onboarding, and offline composition seams; generate the white-labeled `routekit/eval` author SDK; and execute candidate and judge calls through a scoped bridge to an injected RouteKit gateway. Compile measured evidence into immutable routing profiles and classify every `model: auto` request across published profiles with a configurable small language model. Eval traffic remains pinned to explicit models, keeps credentials in the parent process, and cannot recursively enter automatic routing.
+Add compositional eval routing as RouteKit's sole automatic-routing protocol.
+A model-blind classifier decomposes each request across a reviewed routing
+basis, while deterministic code combines that decomposition with hard request
+requirements, complete model-by-dimension evidence, and the user's quality,
+cost, latency, balanced, or Pareto objective.
 
-Host the durable setup workflow in the RouteKit CLI with prepare, status, answer, validate, estimate, run, and publish commands. Setup now requires two concrete candidate IDs and a distinct concrete judge, creates three executable seed cases, bounds repository inspection, and fails closed when authored execution omits or substitutes requested model evidence.
+Expose the complete durable workflow through `routekit eval`: repository setup,
+one-question-at-a-time onboarding, workload-dimension and evaluation proposals,
+digest-bound review approvals, validation, immutable planning and estimates,
+scoped qualification runs, structured results, and atomic routing activation.
+Normal billed work uses RouteKit's configured local or remote target; explicit
+external gateways may qualify evidence but cannot activate it.
 
-Add a private, Effect-native live qualification harness that asks real agents to propose repository-specific routing profiles, authors and runs both profiles through the public setup APIs, meters every billed Orbit egress behind generous runaway failsafes, publishes canonical artifacts, and verifies classifier provenance for headerless `model: auto` requests.
-
-Add independently versioned compositional routing: reviewed semantic-area
-catalogs, strict normalized decomposition vectors, complete model-by-area
-evidence matrices, conservative quality bounds, deterministic quality, cost,
-latency, balanced, and Pareto objectives, and explicit unknown-price handling.
-Ship fail-closed active routing, non-disruptive shadow routing, complete
-sanitized decision provenance, classifier and mixed-area qualification
-surfaces, and atomic v2 snapshot publication without reinterpreting v1.
+Require complete manifest-bound comparison evidence, stable case identities,
+strict normalized request decompositions, conservative quality measurements,
+explicit unknown pricing, sanitized provenance, and fail-closed routing. Add
+scoped eval sessions with explicit model and output limits, atomic project and
+activation artifacts, and interruption-safe cleanup and reporting.

@@ -254,8 +254,8 @@ sequenceDiagram
       EX->>S: classifier request
       S->>U: provider-native classifier call
       U-->>S: classifier result
-      S-->>R: profile probabilities
-      R-->>E: selected profile winner/fallback + evidence digest
+      S-->>R: normalized request decomposition
+      R-->>E: deterministic selected model/fallbacks + evidence digest
     end
     E->>MC: dialect, body, selected model, principal, invoke callback
     MC->>MC: create call ID + attribution accumulator + AbortSignal
@@ -522,7 +522,7 @@ flowchart TB
   CLI["routekit<br/>global: --json / --no-input / --yes / --quiet / --remote / --local"]
   Setup["Setup/config<br/>setup<br/>remote install|add|list|show|use|remove<br/>peer add|show|remove<br/>token shell|issue|list|revoke<br/>accounts login|add|rename|remove|list|status<br/>providers add|remove|status<br/>config path|show|init|edit|import"]
   Run["Run<br/>start / stop<br/>codex [model] + install|uninstall<br/>claude [model] + install|uninstall"]
-  Inspect["Inspect<br/>status / usage / usage redeem<br/>leaderboard / calls inspect<br/>models list|info / doctor"]
+  Inspect["Inspect<br/>status / usage / usage redeem<br/>leaderboard / calls show<br/>models list|info / doctor"]
   Eval["Evaluate<br/>eval prepare|status|answer|validate|estimate|run|publish<br/>policy show"]
   Maintain["Maintain<br/>telemetry status|on|off|category|schema|reset<br/>self-update / version / completion"]
   Hidden["Hidden/internal<br/>credential get / __complete / __self-inspect<br/>daemon run|exec|restart|upgrade|reload|auth show|logs<br/>daemon service install|uninstall|status"]

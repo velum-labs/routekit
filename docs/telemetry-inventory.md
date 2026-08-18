@@ -50,7 +50,7 @@ Product telemetry must never include prompts, messages, response bodies, request
 
 ## Separate local and operator data planes
 
-Product telemetry is separate from local call attribution (`routekit calls inspect` and `routekit leaderboard`), which can retain local principal/account attribution and usage details under RouteKit's local retention settings. It is also separate from operator-configured OpenTelemetry/OTLP tracing. Enabling or disabling PostHog telemetry does not enable, disable, export, or alter either system.
+Product telemetry is separate from local call attribution (`routekit calls show` and `routekit leaderboard`), which can retain local principal/account attribution and usage details under RouteKit's local retention settings. It is also separate from operator-configured OpenTelemetry/OTLP tracing. Enabling or disabling PostHog telemetry does not enable, disable, export, or alter either system.
 
 ## Review record
 

@@ -208,8 +208,8 @@ routekit remote remove <name>
 routekit token issue <label>
 routekit token list
 routekit token revoke <label>
-routekit calls inspect <call-id>
-routekit calls inspect <call-id> --json
+routekit calls show <call-id>
+routekit calls show <call-id> --json
 routekit leaderboard
 routekit leaderboard --by model --sort requests --window 24h --json
 ```

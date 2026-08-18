@@ -2,24 +2,25 @@
 
 This lane qualifies RouteKit's sole automatic-routing architecture:
 
-1. Luna classifies request text against the reviewed eight-area catalog and
-   returns a complete normalized area vector plus `unknownWeight`.
-2. Terra authors five grounded cases for each area from bounded files in a
-   clean detached worktree.
-3. Luna, Terra, and Sol each run all five cases for every area, and Terra judges
-   every candidate case.
+1. Luna classifies request text against the reviewed eight-dimension routing
+   basis and returns a complete normalized request decomposition plus
+   `unknownWeight`.
+2. Terra authors five grounded cases for each workload dimension from bounded
+   files in a clean detached worktree.
+3. Luna, Terra, and Sol each run all five cases for every workload dimension,
+   and Terra judges every candidate case.
 4. RouteKit rejects incomplete comparison evidence, compiles the complete
-   3-model × 8-area matrix, and publishes one routing snapshot.
+   3-model × 8-dimension evidence matrix, and publishes one routing snapshot.
 5. Deterministic code combines each live classification vector, the published
    evidence matrix, request requirements, and the configured objective.
-6. Eight single-area and four composite `model: auto` probes each make exactly
-   one Luna classifier call and one selected inference call.
+6. Eight single-dimension and four composition `model: auto` probes each make
+   exactly one Luna classifier call and one selected inference call.
 
 The full nominal run is 298 billed calls:
 
 - 26 Luna classifier-qualification calls;
 - 8 Terra suite-author calls;
-- 240 comparison calls: 8 areas × (15 candidate + 15 judge);
+- 240 comparison calls: 8 dimensions × (15 candidate + 15 judge);
 - 24 probe calls: 12 classifier + 12 inference.
 
 Author retries can increase the actual count, so the call failsafe remains
@@ -101,13 +102,13 @@ Sanitized evidence is written beneath:
   events.jsonl
   report.json
   classifier-qualification-v2.json
-  published-routing.v2.json
-  areas/
-    <area-id>/
-      routing-profile.yaml
+  published-routing.json
+  dimensions/
+    <dimension-id>/
+      dimension.yaml
       comparison.json
       eval/
-        <area-id>.eval.ts
+        <dimension-id>.eval.ts
         routekit.eval-manifest.json
         data/cases.json
 ```
@@ -131,21 +132,21 @@ docs/evidence/eval-routing/2026-08-17-562483cd6669/
 A passing full report proves:
 
 - all 26 reviewed classifier cases met the qualification thresholds;
-- exactly eight areas were authored with five cases each;
-- every area contains complete Luna/Terra/Sol candidate rows and Terra judge
-  scores for every expected case;
-- the complete 24-cell model-by-area evidence matrix was published;
-- single-area probes classify primarily into their expected area;
-- composite probes assign material weight to at least two areas;
+- exactly eight workload dimensions were authored with five cases each;
+- every dimension contains complete Luna/Terra/Sol candidate rows and Terra
+  judge scores for every expected case;
+- the complete 24-cell model-by-dimension evidence matrix was published;
+- single-dimension probes classify primarily into their expected dimension;
+- composition probes assign material weight to at least two dimensions;
 - each probe records one Luna classifier call and one selected inference call;
-- provenance retains requested model `auto`, the area vector, unknown weight,
-  evidence digest, objective, candidates, and effective model;
+- provenance retains requested model `auto`, the request decomposition, unknown
+  weight, evidence digest, objective, candidates, and effective model;
 - the final ledger has zero active reservations and zero unknown measurements;
 - unpriced calls are explicit; and
 - `report.json` is written after cleanup with a consistent `eventCount` and
   status `passed`.
 
-Five authored cases per area are sufficient for this billed testdrive, not for
-production approval. Production activation still requires at least 20 reviewed
-model-eval cases per area and a complete evidence matrix derived from those
-reviewed cases.
+Five authored cases per dimension are sufficient for this billed testdrive, not
+for production approval. Production activation still requires at least 20
+reviewed model-eval cases per dimension and a complete evidence matrix derived
+from those reviewed cases.

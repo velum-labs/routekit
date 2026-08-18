@@ -354,7 +354,7 @@
         "inspect"
       ],
       "usage": "routekit calls inspect <call-id>",
-      "summary": "show routing, billing, retry, usage, and cost attribution",
+      "summary": "show routing, billing, retry, usage, and cost attribution for one call",
       "arguments": [
         {
           "name": "call-id",
@@ -1453,7 +1453,7 @@
         "answer"
       ],
       "usage": "routekit eval answer",
-      "summary": "answer exactly one eval-routing interview question",
+      "summary": "answer exactly one eval project setup question",
       "arguments": [],
       "options": [
         {
@@ -1467,46 +1467,10 @@
           "value": "required"
         },
         {
-          "flags": "--token <token>",
-          "description": "dedicated eval data-plane token",
-          "value": "required"
-        },
-        {
-          "flags": "--token-file <path>",
-          "description": "file containing the dedicated eval data-plane token",
-          "value": "required"
-        },
-        {
-          "flags": "--profile <id>",
-          "description": "routing profile id",
-          "value": "required",
-          "mandatory": true
-        },
-        {
           "flags": "--repository <path>",
           "description": "repository root",
           "value": "required",
           "default": "."
-        },
-        {
-          "flags": "--author-model <provider/model>",
-          "description": "explicit author model",
-          "value": "required"
-        },
-        {
-          "flags": "--judge-model <provider/model>",
-          "description": "explicit judge model",
-          "value": "required"
-        },
-        {
-          "flags": "--description <text>",
-          "description": "stable routing profile description",
-          "value": "required"
-        },
-        {
-          "flags": "--url <gateway>",
-          "description": "OpenAI-compatible gateway URL",
-          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1524,11 +1488,111 @@
           "routekit",
           "eval",
           "status",
-          "--profile",
-          "<id>",
           "--json"
         ],
-        "description": "Inspect the durable interview stage and current question."
+        "description": "Inspect the durable project stage and current question."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval approve dimensions",
+      "argv": [
+        "routekit",
+        "eval",
+        "approve",
+        "dimensions"
+      ],
+      "usage": "routekit eval approve dimensions",
+      "summary": "approve an exact reviewed routing-basis digest",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--digest <sha256>",
+          "description": "exact routing-basis digest",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the exact proposed or approved digest in durable project state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval approve evaluations",
+      "argv": [
+        "routekit",
+        "eval",
+        "approve",
+        "evaluations"
+      ],
+      "usage": "routekit eval approve evaluations",
+      "summary": "approve an exact reviewed evaluation digest",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--digest <sha256>",
+          "description": "exact evaluation-proposal digest",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the exact proposed or approved digest in durable project state."
       },
       "documentation": [
         {
@@ -1545,41 +1609,20 @@
         "estimate"
       ],
       "usage": "routekit eval estimate",
-      "summary": "estimate candidate and judge calls before spend approval",
+      "summary": "create an immutable pilot or full execution plan",
       "arguments": [],
       "options": [
         {
-          "flags": "--mode <mode>",
+          "flags": "--scope <scope>",
           "description": "pilot or full",
           "value": "required",
           "default": "pilot"
-        },
-        {
-          "flags": "--profile <id>",
-          "description": "routing profile id",
-          "value": "required",
-          "mandatory": true
         },
         {
           "flags": "--repository <path>",
           "description": "repository root",
           "value": "required",
           "default": "."
-        },
-        {
-          "flags": "--author-model <provider/model>",
-          "description": "explicit author model",
-          "value": "required"
-        },
-        {
-          "flags": "--judge-model <provider/model>",
-          "description": "explicit judge model",
-          "value": "required"
-        },
-        {
-          "flags": "--description <text>",
-          "description": "stable routing profile description",
-          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1600,42 +1643,27 @@
       ]
     },
     {
-      "path": "eval prepare",
+      "path": "eval propose dimensions",
       "argv": [
         "routekit",
         "eval",
-        "prepare"
+        "propose",
+        "dimensions"
       ],
-      "usage": "routekit eval prepare",
-      "summary": "start or resume the eval-routing interview",
+      "usage": "routekit eval propose dimensions",
+      "summary": "record a proposed routing basis for review",
       "arguments": [],
       "options": [
         {
-          "flags": "--profile <id>",
-          "description": "routing profile id",
-          "value": "required",
-          "mandatory": true
+          "flags": "--file <path>",
+          "description": "import a reviewed JSON workload-dimension proposal",
+          "value": "required"
         },
         {
           "flags": "--repository <path>",
           "description": "repository root",
           "value": "required",
           "default": "."
-        },
-        {
-          "flags": "--author-model <provider/model>",
-          "description": "explicit author model",
-          "value": "required"
-        },
-        {
-          "flags": "--judge-model <provider/model>",
-          "description": "explicit judge model",
-          "value": "required"
-        },
-        {
-          "flags": "--description <text>",
-          "description": "stable routing profile description",
-          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1653,11 +1681,59 @@
           "routekit",
           "eval",
           "status",
-          "--profile",
-          "<id>",
           "--json"
         ],
-        "description": "Inspect the durable interview stage and current question."
+        "description": "Confirm the exact proposed or approved digest in durable project state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval propose evaluations",
+      "argv": [
+        "routekit",
+        "eval",
+        "propose",
+        "evaluations"
+      ],
+      "usage": "routekit eval propose evaluations",
+      "summary": "record proposed dimension suites for review",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--file <path>",
+          "description": "import a reviewed JSON evaluation proposal",
+          "value": "required"
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the exact proposed or approved digest in durable project state."
       },
       "documentation": [
         {
@@ -1674,12 +1750,12 @@
         "publish"
       ],
       "usage": "routekit eval publish",
-      "summary": "publish the approved winner to the routing snapshot",
+      "summary": "atomically activate qualified compositional routing evidence",
       "arguments": [],
       "options": [
         {
-          "flags": "--profile <id>",
-          "description": "routing profile id",
+          "flags": "--run <id>",
+          "description": "qualified run id",
           "value": "required",
           "mandatory": true
         },
@@ -1688,28 +1764,13 @@
           "description": "repository root",
           "value": "required",
           "default": "."
-        },
-        {
-          "flags": "--author-model <provider/model>",
-          "description": "explicit author model",
-          "value": "required"
-        },
-        {
-          "flags": "--judge-model <provider/model>",
-          "description": "explicit judge model",
-          "value": "required"
-        },
-        {
-          "flags": "--description <text>",
-          "description": "stable routing profile description",
-          "value": "required"
         }
       ],
       "category": "evaluate",
       "visibility": "public",
       "safety": {
         "effect": "write",
-        "target": "routekit-home-routing-snapshot",
+        "target": "selected-routekit-target",
         "interaction": "none",
         "jsonOutput": "supported",
         "secretOutput": "none",
@@ -1720,11 +1781,49 @@
           "routekit",
           "eval",
           "status",
-          "--profile",
-          "<id>",
           "--json"
         ],
-        "description": "Confirm that the durable workflow is complete."
+        "description": "Confirm that the qualified activation and target identity are durable."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval results",
+      "argv": [
+        "routekit",
+        "eval",
+        "results"
+      ],
+      "usage": "routekit eval results",
+      "summary": "show sanitized structured qualification results",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--run <id>",
+          "description": "qualification run id",
+          "value": "required"
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
       },
       "documentation": [
         {
@@ -1741,75 +1840,96 @@
         "run"
       ],
       "usage": "routekit eval run",
-      "summary": "run the approved generated suite against explicit model IDs",
+      "summary": "execute an approved immutable plan on the selected RouteKit target",
       "arguments": [],
       "options": [
         {
-          "flags": "--profile <id>",
-          "description": "routing profile id",
+          "flags": "--plan <id>",
+          "description": "immutable execution plan id",
           "value": "required",
           "mandatory": true
+        },
+        {
+          "flags": "--gateway-url <url>",
+          "description": "external qualification-only gateway",
+          "value": "required"
+        },
+        {
+          "flags": "--token-file <path>",
+          "description": "private external gateway credential file",
+          "value": "required"
         },
         {
           "flags": "--repository <path>",
           "description": "repository root",
           "value": "required",
           "default": "."
-        },
-        {
-          "flags": "--author-model <provider/model>",
-          "description": "explicit author model",
-          "value": "required"
-        },
-        {
-          "flags": "--judge-model <provider/model>",
-          "description": "explicit judge model",
-          "value": "required"
-        },
-        {
-          "flags": "--description <text>",
-          "description": "stable routing profile description",
-          "value": "required"
-        },
-        {
-          "flags": "--url <gateway>",
-          "description": "OpenAI-compatible gateway URL",
-          "value": "required",
-          "mandatory": true
-        },
-        {
-          "flags": "--token <token>",
-          "description": "dedicated eval data-plane token",
-          "value": "required"
-        },
-        {
-          "flags": "--token-file <path>",
-          "description": "file containing the dedicated eval data-plane token",
-          "value": "required"
         }
       ],
       "category": "evaluate",
       "visibility": "public",
       "safety": {
         "effect": "write",
-        "target": "local-repository-and-explicit-gateway",
+        "target": "local-repository-and-selected-routekit-target",
         "interaction": "none",
         "jsonOutput": "supported",
         "secretOutput": "none",
         "sensitiveInputs": [
-          "--token <token>"
+          "--token-file <path>"
         ]
       },
       "verification": {
         "argv": [
           "routekit",
           "eval",
-          "status",
-          "--profile",
-          "<id>",
+          "results",
           "--json"
         ],
-        "description": "Confirm that the completed comparison is awaiting publication approval."
+        "description": "Inspect the sanitized qualification result after the scoped target session closes."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval setup",
+      "argv": [
+        "routekit",
+        "eval",
+        "setup"
+      ],
+      "usage": "routekit eval setup",
+      "summary": "initialize or resume a compositional routing eval project",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the durable project stage and current question."
       },
       "documentation": [
         {
@@ -1826,35 +1946,14 @@
         "status"
       ],
       "usage": "routekit eval status",
-      "summary": "show the durable eval-routing interview state",
+      "summary": "show durable compositional routing eval project state",
       "arguments": [],
       "options": [
-        {
-          "flags": "--profile <id>",
-          "description": "routing profile id",
-          "value": "required",
-          "mandatory": true
-        },
         {
           "flags": "--repository <path>",
           "description": "repository root",
           "value": "required",
           "default": "."
-        },
-        {
-          "flags": "--author-model <provider/model>",
-          "description": "explicit author model",
-          "value": "required"
-        },
-        {
-          "flags": "--judge-model <provider/model>",
-          "description": "explicit judge model",
-          "value": "required"
-        },
-        {
-          "flags": "--description <text>",
-          "description": "stable routing profile description",
-          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1882,35 +1981,14 @@
         "validate"
       ],
       "usage": "routekit eval validate",
-      "summary": "dry-load the generated eval suite without model calls",
+      "summary": "validate current approvals and project state without model calls",
       "arguments": [],
       "options": [
-        {
-          "flags": "--profile <id>",
-          "description": "routing profile id",
-          "value": "required",
-          "mandatory": true
-        },
         {
           "flags": "--repository <path>",
           "description": "repository root",
           "value": "required",
           "default": "."
-        },
-        {
-          "flags": "--author-model <provider/model>",
-          "description": "explicit author model",
-          "value": "required"
-        },
-        {
-          "flags": "--judge-model <provider/model>",
-          "description": "explicit judge model",
-          "value": "required"
-        },
-        {
-          "flags": "--description <text>",
-          "description": "stable routing profile description",
-          "value": "required"
         }
       ],
       "category": "evaluate",

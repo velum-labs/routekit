@@ -160,7 +160,7 @@ and never store prompts, response bodies, or credentials.
 
 ## Compositional eval routing
 
-`model: auto` evaluates requests against the published model-by-area evidence
+`model: auto` evaluates requests against the published model-by-dimension evidence
 matrix. This is the only automatic-routing architecture:
 
 ```yaml
@@ -169,30 +169,30 @@ compositionalRouting:
   maximumUnknownWeight: 0.25
   objective:
     kind: highest-quality
-  minimumAreaQuality:
+  minimumDimensionQuality:
     gateway-protocols: 0.70
   maximumFailureRate: 0.20
 ```
 
-Automatic routing fails closed when the area catalog, classifier vector,
+Automatic routing fails closed when the routing basis, classifier vector,
 evidence matrix, live capabilities, or objective cannot support a decision.
 Explicit model requests remain unchanged.
 
-The classifier sees only the reviewed area definitions and request text. Hard
+The classifier sees only the reviewed workload-dimension definitions and request text. Hard
 requirements such as endpoint, tools, image input, and output limits are
 derived from the request envelope. Model selection is then deterministic from
-the area vector, published evidence, live model capabilities, and configured
+the request decomposition, published evidence, live model capabilities, and configured
 objective.
 
 Supported objectives are `highest-quality`, `lowest-cost`, `lowest-latency`,
 `balanced`, and `pareto`. Cost-dependent objectives exclude models whose
 required evidence is unpriced; unknown cost is never treated as zero.
 `maximumUnknownWeight` controls how much of a request may fall outside the
-reviewed catalog.
+reviewed routing basis.
 
 The routing artifact is stored at
-`$ROUTEKIT_HOME/eval/published-routing.v2.json`; the previous complete
-generation is retained as `published-routing.previous.v2.json`.
+`$ROUTEKIT_HOME/eval/published-routing.json`; the previous complete
+generation is retained as `published-routing.previous.json`.
 
 ## Loading
 

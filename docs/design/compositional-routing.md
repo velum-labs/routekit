@@ -8,9 +8,9 @@ RouteKit separates request understanding, model measurement, and user policy:
 
 ```text
 request
-  -> semantic area decomposition
+  -> semantic request decomposition
   -> hard request requirements
-  -> model x area evidence
+  -> model x workload-dimension evidence
   -> deterministic objective
   -> selected model and fallbacks
 ```
@@ -18,35 +18,35 @@ request
 The language-model classifier does not receive model IDs, prices, evidence,
 precomputed winners, or fallbacks. It produces no routing recommendation.
 
-## Area catalog
+## Routing basis
 
-A production catalog contains five to ten reviewed, stable areas. Agent
-discovery may propose an area, but cannot publish one without review. Each area
+A production routing basis contains five to ten reviewed, stable workload dimensions. Agent
+discovery may propose a dimension, but cannot publish one without review. Each dimension
 has a stable lowercase ID, a bounded definition, positive boundaries, and
 negative boundaries.
 
-An area is useful for routing only when it is:
+A dimension is useful for routing only when it is:
 
-1. semantically separable from the other areas; and
+1. semantically separable from the other dimensions; and
 2. associated with materially different model performance or operational
    characteristics.
 
-Catalogs and definitions are versioned and content-digested. Production
+Routing bases and definitions are versioned and content-digested. Production
 classification always records the definition-set digest.
 
 ## Request decomposition
 
-The classifier returns one non-negative weight for every configured area plus a
+The classifier returns one non-negative weight for every configured dimension plus a
 mandatory `unknownWeight`. Every value is finite and in `[0, 1]`; the complete
 vector sums to one within a fixed numeric tolerance. The vector is a semantic
 mixture, not a model probability distribution and not a model selection.
 
 No free-form classifier rationale is accepted or persisted. The classifier
-uses strict structured output. Unknown, missing, or duplicate area IDs,
+uses strict structured output. Unknown, missing, or duplicate dimension IDs,
 non-finite numbers, oversized output, and incomplete vectors fail closed.
 
-`unknownWeight` represents request content not covered by the published area
-catalog. A configured maximum rejects `model: auto` when unknown weight is too
+`unknownWeight` represents request content not covered by the published routing
+basis. A configured maximum rejects `model: auto` when unknown weight is too
 high. It never silently guesses or falls through to a default model.
 
 ## Hard request requirements
@@ -65,7 +65,7 @@ scoring.
 ## Evidence matrix
 
 The published snapshot contains one complete evidence cell for every configured
-candidate model and area. Each cell identifies its model, area, suite digest,
+candidate model and workload dimension. Each cell identifies its model, dimension, suite digest,
 evidence digest, sample count, pass rate, conservative pass-rate lower bound,
 failure rate, p95 duration, and pricing coverage.
 
@@ -73,13 +73,13 @@ Unknown measurements remain absent. Unpriced calls are explicit. Unknown cost
 is never converted to zero.
 
 Quality aggregation uses the pass-rate lower confidence bound as the
-cross-area comparable primary value. Average judge score may be retained as
+cross-dimension comparable primary value. Average judge score may be retained as
 secondary evidence but is not assumed to be calibrated across unrelated
 suites.
 
 ## Deterministic selection
 
-For an area vector `w` and model-by-area matrices:
+For a request-decomposition vector `w` and model-by-dimension matrices:
 
 ```text
 quality     = Q * w
@@ -89,7 +89,7 @@ failureRate = R * w
 ```
 
 Eligibility precedes ranking. A model is excluded when it is not served, fails
-hard requirements, lacks evidence for an active area, violates an active-area
+hard requirements, lacks evidence for an active dimension, violates an active-dimension
 quality floor, exceeds a failure constraint, or lacks a measurement required by
 the selected objective.
 
@@ -109,9 +109,9 @@ rank is deterministic.
 
 The routing artifact contains:
 
-- area definitions and definition-set digest;
+- workload-dimension definitions and definition-set digest;
 - configured candidate model IDs;
-- complete model-area evidence and aggregate evidence digest;
+- complete model-by-dimension evidence and aggregate evidence digest;
 - publication timestamp.
 
 It contains no prompts, candidate outputs, judge outputs, credentials, account
@@ -123,7 +123,7 @@ Every automatic decision records:
 
 - requested model `auto`;
 - definition-set and evidence digests;
-- complete area vector and unknown weight;
+- complete request decomposition and unknown weight;
 - derived hard requirements;
 - objective and constraints;
 - each candidate's computed metrics and exclusion reasons;
@@ -137,10 +137,10 @@ decision without retaining the request or any provider response.
 
 Classifier qualification and model qualification are separate.
 
-Classifier fixtures cover single-area requests, multi-area compositions,
+Classifier fixtures cover single-dimension requests, multi-dimension compositions,
 paraphrases, boundary ambiguity, out-of-domain requests, and prompt injection.
-Model qualification uses reviewed area suites with stable case identities and
-enough cases to report confidence bounds. Mixed-area evals verify that the
+Model qualification uses reviewed dimension suites with stable case identities and
+enough cases to report confidence bounds. Composition benchmarks verify that the
 first-order matrix model predicts observed model ordering. Interaction terms
 are not added until measured composite tasks demonstrate a systematic failure.
 

@@ -1,25 +1,25 @@
-# Proposed RouteKit routing-area catalog
+# Proposed RouteKit routing basis
 
-Status: **live testdrive qualified; not approved for production publication**
+Status: **live testdrive qualified; not approved for production activation**
 
-This directory defines a first stable semantic catalog for compositional
+This directory defines a first stable semantic routing basis for compositional
 eval-driven routing. It describes the kinds of RouteKit maintainer and support
 requests that the current repository can ground and evaluate. It does not
-select a model, encode model performance, or imply that the proposed areas have
-already passed classifier or model-discrimination qualification.
+select a model, encode model performance, or imply that the proposed dimensions
+have already passed classifier or model-discrimination qualification.
 
-The machine-readable catalog and seed benchmarks live in:
+The machine-readable routing basis and seed benchmarks live in:
 
 ```text
-packages/testkit/src/eval-routing-v2/fixtures/
-  routekit-area-catalog.v1.json
-  classifier-benchmark.v1.json
-  eval-case-specifications.v1.json
+packages/testkit/src/eval-routing-compositional/fixtures/
+  routing-basis.json
+  decomposition-benchmark.json
+  dimension-suite-specifications.json
 ```
 
-## Proposed areas
+## Proposed workload dimensions
 
-| Area | Positive boundary | Important negative boundary |
+| Workload dimension | Positive boundary | Important negative boundary |
 | --- | --- | --- |
 | `gateway-protocols` | HTTP compatibility, streaming, tools, protocol translation | Model/provider selection policy |
 | `model-routing-registry` | Namespaced model discovery, defaults, routes, availability | Account scheduling and protocol encoding |
@@ -30,15 +30,15 @@ packages/testkit/src/eval-routing-v2/fixtures/
 | `client-tool-integration` | Codex, Claude Code, Cursor, OpenCode, client-specific setup | Provider internals and generic gateway semantics |
 | `observability-attribution` | Call IDs, usage, cost, attempts, account attribution, privacy | Scheduling decisions and eval quality scoring |
 
-These are product-domain areas, not request-envelope capabilities. Tools,
-vision, endpoint protocol, context length, and output limits remain hard
-requirements derived outside the semantic classifier.
+These are semantic workload dimensions, not request-envelope capabilities.
+Tools, vision, endpoint protocol, context length, and output limits remain
+hard requirements derived outside the semantic classifier.
 
-## Why these areas
+## Why these dimensions
 
-The catalog follows repository ownership and user-visible concepts closely
-enough that each area can have grounded eval cases and maintained source
-anchors. The negative boundaries are deliberate:
+The routing basis follows repository ownership and user-visible concepts
+closely enough that each dimension can have grounded eval cases and maintained
+source anchors. The negative boundaries are deliberate:
 
 - gateway encoding is separate from deciding which route to use;
 - account-pool scheduling is separate from model-route selection;
@@ -46,44 +46,46 @@ anchors. The negative boundaries are deliberate:
 - eval quality evidence is separate from operational call telemetry; and
 - client adaptation is separate from the provider implementation behind it.
 
-Some real requests necessarily span areas. The classifier should represent
-those requests as mixtures rather than force a single label. The seed benchmark
-therefore includes single-area, composite, ambiguous, unknown, and
+Some real requests necessarily span dimensions. The classifier should represent
+those requests as mixtures rather than force a single class. The seed benchmark
+therefore includes single-dimension, composite, ambiguous, unknown, and
 prompt-injection cases.
 
-The first complete eight-area billed qualification passed on August 17, 2026.
-Its exact generated evals and sanitized structured results are committed under:
+The first complete eight-dimension billed qualification passed on August 17,
+2026. Its exact generated evals and sanitized structured results are committed
+under:
 
 ```text
 docs/evidence/eval-routing/2026-08-17-562483cd6669/
 ```
 
-That run used five authored cases per area, which qualifies the testdrive but
-does not satisfy the production-activation threshold below.
+That run used five authored cases per dimension, which qualifies the testdrive
+but does not satisfy the production-activation threshold below.
 
 ## Approval criteria
 
-Before this catalog is published, reviewers should require:
+Before this routing basis is activated, reviewers should require:
 
-1. stable ownership and source anchors for every area;
+1. stable ownership and source anchors for every dimension;
 2. reviewed definitions, inclusions, exclusions, and counterexamples;
-3. acceptable single-area and mixture-vector classifier measurements;
+3. acceptable single-dimension and mixture-vector classifier measurements;
 4. acceptable unknown detection and repeated-run stability;
-5. at least 20 reviewed model-eval cases per area;
-6. complete candidate-by-area evidence; and
+5. at least 20 reviewed model-eval cases per dimension;
+6. complete model-by-dimension evidence; and
 7. a demonstrated material model-ranking or operational difference for each
-   area used to make routing decisions.
+   dimension used to make routing decisions.
 
-An area that classifies cleanly but does not change model choice may remain a
-reporting dimension, but should not add routing complexity. Areas that remain
-consistently confused should be merged or have their boundaries rewritten.
+A dimension that classifies cleanly but does not change model choice may remain
+a reporting dimension, but should not add routing complexity. Dimensions that
+remain consistently confused should be merged or have their boundaries
+rewritten.
 
 ## Fixture interpretation
 
 Classifier fixture targets are review hypotheses, not provider responses or
-golden snapshots. Every target contains all configured area IDs plus
+golden snapshots. Every target contains all configured dimension IDs plus
 `unknownWeight`, and the values sum to one. The benchmark can score exact
-vector error while also applying less brittle dominant-area and unknown
+vector error while also applying less brittle dominant-dimension and unknown
 thresholds.
 
 The eval-case specifications are similarly seeds. They describe what a future

@@ -10,7 +10,7 @@ Implementation revision tested: `cc585def`
 Pass. Every completed RouteKit model request receives an
 `x-routekit-model-call-id` correlation header. The singleton daemon retains a
 bounded, expiry-limited attribution record that the operator can inspect with
-`routekit calls inspect <call-id>` in human or JSON mode. The result identifies
+`routekit calls show <call-id>` in human or JSON mode. The result identifies
 the effective and provider-native models, provider, opaque process-local
 subscription seat when applicable, billing mode, attempts/retries/account failovers,
 usage, estimated cost or explicit unknown state, status, and timing.
@@ -27,8 +27,8 @@ fixture provider, sends an authenticated OpenAI Chat request, reads its
 `x-routekit-model-call-id`, and invokes both inspection modes:
 
 ```text
-routekit calls inspect model_call_<redacted>
-routekit calls inspect model_call_<redacted> --json
+routekit calls show model_call_<redacted>
+routekit calls show model_call_<redacted> --json
 ```
 
 The assertions verify the call ID join, `openai/mock-model` effective model,
