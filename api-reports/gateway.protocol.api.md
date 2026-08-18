@@ -2,11 +2,11 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `51319d935e03ce3aa3d66b15823f5ce4bcfbb22321e8abafbb6962f14cd765f6`
+Declaration SHA-256: `345baf6efb4e5b07d12d5c2fa9cbddb7852887f583e37bb2db90911e436ff188`
 
 ## Root declarations
 
 ```ts
-export type { AnthropicSseEvent, GoogleGenerateContent, ModelCatalogEntry, ModelCatalogPayload, OpenAiChatResponse, OpenAiChatSseEvent, OpenAiResponsesEvent, ProviderRecord } from "./provider-protocol.js";
-export { decodeAnthropicSseEvent, decodeAnthropicWebSearchResult, decodeGoogleGenerateContent, decodeModelCatalogPayload, decodeOpenAiChatResponse, decodeOpenAiChatSseEvent, decodeOpenAiResponsesEvent, decodeOpenAiToolCalls, decodeOpenAiWebSearchResult, decodeProviderJson, decodeToolResult, isProviderRecord, ProviderProtocolError } from "./provider-protocol.js";
+export type { AnthropicSseEvent, GoogleGenerateContent, ModelCatalogEntry, ModelCatalogPayload, OpenAiChatResponse, OpenAiChatSseEvent, OpenAiResponsesEvent, ProviderRecord } from "./providers/protocol.js";
+export { decodeAnthropicSseEvent, decodeAnthropicWebSearchResult, decodeGoogleGenerateContent, decodeModelCatalogPayload, decodeOpenAiChatResponse, decodeOpenAiChatSseEvent, decodeOpenAiResponsesEvent, decodeOpenAiToolCalls, decodeOpenAiWebSearchResult, decodeProviderJson, decodeToolResult, isProviderRecord, ProviderProtocolError } from "./providers/protocol.js";
 ```

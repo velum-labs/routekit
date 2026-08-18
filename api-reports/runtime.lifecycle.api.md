@@ -2,11 +2,11 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `3f1f1687a196c2ca704be2e779eb0f65ad7721b481106ba7314ef65a8c77c908`
+Declaration SHA-256: `77edcba6dd52efa8fea7ef9947acf6a40378267bd91a2ac79570d9f0607064eb`
 
 ## Root declarations
 
 ```ts
-export type { OwnedResourceOptions, ResourceFinalizer, ResourceOwnership, ResourceScopeOptions } from "./resource-scope.js";
-export { ResourceDisposalTimeoutError, ResourceScope } from "./resource-scope.js";
+export type { OwnedResourceOptions, ResourceFinalizer, ResourceOwnership, ResourceScopeOptions } from "./lifecycle/resource-scope.js";
+export { ResourceDisposalTimeoutError, ResourceScope } from "./lifecycle/resource-scope.js";
 ```

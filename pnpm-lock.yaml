@@ -728,9 +728,6 @@ importers:
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@velum-labs/routekit-tracing':
-        specifier: workspace:*
-        version: link:../tracing
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.108
