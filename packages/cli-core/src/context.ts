@@ -133,6 +133,24 @@ export function contextFor(
   };
 }
 
+export function contextForFlags(
+  flags: GlobalFlags,
+  runtime: CliRuntime = processCliRuntime
+): CommandContext {
+  const { json, noInput, quiet, yes } = flags;
+  return {
+    json,
+    yes,
+    quiet,
+    noInput,
+    presenter:
+      json || quiet
+        ? new QuietPresenter()
+        : createPresenter(noInput ? { interactive: false } : undefined),
+    emit: (payload) => emitJson(payload, runtime)
+  };
+}
+
 export function attachGlobalFlags(program: Command): Command {
   return program
     .option("--json", "emit a machine-readable JSON result on stdout (implies non-interactive)")

@@ -18,6 +18,7 @@ export type { CliRuntime, CommandContext, GlobalFlags } from "./context.js";
 export {
   attachGlobalFlags,
   contextFor,
+  contextForFlags,
   emitJson,
   immutableCliRuntime,
   processCliRuntime
