@@ -3,7 +3,8 @@ import { createServer } from "node:http";
 import {
   createNodeHttpHandlerEffect,
   type RouteKitPlatform,
-  runRouteKitEffect
+  runRouteKitEffect,
+  toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Cause, Context, Deferred, Effect, Exit, Scope } from "effect";
 import type { AnthropicRequest } from "../../adapters/anthropic-wire.js";
@@ -383,9 +384,7 @@ const startGatewayOperation = Effect.fn("Gateway.start")(function* (
       )
     );
   }
-  return yield* Effect.fail(
-    startupError instanceof Error ? startupError : new Error(String(startupError))
-  );
+  return yield* toRouteKitFailure(startupError);
 });
 
 export function startGatewayEffect(

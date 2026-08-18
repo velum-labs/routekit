@@ -30,7 +30,6 @@ export const CANONICAL_SHARED_PACKAGES = new Map([
   ["packages/cli-core", "@velum-labs/routekit-cli-core"],
   ["packages/config-core", "@velum-labs/routekit-config-core"],
   ["packages/config", "@velum-labs/routekit-config"],
-  ["packages/router", "@velum-labs/routekit-router"],
   ["packages/telemetry-core", "@velum-labs/routekit-telemetry-core"],
   ["packages/harness-core", "@velum-labs/routekit-harness-core"],
   ["packages/tools", "@velum-labs/routekit-tools"],

@@ -1,11 +1,11 @@
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
-import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
 import { Context, Layer } from "effect";
+import type { RunningGatewayGeneration } from "../gateway-generation/service.js";
 
 export type ActiveGatewayValue = {
-  router(): RunningRouter | undefined;
-  setRouter(router: RunningRouter): void;
+  router(): RunningGatewayGeneration | undefined;
+  setRouter(router: RunningGatewayGeneration): void;
   proxy(): SwitchingGatewayProxy | undefined;
   setProxy(proxy: SwitchingGatewayProxy): void;
   dataUrl(): string | undefined;
@@ -18,7 +18,7 @@ export class ActiveGateway extends Context.Service<ActiveGateway, ActiveGatewayV
   "@velum-labs/routekit-daemon/ActiveGateway"
 ) {
   static readonly layer = Layer.sync(ActiveGateway, () => {
-    let router: RunningRouter | undefined;
+    let router: RunningGatewayGeneration | undefined;
     let proxy: SwitchingGatewayProxy | undefined;
     let dataUrl: string | undefined;
     let control: RunningControlServer | undefined;

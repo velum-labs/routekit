@@ -50,8 +50,6 @@
       "@velum-labs/routekit-harness-core/lifecycle": ["packages/harness-core/src/lifecycle-api.ts"],
       "@velum-labs/routekit-harness-core/testing": ["packages/harness-core/src/testing/index.ts"],
       "@velum-labs/routekit-registry": ["packages/registry/src/index.ts"],
-      "@velum-labs/routekit-router": ["packages/router/src/index.ts"],
-      "@velum-labs/routekit-router/effect": ["packages/router/src/effect-api.ts"],
       "@velum-labs/routekit-runtime": ["packages/runtime/src/index.ts"],
       "@velum-labs/routekit-runtime/control": ["packages/runtime/src/control-api.ts"],
       "@velum-labs/routekit-runtime/effect": ["packages/runtime/src/effect-api.ts"],

@@ -291,7 +291,6 @@ this checkout without replacing the published `routekit` binary.
 - `packages/cli` — published CLI and `routekit` executable
 - `packages/daemon` — singleton daemon and lifecycle
 - `packages/gateway` — authenticated model gateway and protocol adapters
-- `packages/router` — reusable route composition
 - `packages/accounts` — subscription enrollment, eligibility, and account state
 - `packages/tool-*` — coding-tool integration boundaries
 - `apps/docs` — public documentation website

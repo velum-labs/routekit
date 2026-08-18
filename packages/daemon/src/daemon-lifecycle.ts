@@ -4,9 +4,8 @@ import type {
 } from "@velum-labs/routekit-accounts/effect";
 import type { RouteKitControlHandlers } from "@velum-labs/routekit-control";
 import type { SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
-import type { RunningRouter } from "@velum-labs/routekit-router";
-import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
 import { extendCleanupGrace, registerCleanup } from "@velum-labs/routekit-runtime";
+import type { RunningControlServer } from "@velum-labs/routekit-runtime/control";
 import {
   EffectResourceScope,
   type RouteKitPlatform,
@@ -17,6 +16,7 @@ import {
 import { Deferred, Effect, type ManagedRuntime } from "effect";
 
 import type { DaemonRuntimeState } from "./daemon-runtime-state.js";
+import type { RunningGatewayGeneration } from "./services/gateway-generation/service.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "./telemetry.js";
 
 type Supervisor = "systemd" | "launchd" | "detached" | "unknown";
@@ -28,7 +28,7 @@ export type DaemonLifecycleOptions = {
   packageVersion: string;
   supervisor: Supervisor;
   getProxy(): SwitchingGatewayProxy | undefined;
-  getActiveRouter(): RunningRouter | undefined;
+  getActiveRouter(): RunningGatewayGeneration | undefined;
   getControl(): RunningControlServer | undefined;
   accountActivity?: AccountActivityService;
   accountAuth?: AccountAuthService;
@@ -187,7 +187,7 @@ export function cleanupFailedDaemon(input: {
   gatewayTelemetry?: GatewayTelemetryAggregator;
   daemonTelemetry?: DaemonTelemetry;
   proxy?: SwitchingGatewayProxy;
-  activeRouter?: RunningRouter;
+  activeRouter?: RunningGatewayGeneration;
   accountActivity?: AccountActivityService;
   accountAuth?: AccountAuthService;
   closeSidecar(): Effect.Effect<void, Error>;

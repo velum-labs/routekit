@@ -8,7 +8,6 @@
 "@velum-labs/routekit-eval-setup": minor
 "@velum-labs/routekit-eval-store": minor
 "@velum-labs/routekit-gateway": minor
-"@velum-labs/routekit-router": minor
 "@velum-labs/routekit-testkit": minor
 ---
 

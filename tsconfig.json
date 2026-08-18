@@ -56,9 +56,6 @@
       "path": "packages/registry"
     },
     {
-      "path": "packages/router"
-    },
-    {
       "path": "packages/runtime"
     },
     {

@@ -443,9 +443,6 @@ importers:
       '@velum-labs/routekit-registry':
         specifier: workspace:*
         version: link:../registry
-      '@velum-labs/routekit-router':
-        specifier: workspace:*
-        version: link:../router
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -575,9 +572,6 @@ importers:
       '@velum-labs/routekit-registry':
         specifier: workspace:*
         version: link:../registry
-      '@velum-labs/routekit-router':
-        specifier: workspace:*
-        version: link:../router
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -753,24 +747,6 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/router:
-    dependencies:
-      '@velum-labs/routekit-accounts':
-        specifier: workspace:*
-        version: link:../accounts
-      '@velum-labs/routekit-config':
-        specifier: workspace:*
-        version: link:../config
-      '@velum-labs/routekit-gateway':
-        specifier: workspace:*
-        version: link:../gateway
-      '@velum-labs/routekit-runtime':
-        specifier: workspace:*
-        version: link:../runtime
-      effect:
-        specifier: 'catalog:'
-        version: 4.0.0-rc.108
-
   packages/runtime:
     dependencies:
       '@effect/platform-node':
@@ -798,6 +774,9 @@ importers:
       '@velum-labs/routekit-config':
         specifier: workspace:*
         version: link:../config
+      '@velum-labs/routekit-daemon':
+        specifier: workspace:*
+        version: link:../daemon
       '@velum-labs/routekit-eval-contracts':
         specifier: workspace:*
         version: link:../eval-contracts
@@ -819,9 +798,6 @@ importers:
       '@velum-labs/routekit-registry':
         specifier: workspace:*
         version: link:../registry
-      '@velum-labs/routekit-router':
-        specifier: workspace:*
-        version: link:../router
       '@velum-labs/routekit-runtime':
         specifier: workspace:*
         version: link:../runtime

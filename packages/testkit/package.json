@@ -14,6 +14,7 @@
   "dependencies": {
     "@effect/platform-node": "catalog:",
     "@velum-labs/routekit-config": "workspace:*",
+    "@velum-labs/routekit-daemon": "workspace:*",
     "@velum-labs/routekit-eval-contracts": "workspace:*",
     "@velum-labs/routekit-eval-core": "workspace:*",
     "@velum-labs/routekit-eval-service": "workspace:*",
@@ -21,7 +22,6 @@
     "@velum-labs/routekit-eval-store": "workspace:*",
     "@velum-labs/routekit-gateway": "workspace:*",
     "@velum-labs/routekit-registry": "workspace:*",
-    "@velum-labs/routekit-router": "workspace:*",
     "@velum-labs/routekit-runtime": "workspace:*",
     "effect": "catalog:",
     "yaml": "catalog:"

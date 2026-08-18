@@ -67,6 +67,9 @@ caveats.
   work uses scoped fibers. Raw Node filesystem, process, clock, and HTTP APIs
   belong at platform adapter or application-entry boundaries when an Effect
   platform service is available.
+- The daemon owns gateway-generation composition and its closeable Effect
+  scopes. Do not recreate a standalone router package or a parallel manual
+  resource-scope abstraction.
 - Give each shared domain value one canonical schema identity. Protocol modules
   compose canonical schemas instead of redefining equivalent records, and
   legacy contracts use explicit versioned entrypoints.

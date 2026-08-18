@@ -6,7 +6,6 @@ import test from "node:test";
 
 import type { RouterConfig } from "@velum-labs/routekit-config";
 import type { PublishedRoutingActivation } from "@velum-labs/routekit-eval-contracts";
-import type { RunningRouter } from "@velum-labs/routekit-router";
 import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect, Layer } from "effect";
@@ -16,6 +15,7 @@ import { ActiveGateway } from "../services/active-gateway/service.js";
 import { DaemonEnv } from "../services/daemon-env/service.js";
 import { DaemonState } from "../services/daemon-state/service.js";
 import { EvalRoutingApplicationService } from "../services/eval-routing/service.js";
+import type { RunningGatewayGeneration } from "../services/gateway-generation/service.js";
 
 function activation(evidenceDigest: string): PublishedRoutingActivation {
   const dimensions = [
@@ -87,7 +87,7 @@ test("routing activation handlers expose status and enforce compare-and-swap", a
       router: () =>
         ({
           modelCatalog: () => ["openai/classifier", "openai/model-a"].map((id) => ({ id }))
-        }) as unknown as RunningRouter,
+        }) as unknown as RunningGatewayGeneration,
       setRouter: () => undefined,
       proxy: () => undefined,
       setProxy: () => undefined,

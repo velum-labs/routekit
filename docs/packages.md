@@ -25,7 +25,6 @@ names. Use the manifest name when importing or installing:
 | `packages/runtime` | `@velum-labs/routekit-runtime` |
 | `packages/config` | `@velum-labs/routekit-config` |
 | `packages/config-core` | `@velum-labs/routekit-config-core` |
-| `packages/router` | `@velum-labs/routekit-router` |
 | `packages/gateway` | `@velum-labs/routekit-gateway` |
 | `packages/daemon` | `@velum-labs/routekit-daemon` |
 | `packages/control` | `@velum-labs/routekit-control` |
@@ -56,7 +55,6 @@ names. Use the manifest name when importing or installing:
 | --- | --- | --- |
 | `@velum-labs/routekit-config-core` | Canonical RouterConfig schemas, defaults, parsing, normalization, and reusable configuration primitives. | `packages/config-core/src/index.ts` |
 | `@velum-labs/routekit-config` | RouterConfig YAML discovery, layered loading, atomic writes, and live-model helpers. | `packages/config/src/index.ts` |
-| `@velum-labs/routekit-router` | Embedded RouteKit router composition, account relays, and gateway ownership. | `packages/router/src/index.ts` |
 | `@velum-labs/routekit-gateway` | Neutral HTTP gateway, dialect adapters, runtime router/catalog, pooled endpoints, provider egress, and single-call provenance. | `packages/gateway/src/index.ts` |
 | `@velum-labs/routekit-accounts` | Subscription credentials, account pooling, provider relays, and connector internals. | `packages/accounts/src/index.ts` |
 | `@velum-labs/routekit-contracts` | Shared control and wire types. | `packages/contracts/src/index.ts` |

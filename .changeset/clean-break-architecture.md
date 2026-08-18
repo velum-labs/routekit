@@ -11,7 +11,6 @@
 "@velum-labs/routekit-gateway": major
 "@velum-labs/routekit-harness-core": major
 "@velum-labs/routekit-registry": major
-"@velum-labs/routekit-router": major
 "@velum-labs/routekit-runtime": major
 "@velum-labs/routekit-telemetry-core": major
 "@velum-labs/routekit-testkit": major

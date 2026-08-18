@@ -10,5 +10,9 @@
 - Host, worker, generation, and lifecycle resources must have one clear owner.
   Prefer scoped Effect acquisition and finalization over adding another cleanup
   registry or manually retained started/fiber state.
+- Gateway-generation composition belongs in
+  `src/services/gateway-generation/service.ts`. Keep its account sets, provider
+  backend, and listener in one native Effect scope; do not reintroduce the
+  standalone router package.
 - Preserve the public root, `./state`, and `./effect` package facades when
   moving internal modules.

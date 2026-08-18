@@ -6,4 +6,4 @@
 "@velum-labs/routekit-runtime": patch
 ---
 
-Organize application capabilities under shallow, explicitly owned service modules, separate platform and protocol adapters from services, add focused Runtime import surfaces, and preserve the existing public compatibility facades.
+Organize application capabilities under shallow, explicitly owned service modules, separate platform and protocol adapters from services, add focused Runtime import surfaces, move gateway-generation composition into the daemon with native Effect scope ownership, and remove the obsolete standalone router package.

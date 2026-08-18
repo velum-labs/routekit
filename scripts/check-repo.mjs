@@ -37,7 +37,6 @@ const ROUTEKIT_PACKAGE_DIRS = [
   "eval-setup",
   "eval-store",
   "registry",
-  "router",
   "runtime",
   "telemetry-core",
   "tool-claude",

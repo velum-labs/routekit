@@ -31,3 +31,10 @@ export {
   Tokens
 } from "./effect/services.js";
 export { runHostGenerationTransactionEffect } from "./host-generation-transaction.js";
+export type {
+  GatewayGenerationOptions,
+  GatewayGenerationRedeemResetOptions,
+  GatewayGenerationRedeemResetResponse,
+  RunningGatewayGeneration
+} from "./services/gateway-generation/service.js";
+export { startGatewayGenerationEffect } from "./services/gateway-generation/service.js";

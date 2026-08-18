@@ -10,7 +10,6 @@
 "@velum-labs/routekit-eval-setup": minor
 "@velum-labs/routekit-eval-store": minor
 "@velum-labs/routekit-gateway": minor
-"@velum-labs/routekit-router": minor
 ---
 
 Add compositional eval routing as RouteKit's sole automatic-routing protocol.
