@@ -8,7 +8,7 @@ import type {
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import type { EvalSessionAdmission, GatewayPrincipal } from "@velum-labs/routekit-gateway";
 import { ControlError } from "@velum-labs/routekit-runtime/control";
-import { Context, Effect } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import { ActiveGateway } from "../active-gateway/service.js";
 import { DaemonEnv } from "../daemon-env/service.js";
@@ -94,6 +94,12 @@ export class EvalSessionManager {
     return true;
   }
 
+  closeAll(): void {
+    for (const session of this.#sessions.values()) session.closed = true;
+    this.#sessionByTokenDigest.clear();
+    this.#sessions.clear();
+  }
+
   resolve(presented: string): GatewayPrincipal | undefined {
     const sessionId = this.#sessionByTokenDigest.get(digest(presented));
     if (sessionId === undefined) return undefined;
@@ -160,7 +166,17 @@ export class EvalSessionManager {
 
 export class EvalSessions extends Context.Service<EvalSessions, EvalSessionManager>()(
   "@velum-labs/routekit-daemon/EvalSessions"
-) {}
+) {
+  static layer(options: EvalSessionManagerOptions = {}) {
+    return Layer.effect(
+      EvalSessions,
+      Effect.acquireRelease(
+        Effect.sync(() => new EvalSessionManager(options)),
+        (sessions) => Effect.sync(() => sessions.closeAll())
+      )
+    );
+  }
+}
 
 type EvalSessionHandlers = Pick<
   EffectRouteKitControlHandlers,

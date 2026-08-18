@@ -642,6 +642,9 @@ importers:
       '@velum-labs/routekit-eval-store':
         specifier: workspace:*
         version: link:../eval-store
+      '@velum-labs/routekit-registry':
+        specifier: workspace:*
+        version: link:../registry
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.108

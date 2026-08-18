@@ -59,14 +59,14 @@ test("production runner estimates the exact imported nested-loop testdrive suite
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-estimate-"));
   roots.push(root);
   const suite = path.join(root, "support.eval.ts");
-  const candidates = ["openai/luna", "openai/terra", "openai/sol"];
+  const candidates = ["openai/gpt-5.5", "openai/gpt-5.1", "openai/gpt-4.1-mini"];
   const caseIds = ["one", "two", "three", "four", "five"];
   await mkdir(path.join(root, "data"));
   await writeFile(
     path.join(root, "data", "cases.json"),
     `${JSON.stringify(caseIds.map((id) => ({ id, prompt: id })))}\n`
   );
-  await writeManifest(root, candidates, "openai/terra", caseIds);
+  await writeManifest(root, candidates, "openai/gpt-5.5", caseIds);
   await writeFile(
     suite,
     [
@@ -99,15 +99,16 @@ test("production runner estimates the exact imported nested-loop testdrive suite
         {
           ...requestFor(suite),
           candidateModels: candidates,
-          judgeModel: "openai/terra"
+          judgeModel: "openai/gpt-5.5"
         },
         "pilot"
       );
     }).pipe(Effect.provide(NodeHttpClient.layerUndici))
   );
 
-  assert.deepEqual(result, { callCount: 30, pricingKnown: false });
-  assert.equal("maximumCostUsd" in result, false);
+  assert.equal(result.callCount, 30);
+  assert.equal(result.pricingKnown, true);
+  assert.equal((result.maximumCostUsd ?? 0) > 0, true);
 });
 
 test("production runner rejects a manifest for a different profile", async () => {

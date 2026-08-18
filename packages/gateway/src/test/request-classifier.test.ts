@@ -264,38 +264,7 @@ test("language-model dimension classifier sends only bounded dimension semantics
   );
 });
 
-test("language-model dimension classifier normalizes complete nonnegative model weights", async () => {
-  const classifier = makeLanguageModelDimensionClassifier({
-    model: "openai/gpt-5.6-luna",
-    complete: () =>
-      Effect.succeed(
-        Response.json({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  weights: {
-                    "gateway-protocol": 0.3,
-                    "eval-routing": 0.15,
-                    "provider-adapters": 0,
-                    "daemon-lifecycle": 0,
-                    "remote-enrollment": 0
-                  },
-                  unknownWeight: 0.05
-                })
-              }
-            }
-          ]
-        })
-      )
-  });
-  assert.deepEqual(
-    await runRouteKitEffect(classifier.classify({ request: "Route this", dimensions })),
-    areaResult
-  );
-});
-
-test("language-model dimension classifier fails closed on incomplete or invalid model output", async () => {
+test("language-model dimension classifier fails closed on incomplete, unnormalized, or all-unknown output", async () => {
   for (const content of [
     JSON.stringify({
       ...areaWireResult,
@@ -308,6 +277,20 @@ test("language-model dimension classifier fails closed on incomplete or invalid 
     JSON.stringify({
       weights: Object.fromEntries(dimensions.map((dimension) => [dimension.id, 0])),
       unknownWeight: 0
+    }),
+    JSON.stringify({
+      weights: {
+        "gateway-protocol": 0.3,
+        "eval-routing": 0.15,
+        "provider-adapters": 0,
+        "daemon-lifecycle": 0,
+        "remote-enrollment": 0
+      },
+      unknownWeight: 0.05
+    }),
+    JSON.stringify({
+      weights: Object.fromEntries(dimensions.map((dimension) => [dimension.id, 0])),
+      unknownWeight: 1
     }),
     `\`\`\`json\n${JSON.stringify(areaWireResult)}\n\`\`\``
   ]) {

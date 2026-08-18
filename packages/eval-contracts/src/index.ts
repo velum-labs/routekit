@@ -625,8 +625,7 @@ export const EvalComparisonRequest = Schema.Struct({
   maxOutputTokens: Schema.optionalKey(NonNegativeInteger),
   suiteDigest: Schema.optionalKey(Schema.String),
   concurrency: Schema.optionalKey(NonNegativeInteger),
-  timeoutMs: Schema.optionalKey(NonNegativeFinite),
-  spendLimitUsd: Schema.optionalKey(NonNegativeFinite)
+  timeoutMs: Schema.optionalKey(NonNegativeFinite)
 });
 export type EvalComparisonRequest = typeof EvalComparisonRequest.Type;
 

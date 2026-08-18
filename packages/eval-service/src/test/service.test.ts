@@ -10,7 +10,7 @@ import type {
   EvalComparisonResult,
   RoutingBasis
 } from "@velum-labs/routekit-eval-contracts";
-import { Effect, Layer } from "effect";
+import { Effect, Fiber, Layer } from "effect";
 
 import { EvalComparisonRunner, EvalService, makeEvalServiceLayer } from "../index.js";
 
@@ -165,6 +165,54 @@ test("dimension matrix qualification never publishes incomplete comparison evide
   );
 
   assert.equal(exit._tag, "Failure");
+  await assert.rejects(
+    readFile(path.join(snapshotRoot, "published-routing.json"), "utf8"),
+    /ENOENT/u
+  );
+});
+
+test("interrupted qualification leaves no half-published activation for a daemon restart", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-dimension-matrix-interrupted-"));
+  roots.push(root);
+  const snapshotRoot = path.join(root, "snapshots");
+  let runs = 0;
+  const runner = EvalComparisonRunner.layer({
+    validate: () => Effect.void,
+    inspect: (request) =>
+      Effect.succeed({
+        suiteDigest: `suite-${request.profileId}`,
+        manifest: {
+          version: 1,
+          profileId: request.profileId,
+          candidateModels: request.candidateModels,
+          judgeModel: request.judgeModel,
+          caseCount: 1,
+          caseIds: ["case-1"],
+          maxOutputTokens: 256,
+          expectedCallCount: request.candidateModels.length * 2
+        }
+      }),
+    estimate: () => Effect.succeed({ callCount: 0, pricingKnown: false }),
+    runComparison: (request) => {
+      runs += 1;
+      return runs === 1 ? Effect.succeed(resultFor(request)) : Effect.never;
+    }
+  });
+  const layer = makeEvalServiceLayer({
+    gatewayUrl: "http://127.0.0.1:8080/v1",
+    snapshotRoot
+  }).pipe(Layer.provide(runner), Layer.provide(NodeServicesLayer));
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(
+        (yield* EvalService).qualifyDimensionMatrix(qualification(root))
+      );
+      yield* Effect.yieldNow;
+      yield* Fiber.interrupt(fiber);
+    }).pipe(Effect.provide(layer))
+  );
+
   await assert.rejects(
     readFile(path.join(snapshotRoot, "published-routing.json"), "utf8"),
     /ENOENT/u

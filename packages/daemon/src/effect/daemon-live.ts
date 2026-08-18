@@ -15,7 +15,7 @@ import { DaemonHost, type DaemonHostValue } from "../services/daemon-host/servic
 import { DaemonPolicy, type DaemonPolicyValue } from "../services/daemon-policy/service.js";
 import { DaemonState } from "../services/daemon-state/service.js";
 import { DataPlane, type DataPlaneValue } from "../services/data-plane/service.js";
-import { type EvalSessionManager, EvalSessions } from "../services/eval-session/service.js";
+import { EvalSessions } from "../services/eval-session/service.js";
 import { type DaemonGenerationHooks, Generations } from "../services/generations/service.js";
 import { Leaderboard, type LeaderboardValue } from "../services/leaderboard-context/service.js";
 import { Sidecar } from "../services/sidecar/service.js";
@@ -27,7 +27,6 @@ export type DaemonLiveOptions = {
   state: DaemonRuntimeState;
   sidecar: CliproxySidecar;
   tokens: TokenStore;
-  evalSessions: EvalSessionManager;
   telemetry: TelemetryServiceValue;
   activityPath: string;
   authPath: string;
@@ -71,7 +70,7 @@ export function daemonLive(options: DaemonLiveOptions): Layer.Layer<DaemonLive, 
     DaemonState.layer(options.state),
     Layer.succeed(Sidecar, options.sidecar),
     Layer.succeed(Tokens, options.tokens),
-    Layer.succeed(EvalSessions, options.evalSessions),
+    EvalSessions.layer(),
     Layer.succeed(Telemetry, options.telemetry),
     Layer.succeed(DataPlane, options.dataPlane),
     Layer.succeed(AccountRecovery, options.accountRecovery),

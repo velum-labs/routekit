@@ -96,7 +96,7 @@ import { makeCompositionalRoutingPolicyReader } from "./eval-routing-policy.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import { LeaderboardRollupStore } from "./leaderboard.js";
 import { ActiveGateway, type ActiveGatewayValue } from "./services/active-gateway/service.js";
-import { EvalSessionManager } from "./services/eval-session/service.js";
+import { EvalSessions } from "./services/eval-session/service.js";
 import type { RunningGatewayGeneration } from "./services/gateway-generation/service.js";
 import { Generations } from "./services/generations/service.js";
 import {
@@ -319,7 +319,6 @@ export async function bootstrapRouteKitDaemon(
       return injected;
     };
     const compositionalPolicyReader = makeCompositionalRoutingPolicyReader(home);
-    const evalSessions = new EvalSessionManager();
     effectRuntime = ManagedRuntime.make(
       daemonLive({
         env: {
@@ -334,7 +333,6 @@ export async function bootstrapRouteKitDaemon(
         state: runtimeState,
         sidecar,
         tokens,
-        evalSessions,
         telemetry: {
           consent: telemetry,
           ...(daemonTelemetry !== undefined ? { daemon: daemonTelemetry } : {}),
@@ -384,6 +382,7 @@ export async function bootstrapRouteKitDaemon(
         yield* sidecar.reconcile(wantsCliproxySidecar(runtimeState.config));
         const generations = yield* Generations;
         const gateway = yield* ActiveGateway;
+        const evalSessions = yield* EvalSessions;
         activeGateway = gateway;
         const router = yield* generations.start(runtimeState.config);
         gateway.setRouter(router);

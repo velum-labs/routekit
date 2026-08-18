@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ManagedRuntime } from "effect";
 
-import { EvalSessionManager } from "../services/eval-session/service.js";
+import { EvalSessionManager, EvalSessions } from "../services/eval-session/service.js";
 
 const limits = {
   calls: 2,
@@ -81,5 +82,30 @@ test("eval session admission enforces call, input, output, and expiry limits", (
   });
 
   now = 60_000;
+  assert.equal(sessions.resolve(opened.bearerCredential), undefined);
+});
+
+test("eval sessions close when their Effect-owned daemon scope is disposed", async () => {
+  let sequence = 20;
+  const runtime = ManagedRuntime.make(
+    EvalSessions.layer({
+      now: () => 0,
+      random: (bytes) => Buffer.alloc(bytes, ++sequence)
+    })
+  );
+  const sessions = await runtime.runPromise(EvalSessions);
+  const opened = sessions.open({
+    purpose: "qualification",
+    operationId: "restart-1",
+    allowedModels: ["openai/gpt-5.6-luna"],
+    limits,
+    expiresInSeconds: 120,
+    gatewayUrl: "http://127.0.0.1:8080",
+    targetIdentity: "routekit-generation:1"
+  });
+  assert.equal(sessions.resolve(opened.bearerCredential)?.role, "eval");
+
+  await runtime.dispose();
+
   assert.equal(sessions.resolve(opened.bearerCredential), undefined);
 });
