@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `1339418f58a4c9da769e80221099d81801b8cf770aff5e70d1c4d281ad792572`
+Declaration SHA-256: `9edaac227019e9249eee466de98110637a812c9908718a296e1ceecddd140fa0`
 
 ## Root declarations
 
@@ -19,12 +19,15 @@ export type { BedrockControlClient, BedrockProviderSourceOptions, BedrockRuntime
 export type { CallCostRecord, ModelPricing, ProviderCostMetadata, TokenUsage } from "./cost.js";
 export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPoolStrategy } from "./capacity-pool.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
+export type { CompositionalRoutingErrorCode, CompositionalRoutingInput } from "./compositional-routing.js";
+export type { CompositionalRoutingObservation, CompositionalRoutingPolicyReader, CompositionalRoutingRuntime } from "./eval-policy.js";
 export type { DialectName, DroppedFieldSpan } from "./adapters/dropped.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
+export type { EvalSessionAdmission, GatewayPrincipal, WorkloadJwtPrincipalPolicy, WorkloadJwtVerifierOptions } from "./auth.js";
 export type { Gateway, GatewayOptions, ModelCatalogRelay, ProviderRelayDialect, ProviderRelayPorts, RelayLifecycle, RequestRelay, TokenCountRelay } from "./server.js";
 export type { GatewayDialect, ModelCallRecord, ModelGatewayCallContext, ModelGatewayCallResult, ProvenanceSink } from "./provenance.js";
-export type { GatewayPrincipal, WorkloadJwtPrincipalPolicy, WorkloadJwtVerifierOptions } from "./auth.js";
 export type { ModelCatalogEntry, RoutePlan } from "./routing-core.js";
+export type { ObservedDecompositionResult, RequestDecomposerService } from "./request-classifier.js";
 export type { OpenAiBackendOptions } from "./openai-backend.js";
 export type { OpenRouterModelMetadata, OpenRouterModelMetadataClientOptions, ResolvedCodexStartupSelection } from "./codex-model-selection.js";
 export type { ProviderBackendOptions, ProviderTransport } from "./provider-backends.js";
@@ -36,10 +39,13 @@ export { ACP_REGISTRY_URL, fetchAcpRegistry, installAcpAdapters } from "./acp-re
 export { ANTHROPIC_MESSAGE_CONTENT, ANTHROPIC_REQUEST_METADATA, anthropicMessageContentOf, anthropicRequestMetadataOf, attachAnthropicMessageContent, attachAnthropicRequestMetadata, attachReasoningSelection, REASONING_SELECTION, ROUTEKIT_EXTENSION_KEY, reasoningSelectionErrorOf, reasoningSelectionOf, responsesReasoningMetadataErrorOf, routeKitRequestValidationErrorOf, withoutRouteKitExtensions } from "./adapters/openai-chat-wire.js";
 export { API_PROVIDER_IDS, ApiProviderSource, decodeModelDiscovery, decodeReasoningCapabilities, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS } from "./provider-source.js";
 export { AnthropicBackend, CodexResponsesBackend, GoogleGenAiBackend } from "./provider-backends.js";
+export { AutoRoutingUnavailableError, compositionalRoutingAttribution, compositionalRoutingPolicyReaderFromSnapshot, EvalAutoRoutingForbiddenError, RoutingPolicyReadError, resolveCompositionalAutoRoutingModel, resolveConfiguredAutoRoutingModel } from "./eval-policy.js";
 export { BackendExecutor, ModelCatalog, ModelResolver, ProviderLifecycle, RoutePlanner, RoutePolicy } from "./routing-core.js";
 export { BedrockProviderSource, fromBedrockConverseOutput, toBedrockConverseInput } from "./bedrock-source.js";
+export { CLASSIFIABLE_REQUEST_TEXT_LIMIT, ClassificationError, classifyRequestDimensions, extractClassifiableRequestText, makeFakeRequestDecomposer, makeLanguageModelDimensionClassifier, makeRequestDecomposerLayer, parseDecompositionResult, RequestDecomposer, validateDecompositionInput, validateDecompositionResult } from "./request-classifier.js";
 export { CapacityPool } from "./capacity-pool.js";
 export { ChatStreamAssembler } from "./sse/chat-assembler.js";
+export { CompositionalRoutingError, routeCompositionalRequest } from "./compositional-routing.js";
 export { DEFAULT_MODEL_PRICING, estimateCost, formatUsd, lookupPricing, meterCall, parseUsage, parseUsageFromSse } from "./cost.js";
 export { DIALECT_DROPPED_ATTRIBUTE, droppedField, resetDroppedFieldWarnings, withDroppedFieldSpan } from "./adapters/dropped.js";
 export { MAX_WEB_SEARCHES_PER_TURN, resolveWebSearchExecutor } from "./adapters/web-search.js";
@@ -52,9 +58,11 @@ export { buildModelCallRecord, MODEL_CALL_ID_HEADER, modelCallId, readProducerVe
 export { chatToResponses, handleResponses, openAiSseToResponses, responsesToChat, responsesToolRegistry } from "./adapters/responses.js";
 export { decodeAnthropicSseEvent, decodeAnthropicWebSearchResult, decodeOpenAiChatResponse, decodeOpenAiChatSseEvent, decodeOpenAiResponsesEvent, decodeOpenAiWebSearchResult, decodeToolResult, ProviderProtocolError } from "./provider-protocol.js";
 export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse/parse.js";
+export { deriveRoutingRequirements, routingModelAvailability } from "./routing-requirements.js";
 export { effectiveModel, isStream, withDefaultModel } from "./adapters/chat.js";
 export { endpointHealthProbe, probeEndpointHealth, providerAuthHeaders } from "./endpoint-health.js";
 export { errorEvent, finishChunk, noticeChunk, reasoningChunk, sseResponse } from "./sse-wire.js";
+export { invokeObservedModelCall } from "./model-call-service.js";
 export { isCursorChatBody, translateCursorRequest } from "./adapters/cursor.js";
 export { isSubscriptionProvider, modelPolicyAllowsModel, modelPolicyRuleMatches, NoModelAvailableError, RoutingBackend, UnknownModelError } from "./router.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";

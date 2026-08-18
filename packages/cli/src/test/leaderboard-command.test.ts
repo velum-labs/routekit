@@ -13,13 +13,7 @@ test("leaderboard rejects account dimension and keeps principal/model/provider",
   assert.doesNotMatch(help, /--by account|\baccount\b.*dimension/i);
 
   await assert.rejects(
-    buildProgram().parseAsync([
-      "node",
-      "routekit",
-      "leaderboard",
-      "--by",
-      "account"
-    ]),
+    buildProgram().parseAsync(["node", "routekit", "leaderboard", "--by", "account"]),
     /--by must be one of: principal, model, provider/
   );
 });

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
-
 import { test } from "node:test";
+import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { anthropicToChat } from "../adapters/anthropic.js";
 import {
   ANTHROPIC_MESSAGE_CONTENT,

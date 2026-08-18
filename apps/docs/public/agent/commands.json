@@ -354,7 +354,7 @@
         "inspect"
       ],
       "usage": "routekit calls inspect <call-id>",
-      "summary": "show routing, billing, retry, usage, and cost attribution",
+      "summary": "show routing, billing, retry, usage, and cost attribution for one call",
       "arguments": [
         {
           "name": "call-id",
@@ -1446,62 +1446,51 @@
       ]
     },
     {
-      "path": "eval run",
+      "path": "eval answer",
       "argv": [
         "routekit",
         "eval",
-        "run"
+        "answer"
       ],
-      "usage": "routekit eval run",
-      "summary": "run an offline evaluation suite against explicit model IDs",
+      "usage": "routekit eval answer",
+      "summary": "answer exactly one eval project setup question",
       "arguments": [],
       "options": [
         {
-          "flags": "--spec <path>",
-          "description": "eval suite JSON document",
-          "value": "required",
-          "mandatory": true
-        },
-        {
-          "flags": "--url <gateway>",
-          "description": "OpenAI-compatible gateway URL",
-          "value": "required",
-          "mandatory": true
-        },
-        {
-          "flags": "--token <token>",
-          "description": "dedicated eval data-plane token",
-          "value": "required",
-          "mandatory": true
-        },
-        {
-          "flags": "--store <path>",
-          "description": "immutable eval store directory",
+          "flags": "--answer <text>",
+          "description": "answer to the current question",
           "value": "required"
+        },
+        {
+          "flags": "--answer-file <path>",
+          "description": "file containing the answer to the current question",
+          "value": "required"
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
         }
       ],
       "category": "evaluate",
       "visibility": "public",
       "safety": {
         "effect": "write",
-        "target": "local-eval-store-and-explicit-gateway",
+        "target": "local-repository",
         "interaction": "none",
         "jsonOutput": "supported",
         "secretOutput": "none",
-        "sensitiveInputs": [
-          "--token <token>"
-        ]
+        "sensitiveInputs": []
       },
       "verification": {
         "argv": [
           "routekit",
           "eval",
-          "show",
-          "--run-id",
-          "<id>",
+          "status",
           "--json"
         ],
-        "description": "Read the immutable raw evaluation run that was just written."
+        "description": "Inspect the durable project stage and current question."
       },
       "documentation": [
         {
@@ -1511,33 +1500,502 @@
       ]
     },
     {
-      "path": "eval show",
+      "path": "eval approve dimensions",
       "argv": [
         "routekit",
         "eval",
-        "show"
+        "approve",
+        "dimensions"
       ],
-      "usage": "routekit eval show",
-      "summary": "read an immutable raw evaluation run",
+      "usage": "routekit eval approve dimensions",
+      "summary": "approve an exact reviewed routing-basis digest",
       "arguments": [],
       "options": [
         {
-          "flags": "--run-id <id>",
-          "description": "eval run id",
+          "flags": "--digest <sha256>",
+          "description": "exact routing-basis digest",
           "value": "required",
           "mandatory": true
         },
         {
-          "flags": "--store <path>",
-          "description": "immutable eval store directory",
-          "value": "required"
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the exact proposed or approved digest in durable project state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval approve evaluations",
+      "argv": [
+        "routekit",
+        "eval",
+        "approve",
+        "evaluations"
+      ],
+      "usage": "routekit eval approve evaluations",
+      "summary": "approve an exact reviewed evaluation digest",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--digest <sha256>",
+          "description": "exact evaluation-proposal digest",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the exact proposed or approved digest in durable project state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval estimate",
+      "argv": [
+        "routekit",
+        "eval",
+        "estimate"
+      ],
+      "usage": "routekit eval estimate",
+      "summary": "create an immutable pilot or full execution plan",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--scope <scope>",
+          "description": "pilot or full",
+          "value": "required",
+          "default": "pilot"
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
         }
       ],
       "category": "evaluate",
       "visibility": "public",
       "safety": {
         "effect": "read",
-        "target": "local",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval propose dimensions",
+      "argv": [
+        "routekit",
+        "eval",
+        "propose",
+        "dimensions"
+      ],
+      "usage": "routekit eval propose dimensions",
+      "summary": "record a proposed routing basis for review",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--file <path>",
+          "description": "import a reviewed JSON workload-dimension proposal",
+          "value": "required"
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the exact proposed or approved digest in durable project state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval propose evaluations",
+      "argv": [
+        "routekit",
+        "eval",
+        "propose",
+        "evaluations"
+      ],
+      "usage": "routekit eval propose evaluations",
+      "summary": "record proposed dimension suites for review",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--file <path>",
+          "description": "import a reviewed JSON evaluation proposal",
+          "value": "required"
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm the exact proposed or approved digest in durable project state."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval publish",
+      "argv": [
+        "routekit",
+        "eval",
+        "publish"
+      ],
+      "usage": "routekit eval publish",
+      "summary": "atomically activate qualified compositional routing evidence",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--run <id>",
+          "description": "qualified run id",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "selected-routekit-target",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Confirm that the qualified activation and target identity are durable."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval results",
+      "argv": [
+        "routekit",
+        "eval",
+        "results"
+      ],
+      "usage": "routekit eval results",
+      "summary": "show sanitized structured qualification results",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--run <id>",
+          "description": "qualification run id",
+          "value": "required"
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval run",
+      "argv": [
+        "routekit",
+        "eval",
+        "run"
+      ],
+      "usage": "routekit eval run",
+      "summary": "execute an approved immutable plan on the selected RouteKit target",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--plan <id>",
+          "description": "immutable execution plan id",
+          "value": "required",
+          "mandatory": true
+        },
+        {
+          "flags": "--gateway-url <url>",
+          "description": "external qualification-only gateway",
+          "value": "required"
+        },
+        {
+          "flags": "--token-file <path>",
+          "description": "private external gateway credential file",
+          "value": "required"
+        },
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository-and-selected-routekit-target",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": [
+          "--token-file <path>"
+        ]
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "results",
+          "--json"
+        ],
+        "description": "Inspect the sanitized qualification result after the scoped target session closes."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval setup",
+      "argv": [
+        "routekit",
+        "eval",
+        "setup"
+      ],
+      "usage": "routekit eval setup",
+      "summary": "initialize or resume a compositional routing eval project",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "write",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "verification": {
+        "argv": [
+          "routekit",
+          "eval",
+          "status",
+          "--json"
+        ],
+        "description": "Inspect the durable project stage and current question."
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval status",
+      "argv": [
+        "routekit",
+        "eval",
+        "status"
+      ],
+      "usage": "routekit eval status",
+      "summary": "show durable compositional routing eval project state",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-repository",
+        "interaction": "none",
+        "jsonOutput": "supported",
+        "secretOutput": "none",
+        "sensitiveInputs": []
+      },
+      "documentation": [
+        {
+          "html": "/docs/reference/commands",
+          "markdown": "/docs/reference/commands.md"
+        }
+      ]
+    },
+    {
+      "path": "eval validate",
+      "argv": [
+        "routekit",
+        "eval",
+        "validate"
+      ],
+      "usage": "routekit eval validate",
+      "summary": "validate current approvals and project state without model calls",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--repository <path>",
+          "description": "repository root",
+          "value": "required",
+          "default": "."
+        }
+      ],
+      "category": "evaluate",
+      "visibility": "public",
+      "safety": {
+        "effect": "read",
+        "target": "local-repository",
         "interaction": "none",
         "jsonOutput": "supported",
         "secretOutput": "none",

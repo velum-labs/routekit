@@ -1,0 +1,75 @@
+import type {
+  AgentToolResult,
+  ExtensionAPI,
+  ExtensionUIContext,
+} from "@earendil-works/pi-coding-agent";
+
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+
+const textResult = (text: string): AgentToolResult<Record<string, never>> => ({
+  content: [
+    {
+      text,
+      type: "text",
+    },
+  ],
+  details: {},
+});
+
+/** Reserved choice that opens free-text entry, so a caller-supplied `Other`
+ * is a free-response trigger rather than a literal answer. */
+const CUSTOM_ANSWER_OPTION = "Other";
+
+const askPerson = async (
+  params: { readonly options?: readonly string[]; readonly question: string },
+  ui: Pick<ExtensionUIContext, "input" | "select">
+): Promise<AgentToolResult<Record<string, never>>> => {
+  const options = params.options ?? [];
+  const answer =
+    options.length > 0
+      ? await ui.select(
+          params.question,
+          options.includes(CUSTOM_ANSWER_OPTION)
+            ? [...options]
+            : [...options, CUSTOM_ANSWER_OPTION]
+        )
+      : await ui.input(params.question, "Type your answer");
+  const resolvedAnswer =
+    answer === CUSTOM_ANSWER_OPTION
+      ? await ui.input(params.question, "Type your answer")
+      : answer;
+  return resolvedAnswer === undefined
+    ? textResult("The person cancelled the question.")
+    : textResult(`The person answered: ${resolvedAnswer}`);
+};
+
+const askUserTool = defineTool({
+  description:
+    "Ask the person a question when their answer is needed to continue. Offer choices when the answer should come from a short fixed list.",
+  execute: (...args) => {
+    const [_toolCallId, params, _signal, _onUpdate, context] = args;
+    return askPerson(params, context.ui);
+  },
+  label: "Ask User",
+  name: "ask_user",
+  parameters: Type.Object({
+    options: Type.Optional(
+      Type.Array(Type.String(), {
+        description: "Optional choices the person can select from",
+      })
+    ),
+    question: Type.String({
+      description: "The clear, specific question to ask",
+    }),
+  }),
+  promptSnippet:
+    "ask_user(question, options?) - Pause and ask the person for input",
+});
+
+const register = (pi: ExtensionAPI): void => {
+  pi.registerTool(askUserTool);
+};
+
+export { askPerson, askUserTool, register };
+export default register;

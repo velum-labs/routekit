@@ -1,4 +1,7 @@
-import type { RouteKitCallInspection } from "@velum-labs/routekit-control";
+import type {
+  RouteKitCallInspection,
+  RouteKitCompositionalRoutingInspection
+} from "@velum-labs/routekit-control";
 import type { ModelCallRecord, ProvenanceSink } from "@velum-labs/routekit-gateway";
 
 export const DEFAULT_CALL_ATTRIBUTION_LIMIT = 1_000;
@@ -27,6 +30,152 @@ function boolean(value: unknown): boolean {
   return value === true;
 }
 
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.map(string);
+  return values.every((entry) => entry !== undefined) ? (values as string[]) : undefined;
+}
+
+function compositionalRoutingInspection(
+  value: unknown
+): RouteKitCompositionalRoutingInspection | undefined {
+  const routing = record(value);
+  if (routing?.version !== 2) {
+    return undefined;
+  }
+  const basisDigest = string(routing.basis_digest);
+  const evidenceDigest = string(routing.evidence_digest);
+  const unknownWeight = number(routing.unknown_weight);
+  const selectedModel = string(routing.selected_model);
+  const fallbackModels = stringArray(routing.fallback_models);
+  const inferenceCallId = string(routing.inference_call_id);
+  const classifierCallId = string(routing.classifier_call_id);
+  const weights = Array.isArray(routing.weights)
+    ? routing.weights.flatMap((value) => {
+        const weight = record(value);
+        const dimensionId = string(weight?.dimension_id);
+        const amount = number(weight?.weight);
+        return dimensionId === undefined || amount === undefined
+          ? []
+          : [{ dimensionId, weight: amount }];
+      })
+    : [];
+  const requirements = record(routing.requirements);
+  const endpoint = string(requirements?.endpoint);
+  const inputTokens = number(requirements?.input_tokens);
+  const maxOutputTokens = number(requirements?.max_output_tokens);
+  const objective = compositionalObjective(routing.objective);
+  const candidates = Array.isArray(routing.candidates)
+    ? routing.candidates.flatMap((value) => {
+        const candidate = record(value);
+        const model = string(candidate?.model);
+        const exclusionReasons = stringArray(candidate?.exclusion_reasons);
+        const costStatus = string(candidate?.cost_status);
+        if (
+          model === undefined ||
+          exclusionReasons === undefined ||
+          (costStatus !== "known" && costStatus !== "unavailable") ||
+          typeof candidate?.eligible !== "boolean"
+        ) {
+          return [];
+        }
+        return [
+          {
+            model,
+            eligible: candidate.eligible,
+            exclusionReasons,
+            ...(number(candidate.quality) === undefined
+              ? {}
+              : { quality: number(candidate.quality) }),
+            ...(number(candidate.failure_rate) === undefined
+              ? {}
+              : { failureRate: number(candidate.failure_rate) }),
+            ...(number(candidate.p95_duration_ms) === undefined
+              ? {}
+              : { p95DurationMs: number(candidate.p95_duration_ms) }),
+            ...(number(candidate.average_cost_usd) === undefined
+              ? {}
+              : { averageCostUsd: number(candidate.average_cost_usd) }),
+            costStatus: costStatus as "known" | "unavailable",
+            ...(typeof candidate.utility !== "number" || !Number.isFinite(candidate.utility)
+              ? {}
+              : { utility: candidate.utility }),
+            ...(number(candidate.rank) === undefined ? {} : { rank: number(candidate.rank) })
+          }
+        ];
+      })
+    : [];
+  if (
+    basisDigest === undefined ||
+    evidenceDigest === undefined ||
+    unknownWeight === undefined ||
+    selectedModel === undefined ||
+    fallbackModels === undefined ||
+    inferenceCallId === undefined ||
+    weights.length === 0 ||
+    weights.length !== (Array.isArray(routing.weights) ? routing.weights.length : 0) ||
+    requirements === undefined ||
+    (endpoint !== "chat" && endpoint !== "responses" && endpoint !== "anthropic") ||
+    typeof requirements.requires_tools !== "boolean" ||
+    typeof requirements.requires_vision !== "boolean" ||
+    objective === undefined ||
+    candidates.length === 0 ||
+    candidates.length !== (Array.isArray(routing.candidates) ? routing.candidates.length : 0)
+  ) {
+    return undefined;
+  }
+  return {
+    version: 2,
+    basisDigest,
+    evidenceDigest,
+    weights,
+    unknownWeight,
+    requirements: {
+      endpoint,
+      requiresTools: requirements.requires_tools,
+      requiresVision: requirements.requires_vision,
+      ...(inputTokens === undefined ? {} : { inputTokens }),
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens })
+    },
+    objective,
+    candidates,
+    selectedModel,
+    fallbackModels,
+    ...(classifierCallId === undefined ? {} : { classifierCallId }),
+    inferenceCallId
+  };
+}
+
+function compositionalObjective(
+  value: unknown
+): RouteKitCompositionalRoutingInspection["objective"] | undefined {
+  const objective = record(value);
+  const kind = string(objective?.kind);
+  if (kind === "highest-quality") return { kind };
+  const minimumQuality = number(objective?.minimum_quality);
+  if ((kind === "lowest-cost" || kind === "lowest-latency") && minimumQuality !== undefined) {
+    return { kind, minimumQuality };
+  }
+  if (kind === "balanced" && minimumQuality !== undefined) {
+    const weights = record(objective?.weights);
+    const quality = number(weights?.quality);
+    const cost = number(weights?.cost);
+    const latency = number(weights?.latency);
+    if (quality !== undefined && cost !== undefined && latency !== undefined) {
+      return { kind, minimumQuality, weights: { quality, cost, latency } };
+    }
+  }
+  const preference = string(objective?.preference);
+  if (
+    kind === "pareto" &&
+    minimumQuality !== undefined &&
+    (preference === "quality" || preference === "cost" || preference === "latency")
+  ) {
+    return { kind, minimumQuality, preference };
+  }
+  return undefined;
+}
+
 export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspection | undefined {
   const metadata = modelCall.metadata;
   const attribution = record(metadata?.attribution);
@@ -46,6 +195,12 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
   const principalTokenId = string(principal?.token_id);
   const principalLabel = string(principal?.label);
   const nativeModel = string(attribution?.native_model);
+  const requestedModel = string(metadata?.requested_model);
+  const compositionalRouting = compositionalRoutingInspection(attribution?.compositional_routing);
+  const evalAttribution = record(attribution?.eval);
+  const evalRole = string(evalAttribution?.role);
+  const evalRunId = string(evalAttribution?.run_id);
+  const evalCaseId = string(evalAttribution?.case_id);
   const estimateUsd = number(metadata?.cost_estimate_usd);
   const attempts = number(attribution?.attempts) ?? 1;
   const retries = number(attribution?.retries) ?? Math.max(0, attempts - 1);
@@ -53,6 +208,7 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
   return {
     callId: modelCall.call_id,
     status: modelCall.status,
+    ...(requestedModel !== undefined ? { requestedModel } : {}),
     effectiveModel,
     ...(nativeModel !== undefined ? { nativeModel } : {}),
     provider,
@@ -63,6 +219,19 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
           principal: {
             tokenId: principalTokenId,
             ...(principalLabel !== undefined ? { label: principalLabel } : {})
+          }
+        }
+      : {}),
+    ...(compositionalRouting === undefined ? {} : { compositionalRouting }),
+    ...(evalRunId !== undefined &&
+    (evalRole === "author" || evalRole === "candidate" || evalRole === "judge") &&
+    evalAttribution?.policy_bypass === true
+      ? {
+          eval: {
+            role: evalRole,
+            runId: evalRunId,
+            ...(evalCaseId === undefined ? {} : { caseId: evalCaseId }),
+            policyBypass: true as const
           }
         }
       : {}),

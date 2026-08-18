@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `f6d76f607578a5e00b4d501552966f853fe04f2e3817eaa32b74af2e1975baab`
+Declaration SHA-256: `885fbb6298d41e27dd1fc26135aea0ce9fe6b6517430c6d1237f3dff74934b97`
 
 ## Root declarations
 
@@ -20,7 +20,7 @@ export declare const COMMAND_ARCH_VALUES: readonly ["arm64", "x64", "other"];
 export declare const COMMAND_EXIT_KINDS: readonly ["success", "usage_error", "command_error", "cancelled"];
 export declare const COMMAND_NODE_MAJOR_VALUES: readonly ["22", "23", "24", "25", "26", "other"];
 export declare const COMMAND_OS_VALUES: readonly ["darwin", "linux", "win32", "other"];
-export declare const COMMAND_PATHS: readonly ["start", "stop", "status", "doctor", "usage", "usage.redeem", "leaderboard", "accounts.login", "accounts.add", "accounts.rename", "accounts.remove", "accounts.list", "accounts.status", "calls.inspect", "config.path", "config.show", "config.init", "config.edit", "config.import", "providers.add", "providers.remove", "providers.status", "models.list", "models.info", "remote.add", "remote.install", "remote.list", "remote.show", "remote.use", "remote.remove", "peer.add", "peer.show", "peer.remove", "token.issue", "token.list", "token.revoke", "codex", "claude", "codex.install", "codex.uninstall", "claude.install", "claude.uninstall", "daemon.reload", "daemon.auth.show", "daemon.service.install", "daemon.service.uninstall", "daemon.service.status", "daemon.logs", "daemon.restart", "daemon.upgrade", "eval.run", "eval.show", "policy.show"];
+export declare const COMMAND_PATHS: readonly ["start", "stop", "status", "doctor", "usage", "usage.redeem", "leaderboard", "accounts.login", "accounts.add", "accounts.rename", "accounts.remove", "accounts.list", "accounts.status", "calls.inspect", "config.path", "config.show", "config.init", "config.edit", "config.import", "providers.add", "providers.remove", "providers.status", "models.list", "models.info", "remote.add", "remote.install", "remote.list", "remote.show", "remote.use", "remote.remove", "peer.add", "peer.show", "peer.remove", "token.issue", "token.list", "token.revoke", "codex", "claude", "codex.install", "codex.uninstall", "claude.install", "claude.uninstall", "daemon.reload", "daemon.auth.show", "daemon.service.install", "daemon.service.uninstall", "daemon.service.status", "daemon.logs", "daemon.restart", "daemon.upgrade", "eval.setup", "eval.status", "eval.answer", "eval.propose.dimensions", "eval.propose.evaluations", "eval.approve.dimensions", "eval.approve.evaluations", "eval.validate", "eval.estimate", "eval.run", "eval.results", "eval.publish", "policy.show"];
 export declare const COMMAND_TARGET_KINDS: readonly ["local", "remote", "peer"];
 export declare const DEFAULT_TELEMETRY_CATEGORIES: Readonly<TelemetryCategories>;
 export declare const DURATION_BUCKETS: readonly ["<1s", "1-10s", "10-60s", "1-5m", "5-30m", ">30m"];

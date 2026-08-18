@@ -1,3 +1,20 @@
+export type {
+  ObservedDecompositionResult,
+  RequestDecomposerService
+} from "./request-classifier.js";
+export {
+  CLASSIFIABLE_REQUEST_TEXT_LIMIT,
+  ClassificationError,
+  classifyRequestDimensions,
+  extractClassifiableRequestText,
+  makeFakeRequestDecomposer,
+  makeLanguageModelDimensionClassifier,
+  makeRequestDecomposerLayer,
+  parseDecompositionResult,
+  RequestDecomposer,
+  validateDecompositionInput,
+  validateDecompositionResult
+} from "./request-classifier.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
 export {
   isSubscriptionProvider,

@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { Effect } from "effect";
 import { test } from "node:test";
-
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
+import { Effect } from "effect";
 
 import { type Backend, borrowedBackendPorts } from "../backend.js";
 import { startGateway } from "../server.js";

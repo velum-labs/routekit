@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "protocolVersion": 2,
+  "harness": "pi",
+  "authorHarnesses": ["pi", "claude", "codex"],
+  "runModel": "openai/gpt-5.6-terra",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "skills": {
+    "createEval": { "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "spawnOriEval": { "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+  },
+  "host": {
+    "apiBaseUrl": "https://openrouter.ai/api",
+    "apiBaseUrlEnv": "ORI_EVAL_API_BASE_URL",
+    "credential": "missing",
+    "credentialEnv": "OPENROUTER_API_KEY"
+  }
+}

@@ -6,7 +6,11 @@ import {
 } from "@velum-labs/routekit-accounts/effect";
 import type { LeaderboardConfig, RouterConfig } from "@velum-labs/routekit-config";
 import type { RouteKitControlParams, RouteKitControlResults } from "@velum-labs/routekit-control";
-import type { ProvenanceSink, SwitchingGatewayProxy } from "@velum-labs/routekit-gateway";
+import type {
+  CompositionalRoutingPolicyReader,
+  ProvenanceSink,
+  SwitchingGatewayProxy
+} from "@velum-labs/routekit-gateway";
 import type { RunningRouter } from "@velum-labs/routekit-router";
 import type { RunningControlServer, TokenStore } from "@velum-labs/routekit-runtime";
 import { Context, Effect, Layer } from "effect";
@@ -15,6 +19,7 @@ import type { CallAttributionStore } from "../call-attribution-store.js";
 import type { CliproxySidecar } from "../cliproxy-sidecar.js";
 import type { DaemonGenerationManager, DaemonGenerationStage } from "../daemon-generations.js";
 import type { DaemonRuntimeState } from "../daemon-runtime-state.js";
+import type { EvalSessionManager } from "../eval-session-service.js";
 import type { LeaderboardRollupStore } from "../leaderboard.js";
 import type { DaemonTelemetry, GatewayTelemetryAggregator } from "../telemetry.js";
 
@@ -66,6 +71,7 @@ export type DaemonGenerationHooks = {
   drainGraceMs: number;
   routerEnv: () => NodeJS.ProcessEnv;
   provenance: ProvenanceSink;
+  compositionalPolicyReader?: CompositionalRoutingPolicyReader;
   wantsSidecar(config: RouterConfig): boolean;
   applyConfig(config: RouterConfig): void;
   activeCredentialFingerprints(): Map<string, string>;
@@ -170,6 +176,10 @@ export class ActiveGateway extends Context.Service<ActiveGateway, ActiveGatewayV
 
 export class Tokens extends Context.Service<Tokens, TokenStore>()(
   "@velum-labs/routekit-daemon/Tokens"
+) {}
+
+export class EvalSessions extends Context.Service<EvalSessions, EvalSessionManager>()(
+  "@velum-labs/routekit-daemon/EvalSessions"
 ) {}
 
 export class Telemetry extends Context.Service<Telemetry, TelemetryServiceValue>()(

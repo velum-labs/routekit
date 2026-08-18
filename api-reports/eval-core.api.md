@@ -2,11 +2,12 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `1e0b30f3c6181e25da8742cb102dcfd07d65db9036c353aeb9dd50f861148c1a`
+Declaration SHA-256: `f34f4502987af47f1749ad828d1036eb3d42f568860f57766a949302adaf92e3`
 
 ## Root declarations
 
 ```ts
 export type { EvalEgressOptions } from "./egress.js";
 export { aggregateEvalResults, runEvalSuite } from "./run.js";
+export { type RoutingModelAvailability, type RoutingScoreConstraints, type RoutingScoreResult, RoutingScoringError, type RoutingScoringErrorCode, type ScoreRoutingCandidatesInput, scoreRoutingCandidates } from "./routing-score.js";
 ```

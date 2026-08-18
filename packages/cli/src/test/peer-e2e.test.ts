@@ -21,12 +21,7 @@ import { encodeJoinCredential } from "@velum-labs/routekit-runtime";
 
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
 
-function run(
-  args: readonly string[],
-  cwd: string,
-  env: NodeJS.ProcessEnv,
-  input?: string
-) {
+function run(args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, input?: string) {
   return new Promise<{ code: number; stdout: string; stderr: string }>((resolveRun) => {
     const child = execFile(
       process.execPath,
@@ -76,9 +71,7 @@ test("a peer account administers the owner's daemon through the peer pointer", a
       )
     );
   });
-  await new Promise<void>((resolveListen) =>
-    upstream.listen(0, "127.0.0.1", resolveListen)
-  );
+  await new Promise<void>((resolveListen) => upstream.listen(0, "127.0.0.1", resolveListen));
   const upstreamPort = (upstream.address() as AddressInfo).port;
   const shared = {
     ...process.env,
@@ -104,22 +97,15 @@ test("a peer account administers the owner's daemon through the peer pointer", a
 
     const publicRecordPath = join(ownerState, "services", "daemon.public.json");
     assert.ok(existsSync(publicRecordPath));
-    const published = JSON.parse(readFileSync(publicRecordPath, "utf8")) as
-      Record<string, unknown>;
+    const published = JSON.parse(readFileSync(publicRecordPath, "utf8")) as Record<string, unknown>;
     // Discovery is world-readable, so it must never carry a credential.
     assert.equal(published.controlToken, undefined);
-    assert.doesNotMatch(
-      readFileSync(publicRecordPath, "utf8"),
-      new RegExp(record.controlToken!)
-    );
+    assert.doesNotMatch(readFileSync(publicRecordPath, "utf8"), new RegExp(record.controlToken!));
     assert.equal(statSync(publicRecordPath).mode & 0o777, 0o644);
     // Peers traverse both directories to reach the record by exact path.
     assert.equal(statSync(ownerState).mode & 0o777, 0o711);
     assert.equal(statSync(join(ownerState, "services")).mode & 0o777, 0o711);
-    assert.equal(
-      statSync(join(ownerState, "services", "daemon.json")).mode & 0o777,
-      0o600
-    );
+    assert.equal(statSync(join(ownerState, "services", "daemon.json")).mode & 0o777, 0o600);
     assert.equal(statSync(join(ownerState, "secrets")).mode & 0o777, 0o700);
 
     const issued = await run(
@@ -143,8 +129,7 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     const beforeStatus = await run(["status", "--json"], project, peerEnv);
     assert.equal(beforeStatus.code, 0, beforeStatus.stderr);
     assert.equal(
-      (JSON.parse(beforeStatus.stdout) as { daemon?: { running?: boolean } }).daemon
-        ?.running,
+      (JSON.parse(beforeStatus.stdout) as { daemon?: { running?: boolean } }).daemon?.running,
       false
     );
 
@@ -167,14 +152,14 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     );
     assert.equal(added.code, 0, added.stderr);
     assert.equal(
-      (JSON.parse(added.stdout) as { peer?: { controlUrl?: string } }).peer
-        ?.controlUrl,
+      (JSON.parse(added.stdout) as { peer?: { controlUrl?: string } }).peer?.controlUrl,
       published.url
     );
     // The peer pointer stores the bare secret, never the join blob.
-    const pointer = JSON.parse(
-      readFileSync(join(peerState, "peer.json"), "utf8")
-    ) as { controlToken: string; publicRecordPath: string };
+    const pointer = JSON.parse(readFileSync(join(peerState, "peer.json"), "utf8")) as {
+      controlToken: string;
+      publicRecordPath: string;
+    };
     assert.equal(pointer.controlToken, controlToken.token);
     assert.doesNotMatch(pointer.controlToken, /^rk1_/);
     assert.equal(pointer.publicRecordPath, publicRecordPath);
@@ -191,20 +176,15 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     assert.equal(overview.models?.count, 1);
     const peerModels = await run(["models", "list", "--json"], project, peerEnv);
     assert.equal(peerModels.code, 0, peerModels.stderr);
-    assert.deepEqual(
-      (JSON.parse(peerModels.stdout) as { models: string[] }).models,
-      ["openai/mock-model"]
-    );
+    assert.deepEqual((JSON.parse(peerModels.stdout) as { models: string[] }).models, [
+      "openai/mock-model"
+    ]);
     // The peer must never start a competing daemon.
     assert.equal(existsSync(join(peerState, "services", "daemon.json")), false);
     // Owner-side commands must not harden the home back out of reach.
     assert.equal(statSync(ownerState).mode & 0o777, 0o711);
 
-    const revoked = await run(
-      ["token", "revoke", controlToken.id, "--json"],
-      project,
-      ownerEnv
-    );
+    const revoked = await run(["token", "revoke", controlToken.id, "--json"], project, ownerEnv);
     assert.equal(revoked.code, 0, revoked.stderr);
     const afterRevoke = await run(["status"], project, peerEnv);
     assert.equal(afterRevoke.code, 1);
@@ -221,8 +201,7 @@ test("a peer account administers the owner's daemon through the peer pointer", a
     const afterStop = await run(["status", "--json"], project, peerEnv);
     assert.equal(afterStop.code, 0, afterStop.stderr);
     assert.equal(
-      (JSON.parse(afterStop.stdout) as { daemon?: { running?: boolean } }).daemon
-        ?.running,
+      (JSON.parse(afterStop.stdout) as { daemon?: { running?: boolean } }).daemon?.running,
       false
     );
     const modelsAfterStop = await run(["models", "list"], project, peerEnv);
@@ -246,12 +225,7 @@ test("peer add explains an unreadable owner home instead of reporting a missing 
   const ownerHome = join(root, "owner-home");
   const peerHome = join(root, "peer-home");
   const project = join(root, "project");
-  const publicRecordPath = join(
-    ownerHome,
-    ".routekit",
-    "services",
-    "daemon.public.json"
-  );
+  const publicRecordPath = join(ownerHome, ".routekit", "services", "daemon.public.json");
   mkdirSync(dirname(publicRecordPath), { recursive: true });
   mkdirSync(peerHome, { recursive: true });
   mkdirSync(project, { recursive: true });

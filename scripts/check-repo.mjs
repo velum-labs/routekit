@@ -32,6 +32,9 @@ const ROUTEKIT_PACKAGE_DIRS = [
   "harness-core",
   "eval-contracts",
   "eval-core",
+  "eval-engine",
+  "eval-service",
+  "eval-setup",
   "eval-store",
   "registry",
   "router",
@@ -537,6 +540,7 @@ if (envSpreadListing.status === 0) {
   const waiverPattern = /env-spread-allowed:\s*\S/;
   for (const file of envSpreadListing.stdout.split("\n").filter((line) => line.length > 0)) {
     if (file.startsWith("packages/runtime/")) continue;
+    if (file.startsWith("packages/eval-engine/src/vendor/")) continue;
     if (file.includes("/test/")) continue;
     if (!existsSync(file)) continue;
     const lines = readFileSync(file, "utf8").split("\n");

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Copy the pulsar-mumbai gateway Bedrock API key from /etc/routekit/bedrock.env
+# into SSM /pulsar-mumbai/gateway/bedrock-api-key (ap-south-1).
+set -euo pipefail
+
+profile="${AWS_PROFILE:-routekit-admin}"
+region="ap-south-1"
+parameter="/pulsar-mumbai/gateway/bedrock-api-key"
+host="${PULSAR_SSH_HOST:-alen@pulsar-mumbai-gateway-a.tail0c34cf.ts.net}"
+
+aws --profile "$profile" sts get-caller-identity >/dev/null
+
+tmp=$(mktemp)
+chmod 600 "$tmp"
+cleanup() {
+  rm -f "$tmp"
+}
+trap cleanup EXIT
+
+ssh -o BatchMode=yes "$host" 'sudo python3 -c "
+from pathlib import Path
+text = Path(\"/etc/routekit/bedrock.env\").read_text()
+for line in text.splitlines():
+    if line.startswith(\"AWS_BEARER_TOKEN_BEDROCK=\"):
+        print(line.split(\"=\", 1)[1], end=\"\")
+        break
+else:
+    raise SystemExit(\"AWS_BEARER_TOKEN_BEDROCK missing from /etc/routekit/bedrock.env\")
+"' >"$tmp"
+
+if ! grep -q '^ABSK' "$tmp"; then
+  echo "refusing to store a Bedrock API key that does not start with ABSK" >&2
+  exit 1
+fi
+
+aws --profile "$profile" --region "$region" ssm put-parameter \
+  --name "$parameter" \
+  --type SecureString \
+  --value "file://$tmp" \
+  --overwrite \
+  --tier Standard \
+  >/dev/null
+
+ssh -o BatchMode=yes "$host" 'sudo /usr/local/sbin/routekit-bedrock-token-sync && sudo systemctl restart routekit-gateway.service && sudo systemctl is-active routekit-gateway.service'
+
+echo "stored $parameter and restarted routekit-gateway.service"

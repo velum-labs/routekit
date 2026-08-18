@@ -2,17 +2,8 @@ import { dirname, join } from "node:path";
 
 import { samePath } from "../candidate.js";
 import { isPrivateInstallerNpm, readInstallerReceipt } from "../receipt.js";
-import type {
-  DiscoveryContext,
-  NpmOwner,
-  SelfUpdateAdapter
-} from "../types.js";
-import {
-  contextId,
-  managerExecutables,
-  outputLine,
-  verifyDetectedOwner
-} from "./shared.js";
+import type { DiscoveryContext, NpmOwner, SelfUpdateAdapter } from "../types.js";
+import { contextId, managerExecutables, outputLine, verifyDetectedOwner } from "./shared.js";
 
 function npmPackageLocations(root: string, prefix: string): string[] {
   return [
@@ -67,7 +58,9 @@ function inventoryOwnsPackage(
 function canonicalLocationStartsWith(location: string, root: string): boolean {
   const normalizedLocation = location.replaceAll("\\", "/");
   const normalizedRoot = root.replaceAll("\\", "/").replace(/\/$/, "");
-  return normalizedLocation === normalizedRoot || normalizedLocation.startsWith(`${normalizedRoot}/`);
+  return (
+    normalizedLocation === normalizedRoot || normalizedLocation.startsWith(`${normalizedRoot}/`)
+  );
 }
 
 export const npmAdapter: SelfUpdateAdapter<NpmOwner> = {
@@ -101,9 +94,7 @@ export const npmAdapter: SelfUpdateAdapter<NpmOwner> = {
       const owner: NpmOwner = {
         kind: "npm",
         provenance:
-          receiptMatches || privateInstallerMatches
-            ? "routekit-installer"
-            : "package-manager",
+          receiptMatches || privateInstallerMatches ? "routekit-installer" : "package-manager",
         executable,
         packageRoot: context.packageRoot,
         binDirectory: process.platform === "win32" ? prefix : join(prefix, "bin"),

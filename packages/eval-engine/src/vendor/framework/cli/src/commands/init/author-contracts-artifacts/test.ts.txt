@@ -1,0 +1,113 @@
+// Generated from framework/contracts/author/src by `bun run contracts:generate`.
+// Do not edit by hand.
+import type {
+  AgentHarness,
+  AgentRuntimeEvent,
+  Chat,
+  ChatContribution,
+  ChatTurnInput,
+  HarnessInvokeOptions,
+} from "./index";
+
+import { HarnessType } from "./enums";
+
+export const harnessInvokeOptions = (
+  prompt: string,
+  overrides: Omit<Partial<HarnessInvokeOptions>, "prompt" | "type"> = {}
+): HarnessInvokeOptions => ({
+  ...overrides,
+  prompt,
+  type: HarnessType.InvokeOptions,
+});
+
+export const collectHarnessEvents = async (
+  harness: AgentHarness,
+  options: HarnessInvokeOptions
+): Promise<readonly AgentRuntimeEvent[]> => {
+  let prompt: ((options: HarnessInvokeOptions) => AsyncIterable<AgentRuntimeEvent>) | undefined;
+  let close: (() => Promise<void>) | undefined;
+  const events: AgentRuntimeEvent[] = [];
+  try {
+    await harness.init({
+      registerClose: (callback) => { close = callback; },
+      // This helper exercises prompt collection only.
+      registerCompaction: (callback) => {
+        void callback;
+      },
+      registerConnect: () => {
+        throw new Error("Prompt-only test harness must not connect");
+      },
+      registerProbe: (probe) => {
+        void probe;
+      },
+      registerPrompt: (callback) => { prompt = callback; },
+      setDefaultModel: (model) => {
+        void model;
+      },
+    });
+    if (prompt === undefined) {
+      throw new Error(`Harness "${harness.name}" did not register a prompt callback`);
+    }
+    for await (const event of prompt(options)) {
+      events.push(event);
+    }
+    return events;
+  } finally {
+    await close?.();
+  }
+};
+
+// RFC 0009 surface-fixture-seam.md: a model-free scripted Chat runtime. A chat surface receives a
+// `Chat` and drives it; this builds one whose `sendMessage` replays a fixed
+// event script and records every turn input, so a Contract-tier test can assert
+// how the surface used the runtime — no network, no model.
+export interface ScriptedChat {
+  readonly chat: Chat;
+  readonly sentInputs: () => readonly ChatTurnInput[];
+}
+
+export const makeScriptedChat = (
+  script: readonly AgentRuntimeEvent[] = [],
+  options: { readonly initialSessionId?: string } = {}
+): ScriptedChat => {
+  const sent: ChatTurnInput[] = [];
+  const chat: Chat = {
+    initialSessionId: () => options.initialSessionId,
+    listSessions: () => Promise.resolve([]),
+    async *sendMessage(input: ChatTurnInput) {
+      sent.push(input);
+      for (const event of script) {
+        yield event;
+      }
+    },
+  };
+  return { chat, sentInputs: () => sent };
+};
+
+// Run a chat surface's start/stop lifecycle against a scripted Chat and return
+// the recorded turn inputs, so a test can drive the surface without a runtime.
+export const driveChatSurface = async (
+  surface: ChatContribution,
+  scripted: ScriptedChat = makeScriptedChat()
+): Promise<{ readonly sentInputs: readonly ChatTurnInput[] }> => {
+  await surface.start(scripted.chat);
+  await surface.stop();
+  return { sentInputs: scripted.sentInputs() };
+};
+
+// Deep-equality fixture assertions need a stable projection: raw harness
+// events carry per-run fields (ids, timestamps, full raw payloads) that would
+// make every expectation flaky, so tests compare only payload/source/type.
+export interface ProjectedEvent {
+  readonly payload: AgentRuntimeEvent["payload"];
+  readonly source: NonNullable<AgentRuntimeEvent["raw"]>["source"] | undefined;
+  readonly type: AgentRuntimeEvent["type"];
+}
+
+export const projectEventForAssertion = (
+  event: AgentRuntimeEvent
+): ProjectedEvent => ({
+  payload: event.payload,
+  source: event.raw?.source,
+  type: event.type,
+});

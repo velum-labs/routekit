@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -17,7 +17,10 @@ test("account listing and state snapshots stay private", () => {
     writeFileSync(join(codex, "primary.json"), JSON.stringify({ secret: "not-read" }), {
       mode: 0o600
     });
-    assert.deepEqual(listAccounts().map((entry) => entry.label), ["primary"]);
+    assert.deepEqual(
+      listAccounts().map((entry) => entry.label),
+      ["primary"]
+    );
 
     const catalog = writeStateSnapshot("catalog", "models", { models: ["opaque"] });
     const health = writeStateSnapshot("health", "providers", { providers: [] });

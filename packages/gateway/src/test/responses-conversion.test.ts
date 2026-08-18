@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { Effect } from "effect";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
-
 import { test } from "node:test";
+import { Effect } from "effect";
 import {
   attachReasoningSelection,
   attachResponsesReasoningMetadata,

@@ -12,6 +12,8 @@ import { AccountQueryService } from "../account-query-service.js";
 import { createDaemonControlMethodRegistry } from "../application-services.js";
 import { DaemonLifecycleService } from "../daemon-lifecycle-service.js";
 import { DoctorApplicationService } from "../doctor-application-service.js";
+import { EvalRoutingApplicationService } from "../eval-routing-application-service.js";
+import { EvalSessionApplicationService } from "../eval-session-application-service.js";
 import { LauncherApplicationService } from "../launcher-application-service.js";
 import { ProviderQueryService } from "../provider-query-service.js";
 import { RouterGenerationService } from "../router-generation-service.js";
@@ -108,6 +110,14 @@ test("application services expose concrete bounded handler groups", () => {
     "tokens.issue",
     "tokens.list",
     "tokens.revoke"
+  ]);
+  assert.deepEqual(Object.keys(new EvalSessionApplicationService().handlers()).sort(), [
+    "evalSession.close",
+    "evalSession.open"
+  ]);
+  assert.deepEqual(Object.keys(new EvalRoutingApplicationService().handlers()).sort(), [
+    "evalRouting.activate",
+    "evalRouting.status"
   ]);
   assert.deepEqual(Object.keys(new TelemetryApplicationService().handlers()).sort(), [
     "telemetry.captureCommand",

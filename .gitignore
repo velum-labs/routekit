@@ -24,6 +24,9 @@ apps/docs/content/docs/api/
 apps/docs/.next/
 apps/docs/.source/
 
+# Durable local eval authoring state and isolated scratch workspaces.
+/.routekit/eval-setup/
+
 # Local Terraform working data and real deployment inputs.
 **/.terraform/
 *.tfstate

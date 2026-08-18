@@ -6,12 +6,12 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { buildProgram } from "../cli.js";
-import { completionCandidates } from "../completion.js";
 import { isModelRouteInfo } from "../commands/models.js";
+import { completionCandidates } from "../completion.js";
 
 const execFileAsync = promisify(execFile);
 const CLI_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");

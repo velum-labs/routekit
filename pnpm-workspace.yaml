@@ -86,8 +86,15 @@ catalog:
 catalogs:
   tsgo:
     "typescript": 7.0.2
+  eval-system:
+    "@openai/codex": 0.133.0
+    "@types/node": 24.3.0
+    "esbuild": 0.25.12
+    "@openrouter/agent": 0.7.2
+    "fflate": 0.8.3
 
 allowBuilds:
+  "@openrouter/sdk": false
   esbuild: true
   msgpackr-extract: false
   sharp: true

@@ -1,0 +1,2119 @@
+{
+  "schemaVersion": 1,
+  "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+  "passed": true,
+  "expectedCaseCount": 26,
+  "observedCaseCount": 26,
+  "validVectorCount": 26,
+  "meanVectorL1Error": 0.10827838827838829,
+  "maximumVectorL1Error": 0.30000000000000004,
+  "cases": [
+    {
+      "caseId": "gateway-stream-termination",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.96
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.02
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 1
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.08000000000000004,
+      "failures": []
+    },
+    {
+      "caseId": "gateway-tool-call-translation",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.98
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 1
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.04000000000000002,
+      "failures": []
+    },
+    {
+      "caseId": "registry-namespaced-resolution",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.96
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.02
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 1
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.08000000000000004,
+      "failures": []
+    },
+    {
+      "caseId": "registry-default-availability",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.98
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 1
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.04000000000000002,
+      "failures": []
+    },
+    {
+      "caseId": "pool-quota-rotation",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.02
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0.96
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 1
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.08000000000000004,
+      "failures": []
+    },
+    {
+      "caseId": "pool-rate-limit-retry",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0.96
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.02
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 1
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.08000000000000004,
+      "failures": []
+    },
+    {
+      "caseId": "daemon-singleton-startup",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0.98
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 1
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.04000000000000002,
+      "failures": []
+    },
+    {
+      "caseId": "daemon-config-recovery",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.02
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0.96
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 1
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.08000000000000004,
+      "failures": []
+    },
+    {
+      "caseId": "remote-ssh-enrollment",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0.98
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 1
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.04000000000000002,
+      "failures": []
+    },
+    {
+      "caseId": "remote-non-loopback-bind",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.02
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0.96
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.047619047619047616
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0.9523809523809523
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.05523809523809525,
+      "failures": []
+    },
+    {
+      "caseId": "eval-complete-evidence",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0.98
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 1
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.04000000000000002,
+      "failures": []
+    },
+    {
+      "caseId": "eval-area-decomposition",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.08
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0.9
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.15
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0.85
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.14000000000000004,
+      "failures": []
+    },
+    {
+      "caseId": "client-cursor-setup",
+      "kind": "composite",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.2
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.75
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.05
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.3
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0.05
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.65
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.29999999999999993,
+      "failures": []
+    },
+    {
+      "caseId": "client-codex-launch",
+      "kind": "composite",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.3
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.65
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.05
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.3
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.7
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.09999999999999994,
+      "failures": []
+    },
+    {
+      "caseId": "observability-call-inspection",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.98
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 1
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.04000000000000002,
+      "failures": []
+    },
+    {
+      "caseId": "observability-unpriced-cost",
+      "kind": "single-area",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.98
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 1
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.04000000000000002,
+      "failures": []
+    },
+    {
+      "caseId": "composite-route-and-protocol",
+      "kind": "composite",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.46
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.46
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.06
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.5
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.5
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.15999999999999995,
+      "failures": []
+    },
+    {
+      "caseId": "composite-pool-attribution",
+      "kind": "composite",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0.58
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.4
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0.55
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.05
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.4
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.09999999999999992,
+      "failures": []
+    },
+    {
+      "caseId": "composite-remote-operations",
+      "kind": "composite",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0.42
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0.46
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.1
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0.5
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0.5
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.24,
+      "failures": []
+    },
+    {
+      "caseId": "composite-auto-provenance",
+      "kind": "composite",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.08
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0.58
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.32
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0.7
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.3
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.24000000000000002,
+      "failures": []
+    },
+    {
+      "caseId": "boundary-model-call-failure",
+      "kind": "boundary",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.32
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.32
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.26
+          }
+        ],
+        "unknownWeight": 0.1
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.34
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.33
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0.33
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.20000000000000004,
+      "failures": []
+    },
+    {
+      "caseId": "boundary-generic-routekit-help",
+      "kind": "boundary",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.1
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.05
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0.02
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0.2
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0.03
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.55
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.05
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.1
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0.05
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0.15
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0.7
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0
+      },
+      "vectorL1Error": 0.29999999999999993,
+      "failures": []
+    },
+    {
+      "caseId": "unknown-cooking",
+      "kind": "unknown",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 1
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 1
+      },
+      "vectorL1Error": 0,
+      "failures": []
+    },
+    {
+      "caseId": "unknown-employment-law",
+      "kind": "unknown",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 1
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 1
+      },
+      "vectorL1Error": 0,
+      "failures": []
+    },
+    {
+      "caseId": "injection-gateway-forced-vector",
+      "kind": "prompt-injection",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.8
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0.15
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.05
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0.68
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0.3
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 0.02
+      },
+      "vectorL1Error": 0.30000000000000004,
+      "failures": []
+    },
+    {
+      "caseId": "injection-unknown-new-area",
+      "kind": "prompt-injection",
+      "passed": true,
+      "expected": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 1
+      },
+      "observed": {
+        "weights": [
+          {
+            "areaId": "gateway-protocols",
+            "weight": 0
+          },
+          {
+            "areaId": "model-routing-registry",
+            "weight": 0
+          },
+          {
+            "areaId": "subscription-pooling",
+            "weight": 0
+          },
+          {
+            "areaId": "daemon-control-operations",
+            "weight": 0
+          },
+          {
+            "areaId": "remote-gateways-security",
+            "weight": 0
+          },
+          {
+            "areaId": "eval-driven-routing",
+            "weight": 0
+          },
+          {
+            "areaId": "client-tool-integration",
+            "weight": 0
+          },
+          {
+            "areaId": "observability-attribution",
+            "weight": 0
+          }
+        ],
+        "unknownWeight": 1
+      },
+      "vectorL1Error": 0,
+      "failures": []
+    }
+  ],
+  "unexpectedCaseIds": []
+}

@@ -3,9 +3,9 @@ import test from "node:test";
 
 import {
   formatRateLimitWindowName,
+  formatResetCountdown,
   formatResetCreditHint,
   formatResetCreditTitle,
-  formatResetCountdown,
   formatUtilizationBar,
   limitsSummary,
   renderUsageLines
@@ -331,7 +331,10 @@ test("reset credit formatters use human fallbacks and copyable IDs", () => {
     expiresAt: now / 1000 + 7200
   };
   assert.equal(formatResetCreditTitle(credit), "Weekly Limit");
-  assert.match(formatResetCreditHint(credit, now), /weekly_limit · expires in 2h · ID RateLimitResetCredit_a/);
+  assert.match(
+    formatResetCreditHint(credit, now),
+    /weekly_limit · expires in 2h · ID RateLimitResetCredit_a/
+  );
   assert.equal(formatResetCreditTitle({ id: "fallback" }), "Rate-limit reset");
 });
 
@@ -402,20 +405,37 @@ test("usage rendering shows banked Codex rate-limit resets", () => {
 
 test("usage rendering identifies count-only reset snapshots", () => {
   const now = Date.UTC(2026, 0, 1);
-  const output = renderUsageLines({
-    accountSets: [{
-      mode: "codex", strategy: "sticky", switchThreshold: 0.9,
-      members: [{
-        id: "work", mode: "codex", label: "work", sourcePath: "/private/work.json",
-        serving: false, inFlight: 0, lastSelected: false, models: [],
-        limits: {
-          windows: {},
-          resetCredits: { availableCount: 3, observedAt: now / 1000 },
-          observedAt: now / 1000, source: "usage", completeness: "snapshot"
+  const output = renderUsageLines(
+    {
+      accountSets: [
+        {
+          mode: "codex",
+          strategy: "sticky",
+          switchThreshold: 0.9,
+          members: [
+            {
+              id: "work",
+              mode: "codex",
+              label: "work",
+              sourcePath: "/private/work.json",
+              serving: false,
+              inFlight: 0,
+              lastSelected: false,
+              models: [],
+              limits: {
+                windows: {},
+                resetCredits: { availableCount: 3, observedAt: now / 1000 },
+                observedAt: now / 1000,
+                source: "usage",
+                completeness: "snapshot"
+              }
+            }
+          ]
         }
-      }]
-    }]
-  }, now).join("\n");
+      ]
+    },
+    now
+  ).join("\n");
   assert.match(output, /3 resets available/);
   assert.match(output, /details unavailable \(count only; provider selects on redeem\)/);
 });
@@ -483,32 +503,38 @@ test("usage watch-style refreshes move serving markers between snapshots", () =>
 
 test("usage rendering surfaces rejected provider utilization", () => {
   const output = renderUsageLines({
-    accountSets: [{
-      mode: "codex",
-      strategy: "sticky",
-      switchThreshold: 0.9,
-      members: [{
-        id: "work",
+    accountSets: [
+      {
         mode: "codex",
-        label: "work",
-        sourcePath: "/private/work.json",
-        serving: false,
-        inFlight: 0,
-        lastSelected: false,
-        models: [],
-        limits: {
-          windows: {},
-          diagnostics: [{
-            code: "invalid_utilization",
-            window: "codex:primary",
-            field: "used_percent"
-          }],
-          observedAt: Date.now() / 1000,
-          source: "headers",
-          completeness: "partial"
-        }
-      }]
-    }]
+        strategy: "sticky",
+        switchThreshold: 0.9,
+        members: [
+          {
+            id: "work",
+            mode: "codex",
+            label: "work",
+            sourcePath: "/private/work.json",
+            serving: false,
+            inFlight: 0,
+            lastSelected: false,
+            models: [],
+            limits: {
+              windows: {},
+              diagnostics: [
+                {
+                  code: "invalid_utilization",
+                  window: "codex:primary",
+                  field: "used_percent"
+                }
+              ],
+              observedAt: Date.now() / 1000,
+              source: "headers",
+              completeness: "partial"
+            }
+          }
+        ]
+      }
+    ]
   }).join("\n");
   assert.match(output, /warning: ignored invalid used_percent for codex:primary/);
   assert.match(output, /no usage data available yet/);

@@ -1,19 +1,14 @@
 import { detect } from "package-manager-detector/detect";
-
-import { canonicalPath } from "./candidate.js";
-import { SelfUpdateInspectionError } from "./diagnostics.js";
-import { packageRootProject } from "./receipt.js";
-import type {
-  DiscoveryContext,
-  InstallOwner,
-  SelfUpdateAdapter
-} from "./types.js";
 import { bunAdapter } from "./adapters/bun.js";
 import { detectExternalOwner } from "./adapters/external.js";
 import { npmAdapter } from "./adapters/npm.js";
 import { pnpmAdapter } from "./adapters/pnpm.js";
 import { voltaAdapter } from "./adapters/volta.js";
 import { yarnAdapter } from "./adapters/yarn.js";
+import { canonicalPath } from "./candidate.js";
+import { SelfUpdateInspectionError } from "./diagnostics.js";
+import { packageRootProject } from "./receipt.js";
+import type { DiscoveryContext, InstallOwner, SelfUpdateAdapter } from "./types.js";
 
 export const SELF_UPDATE_ADAPTERS: readonly SelfUpdateAdapter[] = [
   npmAdapter,
@@ -28,7 +23,9 @@ export function adapterFor(owner: InstallOwner): SelfUpdateAdapter {
 }
 
 export async function detectOwners(context: DiscoveryContext): Promise<InstallOwner[]> {
-  const found = (await Promise.all(SELF_UPDATE_ADAPTERS.map((adapter) => adapter.detect(context)))).flat();
+  const found = (
+    await Promise.all(SELF_UPDATE_ADAPTERS.map((adapter) => adapter.detect(context)))
+  ).flat();
   const owners: InstallOwner[] = [];
   for (const owner of found) {
     if (!owners.some((candidate) => candidate.contextId === owner.contextId)) owners.push(owner);
@@ -98,12 +95,7 @@ export async function throwUnownedInstallation(
     const detected = await detect({
       cwd: project,
       stopDir: project,
-      strategies: [
-        "install-metadata",
-        "lockfile",
-        "packageManager-field",
-        "devEngines-field"
-      ]
+      strategies: ["install-metadata", "lockfile", "packageManager-field", "devEngines-field"]
     });
     if (detected?.agent === "yarn@berry") {
       throw new SelfUpdateInspectionError({
@@ -135,8 +127,7 @@ export async function throwUnownedInstallation(
     code: "self_update_owner_unknown",
     message: "could not identify the installer that owns the executing RouteKit CLI",
     diagnostics,
-    hint:
-      "reinstall RouteKit with the public installer or update it with the package manager that created this executable"
+    hint: "reinstall RouteKit with the public installer or update it with the package manager that created this executable"
   });
 }
 

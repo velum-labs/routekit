@@ -146,10 +146,7 @@ export function sshArgv(
  * Classify a rejected SSH invocation. Callers own the surrounding sentence;
  * this decides the failure class and produces a redacted cause.
  */
-export function classifySshFailure(
-  error: unknown,
-  secrets: Iterable<string> = []
-): SshFailure {
+export function classifySshFailure(error: unknown, secrets: Iterable<string> = []): SshFailure {
   const candidate = error as {
     code?: string;
     stderr?: string | Buffer;
@@ -158,15 +155,15 @@ export function classifySshFailure(
   if (candidate.code === "ENOENT") {
     return { code: "unavailable", detail: "", missingSshClient: true };
   }
-  const rawStderr = typeof candidate.stderr === "string"
-    ? candidate.stderr.trim()
-    : Buffer.isBuffer(candidate.stderr)
-      ? candidate.stderr.toString("utf8").trim()
-      : "";
+  const rawStderr =
+    typeof candidate.stderr === "string"
+      ? candidate.stderr.trim()
+      : Buffer.isBuffer(candidate.stderr)
+        ? candidate.stderr.toString("utf8").trim()
+        : "";
   const stderr = redactSensitiveText(rawStderr, secrets);
-  const message = candidate.message === undefined
-    ? ""
-    : redactSensitiveText(candidate.message, secrets);
+  const message =
+    candidate.message === undefined ? "" : redactSensitiveText(candidate.message, secrets);
   const code: SshFailureCode = /permission denied|authentication failed/i.test(stderr)
     ? "unauthorized"
     : /routekit.*(?:not found|no such file)|command not found.*routekit/i.test(stderr)
@@ -245,8 +242,7 @@ export async function runSshCommand(
 
 /** A rejected `runSshCommand` carrying the remote stderr for classification. */
 export function sshExitError(result: SshCommandResult, host: string): Error {
-  return Object.assign(
-    new Error(`ssh to ${host} exited with status ${result.exitCode}`),
-    { stderr: result.stderr }
-  );
+  return Object.assign(new Error(`ssh to ${host} exited with status ${result.exitCode}`), {
+    stderr: result.stderr
+  });
 }

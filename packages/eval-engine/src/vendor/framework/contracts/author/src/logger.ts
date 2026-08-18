@@ -1,0 +1,143 @@
+// RFC 0011: the process-global diagnostic logger surface.
+//
+// `FeatureLogger` (see ./feature-logger.ts) is the injected, per-handler logger
+// the host hands to a feature via its context (`ctx.logger`, `chat.logger`, …).
+// This module adds a *process-global* counterpart: a bare `log` an author can
+// import directly —
+//
+//   import { log } from "ori/logger";
+//   log.info("starting up", { port });
+//
+// — for the many call sites that have no handler context in scope (module-level
+// init, transport plumbing, utilities, a chat surface's `start()` before any
+// turn). Like the injected logger it is effect-free (every method returns
+// `void`, fire-and-forget) and routes to the same destination — the dev event
+// log (`ori logs`) / CLI stderr — so authors never reach for `console.*`.
+//
+// IMPORTANT — cross-realm rendezvous. The host runtime and a feature's vendored
+// `ori` SDK are SEPARATE module graphs (the feature imports the generated
+// `.ori/sdk` copy, not this source). A plain module-level singleton set by the
+// host would therefore be invisible to the feature. So the active
+// implementation lives on a well-known `globalThis` slot keyed by a `Symbol.for`
+// registry symbol, which every realm shares. The host installs the real
+// implementation once at bootstrap (see the runloop logger wiring); until then,
+// and in any standalone/test context, `log` is a safe no-op.
+//
+// This module MUST NOT import `effect` or `@ori-engine/*` — it ships inside the
+// author-facing `ori` SDK, which is effect-free by contract (RFC 0002 / 0007).
+// The host does the Effect bridging on its side before calling installFeatureLog.
+
+import type { FeatureLogger } from "./feature-logger.ts";
+
+/**
+ * The `globalThis` registry key the active global logger is published under.
+ * `Symbol.for` returns the same symbol across every module realm in the process,
+ * so the host's install and a feature's `log` calls rendezvous on one slot even
+ * though they live in different module graphs.
+ */
+const FEATURE_LOG_GLOBAL_KEY = Symbol.for("ori/feature-log/v1");
+
+interface FeatureLogGlobal {
+  current?: FeatureLogger | undefined;
+}
+
+/** A `FeatureLogger` whose every call is a no-op — the default before install. */
+const NOOP = (): void => undefined;
+export const noopFeatureLogger: FeatureLogger = {
+  trace: NOOP,
+  debug: NOOP,
+  info: NOOP,
+  warn: NOOP,
+  error: NOOP,
+  // A child of the no-op logger is still the no-op. (Liveness — picking up a
+  // logger installed after import — is provided by `log` itself re-reading the
+  // slot on every call, NOT by the no-op's child; returning `noopFeatureLogger`
+  // here keeps it a plain terminal value with no recursion back into `log`.)
+  child: () => noopFeatureLogger,
+};
+
+/** Read (creating on first use) the shared global slot. */
+const slot = (): FeatureLogGlobal => {
+  const host: Record<symbol, FeatureLogGlobal | undefined> = globalThis;
+  const existing = host[FEATURE_LOG_GLOBAL_KEY];
+  if (existing) {
+    return existing;
+  }
+  const created: FeatureLogGlobal = {};
+  host[FEATURE_LOG_GLOBAL_KEY] = created;
+  return created;
+};
+
+/** The currently-installed logger, or the no-op default when none is installed. */
+const active = (): FeatureLogger => slot().current ?? noopFeatureLogger;
+
+/**
+ * Build a lazy {@link FeatureLogger} that re-resolves its target via `resolve()`
+ * on EVERY call. Crucially, `child` returns another lazy logger (not the
+ * underlying logger's plain, captured child), so liveness propagates to any
+ * nesting depth: a grandchild like `log.child("a").child("b")` captured before
+ * the host installs a real logger still picks up that install on its next emit,
+ * rather than freezing on whatever was active at derivation time.
+ */
+const makeLazyLogger = (resolve: () => FeatureLogger): FeatureLogger => ({
+  trace: (message, fields): void => {
+    resolve().trace(message, fields);
+  },
+  debug: (message, fields): void => {
+    resolve().debug(message, fields);
+  },
+  info: (message, fields): void => {
+    resolve().info(message, fields);
+  },
+  warn: (message, fields): void => {
+    resolve().warn(message, fields);
+  },
+  error: (message, error, fields): void => {
+    resolve().error(message, error, fields);
+  },
+  child: (scope, fields): FeatureLogger =>
+    makeLazyLogger(() => resolve().child(scope, fields)),
+});
+
+/**
+ * The process-global diagnostic logger. Always defined; resolves the active
+ * implementation on EVERY call (never captures it), so a logger installed after
+ * a module imported `log` still takes effect, and `resetFeatureLog()` cleanly
+ * reverts to the no-op. Pre-scoped to `global` so its records are
+ * distinguishable from injected per-feature loggers. Children (and grandchildren)
+ * stay lazy too — see {@link makeLazyLogger}.
+ */
+export const log: FeatureLogger = makeLazyLogger(() =>
+  active().child("global")
+);
+
+/**
+ * Install the host's `FeatureLogger` as the active global implementation and
+ * return a restore closure that reverts to the *prior* occupant on release.
+ *
+ * **Use the returned closure** (not `resetFeatureLog`) to release the install
+ * from a scoped runtime (`globalFeatureLogLayer`). This saves and restores the
+ * previous value, so two concurrent runtimes in one process (e.g. the CLI core
+ * layer + an in-process daemon under `ori dev`) each release cleanly without
+ * blanking the other's install.
+ *
+ * A later install replaces the prior one while holding its own restore context —
+ * the daemon swapping in the hub-backed sink is the documented intent.
+ */
+export const installFeatureLog = (logger: FeatureLogger): (() => void) => {
+  const s = slot();
+  const prev = s.current;
+  s.current = logger;
+  return () => {
+    s.current = prev;
+  };
+};
+
+/**
+ * Unconditionally clear the active global logger, reverting `log` to the no-op
+ * default. Use this for hard reset (standalone teardown, test cleanup); prefer
+ * the restore closure returned by `installFeatureLog` for scoped runtimes.
+ */
+export const resetFeatureLog = (): void => {
+  slot().current = undefined;
+};

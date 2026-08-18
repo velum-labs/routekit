@@ -3,17 +3,16 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-
+import {
+  nativeCredentialHelper,
+  nativeCredentialShellCommand
+} from "../native-credential-helper.js";
 import {
   deleteNativeCredential,
   nativeCredentialPath,
   readNativeCredential,
   writeNativeCredential
 } from "../native-credentials.js";
-import {
-  nativeCredentialHelper,
-  nativeCredentialShellCommand
-} from "../native-credential-helper.js";
 
 test("native credentials use a private file fallback and clean up", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-native-credential-"));
@@ -71,40 +70,38 @@ test("native credentials use Keychain when available", async () => {
   );
 });
 
-test(
-  "the current OS credential backend stores, reads, and removes a real credential",
-  { skip: process.env.ROUTEKIT_NATIVE_CREDENTIAL_E2E !== "1" },
-  async () => {
-    const root = mkdtempSync(join(tmpdir(), "routekit-native-platform-credential-"));
-    const previous = process.env.ROUTEKIT_HOME;
-    process.env.ROUTEKIT_HOME = root;
-    const configPath = join(root, "native client", "config.json");
-    const token = `rk1_platform_${process.pid}_${Date.now()}`;
-    try {
-      await writeNativeCredential("claude", configPath, token);
-      const fallback = nativeCredentialPath("claude", configPath);
-      assert.equal(
-        existsSync(fallback),
-        process.platform !== "darwin",
-        process.platform === "darwin"
-          ? "macOS must use the runner's real login Keychain"
-          : "non-macOS hosts must use the private credential file"
-      );
-      assert.equal(
-        (await readNativeCredential("claude", configPath)) === token,
-        true,
-        "the selected OS credential backend must return the stored value"
-      );
-      await deleteNativeCredential("claude", configPath);
-      assert.equal(await readNativeCredential("claude", configPath), undefined);
-    } finally {
-      await deleteNativeCredential("claude", configPath).catch(() => undefined);
-      if (previous === undefined) delete process.env.ROUTEKIT_HOME;
-      else process.env.ROUTEKIT_HOME = previous;
-      rmSync(root, { recursive: true, force: true });
-    }
+test("the current OS credential backend stores, reads, and removes a real credential", {
+  skip: process.env.ROUTEKIT_NATIVE_CREDENTIAL_E2E !== "1"
+}, async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-native-platform-credential-"));
+  const previous = process.env.ROUTEKIT_HOME;
+  process.env.ROUTEKIT_HOME = root;
+  const configPath = join(root, "native client", "config.json");
+  const token = `rk1_platform_${process.pid}_${Date.now()}`;
+  try {
+    await writeNativeCredential("claude", configPath, token);
+    const fallback = nativeCredentialPath("claude", configPath);
+    assert.equal(
+      existsSync(fallback),
+      process.platform !== "darwin",
+      process.platform === "darwin"
+        ? "macOS must use the runner's real login Keychain"
+        : "non-macOS hosts must use the private credential file"
+    );
+    assert.equal(
+      (await readNativeCredential("claude", configPath)) === token,
+      true,
+      "the selected OS credential backend must return the stored value"
+    );
+    await deleteNativeCredential("claude", configPath);
+    assert.equal(await readNativeCredential("claude", configPath), undefined);
+  } finally {
+    await deleteNativeCredential("claude", configPath).catch(() => undefined);
+    if (previous === undefined) delete process.env.ROUTEKIT_HOME;
+    else process.env.ROUTEKIT_HOME = previous;
+    rmSync(root, { recursive: true, force: true });
   }
-);
+});
 
 test("native credential helpers are absolute, config-specific, and PATH-independent", () => {
   const helper = nativeCredentialHelper("codex", "/tmp/custom codex/config.toml", {
@@ -122,8 +119,5 @@ test("native credential helpers are absolute, config-specific, and PATH-independ
   const shellCommand = nativeCredentialShellCommand(helper, "linux");
   assert.match(shellCommand, /credential get/);
   assert.ok(shellCommand.includes("'/tmp/custom codex/config.toml'"));
-  assert.throws(
-    () => nativeCredentialShellCommand(helper, "win32"),
-    /not supported on Windows/
-  );
+  assert.throws(() => nativeCredentialShellCommand(helper, "win32"), /not supported on Windows/);
 });

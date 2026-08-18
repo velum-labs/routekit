@@ -11,12 +11,17 @@
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import { createServer } from "node:http";
 
+import {
+  EVAL_ATTRIBUTION_HEADER,
+  EVAL_POLICY_BYPASS_HEADER,
+  isForbiddenEvalModel
+} from "@velum-labs/routekit-eval-contracts";
 import { assertAuthenticatedBind, trimTrailingSlashes } from "@velum-labs/routekit-runtime";
 import {
   createNodeHttpHandlerEffect,
   executeWebRequest,
-  runRouteKitEffect,
   type RouteKitPlatform,
+  runRouteKitEffect,
   toRouteKitFailure
 } from "@velum-labs/routekit-runtime/effect";
 import { Deferred, Effect, Stream } from "effect";
@@ -66,6 +71,8 @@ function requestHeaders(headers: IncomingHttpHeaders, principal?: GatewayPrincip
       value === undefined ||
       HOP_BY_HOP.has(lower) ||
       lower === "host" ||
+      lower === EVAL_ATTRIBUTION_HEADER ||
+      lower === EVAL_POLICY_BYPASS_HEADER ||
       // Never forward a client-supplied principal; the proxy is the only
       // trusted source of identity for the inner gateway.
       lower === ROUTEKIT_PRINCIPAL_HEADER
@@ -80,8 +87,98 @@ function requestHeaders(headers: IncomingHttpHeaders, principal?: GatewayPrincip
   }
   if (principal !== undefined) {
     result.set(ROUTEKIT_PRINCIPAL_HEADER, JSON.stringify(principal));
+    if (principal.role === "eval" && principal.evalSession !== undefined) {
+      result.set(EVAL_POLICY_BYPASS_HEADER, "1");
+      const attribution = headers[EVAL_ATTRIBUTION_HEADER];
+      const value = Array.isArray(attribution) ? attribution[0] : attribution;
+      if (typeof value === "string") result.set(EVAL_ATTRIBUTION_HEADER, value);
+    }
   }
   return result;
+}
+
+type EvalAdmissionRejection = {
+  status: number;
+  message: string;
+};
+
+function requestedOutputTokens(body: Record<string, unknown>): number | undefined {
+  for (const key of ["max_output_tokens", "max_completion_tokens", "max_tokens"] as const) {
+    const value = body[key];
+    if (value !== undefined) {
+      return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+        ? value
+        : undefined;
+    }
+  }
+  return undefined;
+}
+
+function evalAdmissionRejection(
+  principal: GatewayPrincipal | undefined,
+  method: string | undefined,
+  path: string,
+  body: Buffer | undefined
+): EvalAdmissionRejection | undefined {
+  const session = principal?.evalSession;
+  if (principal?.role !== "eval" || session === undefined || method !== "POST") return undefined;
+  if (body === undefined) return { status: 400, message: "eval request body is required" };
+  let value: unknown;
+  try {
+    value = JSON.parse(body.toString("utf8"));
+  } catch {
+    return { status: 400, message: "eval request body must be valid JSON" };
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return { status: 400, message: "eval request body must be a JSON object" };
+  }
+  const record = value as Record<string, unknown>;
+  const model = record.model;
+  if (
+    typeof model !== "string" ||
+    isForbiddenEvalModel(model) ||
+    !session.allowedModels.includes(model)
+  ) {
+    return {
+      status: 400,
+      message: "eval requests must name a model allowed by the eval session"
+    };
+  }
+  const producesTokens = path !== "/v1/embeddings" && path !== "/v1/messages/count_tokens";
+  const maximum = producesTokens ? requestedOutputTokens(record) : 0;
+  if (
+    maximum === undefined ||
+    (session.perCallOutputTokens !== undefined && maximum > session.perCallOutputTokens)
+  ) {
+    return {
+      status: 400,
+      message:
+        session.perCallOutputTokens === undefined
+          ? "eval session has no output-token limit"
+          : `eval requests must set an output-token limit no greater than ${session.perCallOutputTokens}`
+    };
+  }
+  // A UTF-8 byte is a conservative upper bound for one input token. Reserving
+  // the full request-body size keeps the session input-token failsafe active
+  // without parsing or retaining prompt content.
+  const admitted = session.admit?.(model, body.byteLength, maximum);
+  if (admitted === undefined) {
+    return { status: 401, message: "eval session cannot admit model calls" };
+  }
+  if (!admitted.admitted) {
+    const message =
+      admitted.reason === "expired"
+        ? "eval session expired"
+        : admitted.reason === "closed"
+          ? "eval session is closed"
+          : admitted.reason === "call_limit"
+            ? "eval session call limit reached"
+            : admitted.reason === "input_limit"
+              ? "eval session input-token limit reached"
+            : "eval session output-token limit reached";
+    return { status: 429, message };
+  }
+  return undefined;
 }
 async function requestBody(req: IncomingMessage): Promise<Buffer | undefined> {
   if (req.method === "GET" || req.method === "HEAD") return undefined;
@@ -195,6 +292,12 @@ export function startSwitchingGatewayProxyEffect(
               try: () => requestBody(nodeReq),
               catch: (error) => toRouteKitFailure(error)
             });
+            const rejection = evalAdmissionRejection(principal, nodeReq.method, path, body);
+            if (rejection !== undefined) {
+              return jsonResponse(rejection.status, {
+                error: { message: rejection.message, type: "invalid_request_error" }
+              });
+            }
             const upstream = yield* executeWebRequest(`${selected.url}${path}`, {
               method: nodeReq.method ?? "GET",
               headers: requestHeaders(nodeReq.headers, principal),

@@ -14,10 +14,10 @@ import { catalogDefaultModel } from "@velum-labs/routekit-registry";
 import { acquireLifecycleLock } from "@velum-labs/routekit-runtime";
 import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
 import { type Command, Option } from "commander";
+import { Effect } from "effect";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { runCliClient } from "../cli-client.js";
 import { cliTry, cliTryPromise, runCliEffect } from "../cli-session.js";
-import { Effect } from "effect";
 import {
   connectDaemon,
   daemonLifecycleLockPath,
@@ -306,8 +306,7 @@ export function registerConfig(program: Command, runtime: CliRuntime = processCl
             const result = yield* cliTry(() =>
               spawnSync(editor, [temporary], { stdio: "inherit" })
             );
-            if (result.error !== undefined)
-              return yield* toRouteKitFailure(result.error);
+            if (result.error !== undefined) return yield* toRouteKitFailure(result.error);
             if (result.status !== 0) {
               return yield* new RouteKitFailure({
                 message: `${editor} exited with status ${result.status}`

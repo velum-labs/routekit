@@ -110,7 +110,18 @@ PORTLESS=0 node --test packages/cli/dist/test/*.test.js
 
 # Real SSH remote install + upgrade (requires Docker)
 pnpm build:cli && pnpm test:remote:docker
+
+# Full billed eight-dimension compositional qualification (nominally 298 calls;
+# requires explicit authorization and a private 0600 Orbit token file)
+ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live
+
+# Classifier-only request-decomposition qualification (26 sequential Luna calls)
+ROUTEKIT_LIVE_E2E=1 pnpm test:e2e:eval-routing:live -- --classifier-only
 ```
+
+The billed eval-routing lane is intentionally separate from the door matrix.
+It uses real agents and an isolated local daemon backed by a metered Orbit
+egress guard. See [Live billed eval-routing testdrive](eval-routing-live-e2e.md).
 
 CI runs repository checks, builds, package smokes, and unit tests in the main
 `check` job of `.github/workflows/ci.yml`. A required credential-free provider

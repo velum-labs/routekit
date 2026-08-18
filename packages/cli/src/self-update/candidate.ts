@@ -2,11 +2,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, normalize, resolve } from "node:path";
 
 import { neutralSelfUpdateCwd } from "./runner.js";
-import {
-  ROUTEKIT_PACKAGE_NAME,
-  type CommandRunner,
-  type RouteKitCandidate
-} from "./types.js";
+import { type CommandRunner, ROUTEKIT_PACKAGE_NAME, type RouteKitCandidate } from "./types.js";
 
 export function canonicalPath(value: string): string {
   try {

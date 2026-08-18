@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -282,10 +282,7 @@ test("agent manifests match the current CLI and error contract", { skip: !hasApp
 test("the agent guide stays machine-readable without appearing in human navigation", {
   skip: !hasAppsDocs
 }, () => {
-  const guidePath = join(
-    root,
-    "apps/docs/content/docs/getting-started/agent-guide.mdx"
-  );
+  const guidePath = join(root, "apps/docs/content/docs/getting-started/agent-guide.mdx");
   const navigation = JSON.parse(
     readFileSync(join(root, "apps/docs/content/docs/getting-started/meta.json"), "utf8")
   ) as { pages?: string[] };
@@ -521,9 +518,7 @@ test("every first-launch route has a complete maintainer disclosure", () => {
     const start = source.indexOf(anchor);
     assert.notEqual(start, -1, `${routeDisclosuresPath} is missing ${routeId}`);
     const nextAnchor =
-      index + 1 < routeIds.length
-        ? `<a id="${routeIds[index + 1]}"></a>`
-        : "## Route explanation";
+      index + 1 < routeIds.length ? `<a id="${routeIds[index + 1]}"></a>` : "## Route explanation";
     const end = source.indexOf(nextAnchor, start + anchor.length);
     assert.notEqual(end, -1, `${routeDisclosuresPath} cannot delimit ${routeId}`);
     const section = source.slice(start, end);

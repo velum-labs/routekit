@@ -3,8 +3,8 @@ import { createServer } from "node:http";
 import {
   createNodeHttpHandlerEffect,
   EffectResourceScope,
-  runRouteKitEffect,
-  type RouteKitPlatform
+  type RouteKitPlatform,
+  runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
 import { Deferred, Effect } from "effect";
 import type { AnthropicRequest } from "./adapters/anthropic-wire.js";
@@ -18,13 +18,14 @@ import {
   mergeAnthropicCatalogs,
   resolveClaudeSelection
 } from "./catalog-service.js";
+import { gatewayTryPromise } from "./effect/gateway.js";
 import { AnthropicMessagesEndpoint } from "./endpoints/anthropic-messages-endpoint.js";
 import { ChatEndpoint } from "./endpoints/chat-endpoint.js";
 import { EndpointAuthenticationError, type EndpointContext } from "./endpoints/endpoint-module.js";
 import { ModelsEndpoint } from "./endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "./endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "./endpoints/usage-endpoint.js";
-import { gatewayTryPromise } from "./effect/gateway.js";
+import type { CompositionalRoutingRuntime } from "./eval-policy.js";
 import { buildGatewayHttpEffect } from "./gateway-http-app.js";
 import type { ProvenanceSink } from "./provenance.js";
 
@@ -45,6 +46,8 @@ export type GatewayOptions = {
   authToken?: string;
   /** Optional observation sink for model calls. */
   provenance?: ProvenanceSink;
+  /** Dimension-decomposition and evidence-matrix runtime used by `model: "auto"`. */
+  compositionalRouting?: CompositionalRoutingRuntime;
   /** Optional client-authenticated Responses relay. */
   codexRelay?: ProviderRelayPorts;
   /** Provider-native relays sharing this HTTP boundary. */
@@ -211,6 +214,9 @@ export function startGatewayEffect(
     });
     const chatEndpoint = new ChatEndpoint(endpointAuthenticate, {
       backend,
+      ...(options.compositionalRouting !== undefined
+        ? { compositionalRouting: options.compositionalRouting }
+        : {}),
       rejectInvalid: ({ transport }, rejection) => {
         if (rejection === undefined) return false;
         transport.writeJson(rejection.status, rejection.body);
@@ -220,6 +226,9 @@ export function startGatewayEffect(
     });
     const anthropicEndpoint = new AnthropicMessagesEndpoint(endpointAuthenticate, {
       backend,
+      ...(options.compositionalRouting !== undefined
+        ? { compositionalRouting: options.compositionalRouting }
+        : {}),
       ...(anthropicRelay !== undefined ? { requestRelay: anthropicRelay } : {}),
       ...(anthropicTokenCountRelay !== undefined
         ? { tokenCountRelay: anthropicTokenCountRelay }
@@ -234,6 +243,9 @@ export function startGatewayEffect(
     });
     const responsesEndpoint = new ResponsesEndpoint(endpointAuthenticate, {
       backend,
+      ...(options.compositionalRouting !== undefined
+        ? { compositionalRouting: options.compositionalRouting }
+        : {}),
       ...(codexProviderRequest !== undefined ? { providerRelay: codexProviderRequest } : {}),
       ...(codexRequestRelay !== undefined ? { clientRelay: codexRequestRelay } : {}),
       rejectInvalid: ({ transport }, rejection) => {

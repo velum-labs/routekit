@@ -158,6 +158,42 @@ routekit leaderboard --by model --sort tokens --window 24h
 Rollups land at `$ROUTEKIT_HOME/usage/leaderboard-rollups.v1.json` (mode `0600`)
 and never store prompts, response bodies, or credentials.
 
+## Compositional eval routing
+
+`model: auto` evaluates requests against the published model-by-dimension evidence
+matrix. This is the only automatic-routing architecture:
+
+```yaml
+classifierModel: openai/gpt-5.6-luna
+compositionalRouting:
+  maximumUnknownWeight: 0.25
+  objective:
+    kind: highest-quality
+  minimumDimensionQuality:
+    gateway-protocols: 0.70
+  maximumFailureRate: 0.20
+```
+
+Automatic routing fails closed when the routing basis, classifier vector,
+evidence matrix, live capabilities, or objective cannot support a decision.
+Explicit model requests remain unchanged.
+
+The classifier sees only the reviewed workload-dimension definitions and request text. Hard
+requirements such as endpoint, tools, image input, and output limits are
+derived from the request envelope. Model selection is then deterministic from
+the request decomposition, published evidence, live model capabilities, and configured
+objective.
+
+Supported objectives are `highest-quality`, `lowest-cost`, `lowest-latency`,
+`balanced`, and `pareto`. Cost-dependent objectives exclude models whose
+required evidence is unpriced; unknown cost is never treated as zero.
+`maximumUnknownWeight` controls how much of a request may fall outside the
+reviewed routing basis.
+
+The routing artifact is stored at
+`$ROUTEKIT_HOME/eval/published-routing.json`; the previous complete
+generation is retained as `published-routing.previous.json`.
+
 ## Loading
 
 RouteKit rejects inline API keys, authorization headers, and tokens. The CLI

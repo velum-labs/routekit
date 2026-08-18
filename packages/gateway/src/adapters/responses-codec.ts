@@ -20,13 +20,13 @@ import {
   responsesReasoningItem,
   responsesReasoningMetadataOf
 } from "./openai-chat-wire.js";
+import { chatUsageToResponses } from "./responses-usage.js";
 import type {
   ResponsesContentPart,
   ResponsesInputItem,
   ResponsesRequest,
   ResponsesTool
 } from "./responses-wire.js";
-import { chatUsageToResponses } from "./responses-usage.js";
 import type { ExecutedSearch } from "./server-tool-loop.js";
 
 export type { ResponsesInputItem, ResponsesRequest } from "./responses-wire.js";

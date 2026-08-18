@@ -37,6 +37,12 @@
       "path": "../eval-core"
     },
     {
+      "path": "../eval-service"
+    },
+    {
+      "path": "../eval-setup"
+    },
+    {
       "path": "../eval-store"
     },
     {

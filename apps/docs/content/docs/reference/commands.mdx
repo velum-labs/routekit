@@ -231,8 +231,18 @@ service reinstall or restart.
 
 | Command | Purpose |
 | --- | --- |
-| `routekit eval run --spec <path> --url <gateway> --token <token>` | Run an offline evaluation suite with explicit model IDs. |
-| `routekit eval show --run-id <id>` | Read an immutable raw evaluation run. |
+| `routekit eval setup [--repository <path>]` | Initialize or resume one durable compositional-routing project. |
+| `routekit eval status [--repository <path>]` | Show project state, approvals, plans, and runs. |
+| `routekit eval answer --answer <text>` | Answer exactly one unresolved setup question. |
+| `routekit eval propose dimensions` | Generate a reviewable workload-dimension basis on the configured RouteKit target. |
+| `routekit eval propose evaluations` | Generate dimension, decomposition, and composition evaluations for review. |
+| `routekit eval approve dimensions --digest <digest>` | Approve the exact reviewed routing-basis digest. |
+| `routekit eval approve evaluations --digest <digest>` | Approve the exact reviewed evaluation digest. |
+| `routekit eval validate` | Validate configuration, approvals, and artifacts without model calls. |
+| `routekit eval estimate [--scope pilot|full]` | Materialize an immutable exact-call execution plan before spend. |
+| `routekit eval run --plan <id>` | Execute through the configured RouteKit target. Optional external `--gateway-url` and `--token-file` are qualification-only. |
+| `routekit eval results [--run <id>]` | Show sanitized qualification evidence, accounting, and cleanup outcomes. |
+| `routekit eval publish --run <id>` | Atomically activate an already-qualified configured-target run. |
 | `routekit policy show` | Print the eval isolation policy (dedicated token, no auto-router). |
 | `routekit self-update [--version <version>] [--dry-run]` | Update the CLI through its owning package manager. |
 | `routekit telemetry status\|on\|off` | Inspect or change anonymous telemetry consent. |

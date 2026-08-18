@@ -51,6 +51,113 @@ import {
   withMockNativeDiscovery
 } from "./daemon-fixtures.js";
 
+test("this-checkout daemon routes model auto only from dimension-matrix evidence", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-daemon-eval-auto-"));
+  const stateHome = join(root, "state");
+  const configPath = join(root, "router.yaml");
+  const selectedModel = "openai/mock-model";
+  const classifierModel = "openai/gpt-5.6-luna";
+  writeFileSync(
+    configPath,
+    `providers:\n  openai: {}\ndefaultModel: ${selectedModel}\nclassifierModel: ${classifierModel}\n`
+  );
+  const dimensions = ["code", "navigation", "debugging", "architecture", "explanation"].map(
+    (id) => ({
+      id,
+      description: `Tasks centered on ${id}`,
+      includes: [`Includes ${id}`],
+      excludes: [`Excludes work outside ${id}`]
+    })
+  );
+  mkdirSync(join(stateHome, "eval"), { recursive: true });
+  writeFileSync(
+    join(stateHome, "eval", "published-routing.json"),
+    `${JSON.stringify(
+      {
+        version: 2,
+        generatedAt: "2026-08-17T00:00:00.000Z",
+        basisDigest: "definitions",
+        evidenceDigest: "matrix",
+        classifierModel,
+        objective: { kind: "highest-quality" },
+        maximumUnknownWeight: 0.2,
+        dimensions,
+        candidateModels: [selectedModel],
+        evidence: dimensions.map((dimension) => ({
+          model: selectedModel,
+          dimensionId: dimension.id,
+          suiteDigest: `suite-${dimension.id}`,
+          evidenceDigest: `evidence-${dimension.id}`,
+          quality: { passRate: 1, lowerConfidenceBound: 0.9, sampleCount: 20 },
+          failureRate: 0,
+          p95DurationMs: 100,
+          averageCostUsd: 0.01,
+          unpricedCalls: 0
+        }))
+      },
+      null,
+      2
+    )}\n`
+  );
+  const upstream = await mockProvider([
+    {
+      id: "mock-model",
+      object: "model",
+      capabilities: { streaming: "supported", tools: "degraded" },
+      supported_reasoning_levels: ["high"]
+    },
+    {
+      id: "gpt-5.6-luna",
+      object: "model",
+      capabilities: { streaming: "supported", tools: "supported" }
+    }
+  ]);
+  const daemon = await startRouteKitDaemon({
+    packageVersion: "1.2.3",
+    stateHome,
+    configPath,
+    port: 0,
+    portless: false,
+    env: {
+      HOME: root,
+      ROUTEKIT_HOME: stateHome,
+      OPENAI_API_KEY: "test-key",
+      OPENAI_BASE_URL: upstream.url,
+      ROUTEKIT_PORTLESS: "0"
+    }
+  });
+  const dataToken = readFileSync(daemon.record.authTokenFile!, "utf8").trim();
+  const chat = (headers: Readonly<Record<string, string>> = {}) =>
+    fetch(`${daemon.dataUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${dataToken}`,
+        "content-type": "application/json",
+        ...headers
+      },
+      body: JSON.stringify({
+        model: "auto",
+        messages: [{ role: "user", content: "Implement this code change" }]
+      })
+    });
+
+  try {
+    const routed = await chat();
+    const routedBody = await routed.text();
+    assert.equal(routed.status, 200, routedBody);
+    assert.match(routedBody, /daemon answer/);
+
+    const evalTraffic = await chat({ "x-routekit-eval-policy-bypass": "1" });
+    const evalBody = await evalTraffic.text();
+    assert.equal(evalTraffic.status, 200, evalBody);
+    assert.match(evalBody, /daemon answer/);
+  } finally {
+    await daemon.close();
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("singleton daemon exposes authenticated control and a stable reloadable data plane", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-daemon-"));
   const stateHome = join(root, "state");
@@ -102,6 +209,80 @@ test("singleton daemon exposes authenticated control and a stable reloadable dat
     assert.deepEqual(
       models.models.map((model) => model.id),
       ["openai/mock-model"]
+    );
+    const persistedTokensBeforeEval = await runRouteKitEffect(
+      client.call("tokens.list", { plane: "data" })
+    );
+    const evalSession = await runRouteKitEffect(
+      client.call(
+        "evalSession.open",
+        {
+          purpose: "qualification",
+          operationId: "daemon-component-run",
+          allowedModels: ["openai/mock-model"],
+          limits: {
+            calls: 1,
+            inputTokens: 10_000,
+            outputTokens: 32,
+            perCallOutputTokens: 32,
+            wallTimeMs: 60_000
+          },
+          expiresInSeconds: 60
+        },
+        { idempotencyKey: "eval-session-open-1" }
+      )
+    );
+    assert.equal(evalSession.gatewayUrl, daemon.dataUrl);
+    assert.equal(evalSession.targetIdentity, "routekit-generation:1");
+    const evalResponse = await fetch(`${evalSession.gatewayUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${evalSession.bearerCredential}`,
+        "content-type": "application/json",
+        "x-routekit-eval-attribution": JSON.stringify({
+          purpose: "eval",
+          role: "candidate",
+          runId: "daemon-component-run",
+          caseId: "case-1"
+        })
+      },
+      body: JSON.stringify({
+        model: "openai/mock-model",
+        max_tokens: 32,
+        messages: [{ role: "user", content: "component test" }]
+      })
+    });
+    assert.equal(evalResponse.status, 200, await evalResponse.text());
+    assert.deepEqual(
+      await runRouteKitEffect(client.call("tokens.list", { plane: "data" })),
+      persistedTokensBeforeEval
+    );
+    assert.deepEqual(
+      await runRouteKitEffect(
+        client.call(
+          "evalSession.close",
+          { sessionId: evalSession.sessionId },
+          { idempotencyKey: "eval-session-close-1" }
+        )
+      ),
+      { sessionId: evalSession.sessionId, closed: true }
+    );
+    assert.equal(
+      (
+        await fetch(`${evalSession.gatewayUrl}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${evalSession.bearerCredential}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "openai/mock-model",
+            max_tokens: 32,
+            messages: [{ role: "user", content: "after close" }]
+          })
+        })
+      ).status,
+      401
     );
     const modelInfo = await runRouteKitEffect(
       client.call("models.info", { model: "openai/mock-model" })

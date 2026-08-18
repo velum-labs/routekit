@@ -1,3 +1,4 @@
+export { RoutingPolicyReadError } from "./eval-policy.js";
 export type {
   Gateway,
   GatewayOptions,

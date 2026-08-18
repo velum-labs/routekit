@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { Effect } from "effect";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer } from "node:http";
 import { test } from "node:test";
 import { EVAL_POLICY_BYPASS_HEADER } from "@velum-labs/routekit-eval-contracts";
+import { Effect } from "effect";
+import { ROUTEKIT_PRINCIPAL_HEADER } from "../auth.js";
 import { type Backend, borrowedBackendPorts, staticBackendModelPort } from "../backend.js";
 import { initialAttribution } from "../catalog-service.js";
 import { collectAttribution } from "../model-call-service.js";
@@ -544,7 +545,17 @@ test("eval policy bypass rejects auto-router model ids", async () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        [EVAL_POLICY_BYPASS_HEADER]: "1"
+        [EVAL_POLICY_BYPASS_HEADER]: "1",
+        [ROUTEKIT_PRINCIPAL_HEADER]: JSON.stringify({
+          id: "eval-token",
+          label: "eval-session",
+          role: "eval",
+          evalSession: {
+            sessionId: "session-1",
+            allowedModels: ["openai/gpt-5.6-luna"],
+            expiresAt: "2026-08-18T23:59:59.000Z"
+          }
+        })
       },
       body: JSON.stringify({
         model: "auto",

@@ -3,7 +3,12 @@ import { createServer } from "node:http";
 import test from "node:test";
 
 import { parseRouterConfig } from "@velum-labs/routekit-config";
+import {
+  compositionalRoutingPolicyReaderFromSnapshot,
+  type RequestDecomposerService
+} from "@velum-labs/routekit-gateway";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 import { startRouter } from "../index.js";
 
@@ -27,6 +32,59 @@ async function withDiscoveryServer(run: (baseUrl: string) => Promise<void>): Pro
   assert.ok(address !== null && typeof address === "object");
   try {
     await run(`http://127.0.0.1:${address.port}`);
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error === undefined ? resolve() : reject(error)))
+    );
+  }
+}
+
+async function withRoutingServer(
+  run: (baseUrl: string, requestedModels: string[]) => Promise<void>
+): Promise<void> {
+  const requestedModels: string[] = [];
+  const server = createServer((request, response) => {
+    void (async () => {
+      if (request.url === "/v1/models") {
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            data: [{ id: "preferred" }, { id: "fallback" }, { id: "explicit" }]
+          })
+        );
+        return;
+      }
+      if (request.url === "/v1/chat/completions" && request.method === "POST") {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(chunk as Buffer);
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+          model?: string;
+          messages?: Array<{ role?: string; content?: unknown }>;
+        };
+        if (body.model !== undefined) requestedModels.push(body.model);
+        const isClassifier =
+          body.messages?.[0]?.role === "system" &&
+          String(body.messages[0].content).includes("Classify the request");
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            choices: isClassifier
+              ? [{ message: { role: "assistant", content: '{"react":1}' } }]
+              : [],
+            model: body.model
+          })
+        );
+        return;
+      }
+      response.statusCode = 404;
+      response.end();
+    })();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address !== null && typeof address === "object");
+  try {
+    await run(`http://127.0.0.1:${address.port}`, requestedModels);
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error === undefined ? resolve() : reject(error)))
@@ -64,7 +122,95 @@ test("SDK starts only after live provider discovery", async () => {
   });
 });
 
-test("SDK serves an empty catalog when no providers are configured", async () => {
+test("model auto uses only dimension decomposition and matrix evidence", async () => {
+  await withRoutingServer(async (baseUrl, requestedModels) => {
+    const dimensions = ["code", "navigation", "debugging", "architecture", "explanation"].map(
+      (id) => ({
+        id,
+        description: `Tasks centered on ${id}`,
+        includes: [`Includes ${id}`],
+        excludes: [`Excludes work outside ${id}`]
+      })
+    );
+    const candidateModels = ["openai/preferred", "openai/fallback"] as const;
+    const snapshot = {
+      version: 2 as const,
+      generatedAt: "2026-08-17T00:00:00.000Z",
+      basisDigest: "definitions",
+      evidenceDigest: "matrix",
+      classifierModel: "openai/classifier",
+      objective: { kind: "highest-quality" as const },
+      maximumUnknownWeight: 0.2,
+      dimensions,
+      candidateModels,
+      evidence: dimensions.flatMap((dimension) =>
+        candidateModels.map((model) => ({
+          model,
+          dimensionId: dimension.id,
+          suiteDigest: `suite-${dimension.id}`,
+          evidenceDigest: `evidence-${model}-${dimension.id}`,
+          quality: {
+            passRate: model === "openai/preferred" ? 0.95 : 0.8,
+            lowerConfidenceBound: model === "openai/preferred" ? 0.9 : 0.7,
+            sampleCount: 20
+          },
+          failureRate: 0,
+          p95DurationMs: model === "openai/preferred" ? 200 : 100,
+          averageCostUsd: model === "openai/preferred" ? 0.02 : 0.01,
+          unpricedCalls: 0
+        }))
+      )
+    };
+    const requestDecomposer: RequestDecomposerService = {
+      classify: () =>
+        Effect.succeed({
+          weights: dimensions.map((dimension, index) => ({
+            dimensionId: dimension.id,
+            weight: index === 0 ? 1 : 0
+          })),
+          unknownWeight: 0
+        })
+    };
+    const running = await startRouter({
+      config: parseRouterConfig({
+        providers: { openai: {} },
+        defaultModel: "openai/preferred"
+      }),
+      host: "127.0.0.1",
+      port: 0,
+      env: { OPENAI_API_KEY: "test", OPENAI_BASE_URL: `${baseUrl}/v1` },
+      compositionalPolicyReader: compositionalRoutingPolicyReaderFromSnapshot(snapshot),
+      requestDecomposer
+    });
+    try {
+      const auto = await fetch(`${running.url}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "auto",
+          messages: [{ role: "user", content: "Implement the change" }]
+        })
+      });
+      assert.equal(auto.status, 200);
+      assert.equal(requestedModels.at(-1), "preferred");
+
+      const explicit = await fetch(`${running.url}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "openai/explicit",
+          messages: [{ role: "user", content: "hello" }]
+        })
+      });
+      assert.equal(explicit.status, 200);
+      assert.equal(requestedModels.at(-1), "explicit");
+    } finally {
+      await runRouteKitEffect(running.close);
+    }
+  });
+});
+
+test("SDK serves an empty basis when no providers are configured", async () => {
   const running = await startRouter({
     config: parseRouterConfig({ providers: {} }),
     host: "127.0.0.1",

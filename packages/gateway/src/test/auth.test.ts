@@ -77,6 +77,34 @@ test("parsePrincipalHeader accepts only well-formed JSON principals", () => {
     label: "bob",
     role: "admin"
   });
+  assert.deepEqual(
+    parsePrincipalHeader(
+      JSON.stringify({
+        id: "eval-token",
+        label: "eval-session",
+        role: "eval",
+        evalSession: {
+          sessionId: "session-1",
+          allowedModels: ["openai/gpt-5.6-luna"],
+          expiresAt: "2026-08-18T00:00:00.000Z"
+        }
+      })
+    ),
+    {
+      id: "eval-token",
+      label: "eval-session",
+      role: "eval",
+      evalSession: {
+        sessionId: "session-1",
+        allowedModels: ["openai/gpt-5.6-luna"],
+        expiresAt: "2026-08-18T00:00:00.000Z"
+      }
+    }
+  );
+  assert.equal(
+    parsePrincipalHeader('{"id":"eval-token","label":"eval-session","role":"eval"}'),
+    undefined
+  );
   assert.equal(parsePrincipalHeader('{"id":"a","label":"bob","role":"root"}'), undefined);
   assert.equal(parsePrincipalHeader("not-json"), undefined);
 });

@@ -13,7 +13,15 @@ import {
 import type { WireRejection } from "../adapters/validate.js";
 import { validateChatRequest, validateResponsesRequest } from "../adapters/validate.js";
 import type { Backend } from "../backend.js";
-import { evalAutoRouterRejection } from "../eval-policy.js";
+import {
+  type CompositionalRoutingRuntime,
+  compositionalRoutingAttribution,
+  evalAutoRouterRejection,
+  evalRequestAttribution,
+  resolveConfiguredAutoRoutingModel
+} from "../eval-policy.js";
+import { extractClassifiableRequestText } from "../request-classifier.js";
+import { deriveRoutingRequirements } from "../routing-requirements.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -29,6 +37,7 @@ type ChatRequest = Readonly<{ context: EndpointContext; operation: ChatOperation
 
 export type ChatEndpointDependencies = Readonly<{
   backend: Backend;
+  compositionalRouting?: CompositionalRoutingRuntime;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
   attribution(requested: string | undefined): EndpointModelCall["attribution"];
 }>;
@@ -74,27 +83,51 @@ function executeChatRequest(
     const raw = yield* context.transport.readJson();
     if (raw === undefined) return;
     const requestContext = { headers: context.headers };
+    const requestEvalAttribution = evalRequestAttribution(context.headers);
+    const rawModel =
+      typeof raw === "object" && raw !== null && !Array.isArray(raw)
+        ? (raw as { model?: unknown }).model
+        : undefined;
 
     if (operation === "chat") {
       if (rejectInvalid(context, validateChatRequest(raw))) return;
-      const evalRejection = evalAutoRouterRejection(
-        context.headers,
-        typeof raw === "object" && raw !== null && !Array.isArray(raw)
-          ? (raw as { model?: unknown }).model
-          : undefined
-      );
+      const evalRejection = evalAutoRouterRejection(context.headers, rawModel);
       if (evalRejection !== undefined) {
         context.transport.writeJson(400, {
           error: { message: evalRejection, type: "invalid_request_error" }
         });
         return;
       }
-      const body = withDefaultModel(raw, backend.defaultModel);
+      let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
+      const resolvedModel = yield* resolveConfiguredAutoRoutingModel({
+        headers: context.headers,
+        model: typeof rawModel === "string" ? rawModel : undefined,
+        requestText: extractClassifiableRequestText(raw),
+        requirements: deriveRoutingRequirements("chat", raw),
+        compositionalRouting: dependencies.compositionalRouting,
+        onCompositionalObservation: (observation) => {
+          if (observation.status === "decided") {
+            compositionalRouting = compositionalRoutingAttribution(observation);
+          }
+        }
+      });
+      const routed =
+        resolvedModel !== undefined && resolvedModel !== rawModel
+          ? { ...(raw as Record<string, unknown>), model: resolvedModel }
+          : raw;
+      const body = withDefaultModel(routed, backend.defaultModel);
       context.transport.dispatch({
         dialect: "openai-chat",
         body,
         defaultModel: backend.defaultModel,
-        attribution: attribution(effectiveModel(body, backend.defaultModel)),
+        ...(typeof rawModel === "string" ? { requestedModel: rawModel } : {}),
+        attribution: {
+          ...attribution(effectiveModel(body, backend.defaultModel)),
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
+        },
         invoke: (callId, signal, onAttribution) =>
           backend.chat(
             body,
@@ -121,7 +154,30 @@ function executeChatRequest(
         return;
       }
       if ("input" in raw && rejectInvalid(context, validateResponsesRequest(raw))) return;
+      const evalRejection = evalAutoRouterRejection(context.headers, raw.model);
+      if (evalRejection !== undefined) {
+        context.transport.writeJson(400, {
+          error: { message: evalRejection, type: "invalid_request_error" }
+        });
+        return;
+      }
       let translated = translateCursorRequest(raw);
+      let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
+      const resolvedModel = yield* resolveConfiguredAutoRoutingModel({
+        headers: context.headers,
+        model: typeof translated.model === "string" ? translated.model : undefined,
+        requestText: extractClassifiableRequestText(raw),
+        requirements: deriveRoutingRequirements("chat", translated),
+        compositionalRouting: dependencies.compositionalRouting,
+        onCompositionalObservation: (observation) => {
+          if (observation.status === "decided") {
+            compositionalRouting = compositionalRoutingAttribution(observation);
+          }
+        }
+      });
+      if (resolvedModel !== undefined && resolvedModel !== translated.model) {
+        translated = { ...translated, model: resolvedModel };
+      }
       const selection = resolveCursorModelSelection(
         translated.model,
         backend.ports.models.list() ?? [],
@@ -153,7 +209,14 @@ function executeChatRequest(
         dialect: "openai-chat",
         body,
         defaultModel: backend.defaultModel,
-        attribution: attribution(effectiveModel(body, backend.defaultModel)),
+        ...(raw.model === undefined ? {} : { requestedModel: raw.model }),
+        attribution: {
+          ...attribution(effectiveModel(body, backend.defaultModel)),
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
+        },
         invoke: (callId, signal, onAttribution) =>
           backend.chat(
             body,

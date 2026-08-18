@@ -10,7 +10,7 @@ import {
   ROUTEKIT_CONTROL_METHODS
 } from "@velum-labs/routekit-control";
 
-const CALL_PATTERN = /\.call\(\s*["']([a-z][a-z0-9]*\.[a-zA-Z]+)["']/g;
+const CALL_PATTERN = /\.call\(\s*["']([a-z][a-zA-Z0-9]*\.[a-zA-Z]+)["']/g;
 
 function productionJsFiles(root: string): string[] {
   const out: string[] = [];
@@ -47,6 +47,6 @@ test("every control method has a CLI caller or an explicit non-CLI surface", () 
   assert.deepEqual(
     { missingCli, unexpectedCli },
     { missingCli: [], unexpectedCli: [] },
-    "annotate daemon-only methods with surface: \"daemon\"; give every other method a production CLI caller"
+    'annotate daemon-only methods with surface: "daemon"; give every other method a production CLI caller'
   );
 });

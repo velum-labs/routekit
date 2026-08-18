@@ -213,7 +213,11 @@ export class ProviderLifecycle {
                 provider: source.sourceId,
                 ok: true,
                 models: models
-                  .map((model) => `${source.sourceId}/${model.id}`)
+                  .map((model) =>
+                    model.id === source.sourceId || model.id.startsWith(`${source.sourceId}/`)
+                      ? model.id
+                      : `${source.sourceId}/${model.id}`
+                  )
                   .filter((model) => catalog.get(model) !== undefined)
               };
             }

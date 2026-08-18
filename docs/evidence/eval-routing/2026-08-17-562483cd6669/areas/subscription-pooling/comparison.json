@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "comparisonId": "33ccd643-3dfe-4d91-87ff-9f694d31184d",
+  "profileId": "subscription-pooling",
+  "suiteDigest": "06c3ae8cb1a1ba6c307947046b6eee1880a11e285e0f9cd2df66a960dd8069a5",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-17T19:22:15.709Z",
+  "finishedAt": "2026-08-17T19:23:52.867Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "quota-429-eligibility-retry",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5437.280745,
+            "judgeScore": 1,
+            "inputTokens": 193,
+            "outputTokens": 432
+          }
+        },
+        {
+          "caseId": "model-specific-eligibility",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3021.610785,
+            "judgeScore": 0.99,
+            "inputTokens": 151,
+            "outputTokens": 195
+          }
+        },
+        {
+          "caseId": "credential-401-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6031.8823840000005,
+            "judgeScore": 1,
+            "inputTokens": 183,
+            "outputTokens": 513
+          }
+        },
+        {
+          "caseId": "transaction-interruption-recovery",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 1947.2045479999979,
+            "judgeScore": 0.78,
+            "inputTokens": 224,
+            "outputTokens": 97
+          }
+        },
+        {
+          "caseId": "codex-banked-reset-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2847.8037939999995,
+            "judgeScore": 1,
+            "inputTokens": 185,
+            "outputTokens": 207
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "quota-429-eligibility-retry",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3645.7768949999954,
+            "judgeScore": 0.99,
+            "inputTokens": 193,
+            "outputTokens": 225
+          }
+        },
+        {
+          "caseId": "model-specific-eligibility",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2593.0218929999974,
+            "judgeScore": 0.99,
+            "inputTokens": 151,
+            "outputTokens": 131
+          }
+        },
+        {
+          "caseId": "credential-401-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4682.236483000001,
+            "judgeScore": 0.99,
+            "inputTokens": 183,
+            "outputTokens": 340
+          }
+        },
+        {
+          "caseId": "transaction-interruption-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2177.991468,
+            "judgeScore": 0.99,
+            "inputTokens": 224,
+            "outputTokens": 112
+          }
+        },
+        {
+          "caseId": "codex-banked-reset-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2626.796223999998,
+            "judgeScore": 1,
+            "inputTokens": 185,
+            "outputTokens": 148
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "quota-429-eligibility-retry",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4600.392626000001,
+            "judgeScore": 0.99,
+            "inputTokens": 193,
+            "outputTokens": 237
+          }
+        },
+        {
+          "caseId": "model-specific-eligibility",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5203.547971,
+            "judgeScore": 1,
+            "inputTokens": 151,
+            "outputTokens": 109
+          }
+        },
+        {
+          "caseId": "credential-401-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 11007.720056999999,
+            "judgeScore": 1,
+            "inputTokens": 183,
+            "outputTokens": 376
+          }
+        },
+        {
+          "caseId": "transaction-interruption-recovery",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2807.1362579999986,
+            "judgeScore": 0.99,
+            "inputTokens": 224,
+            "outputTokens": 132
+          }
+        },
+        {
+          "caseId": "codex-banked-reset-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 7413.426462000003,
+            "judgeScore": 1,
+            "inputTokens": 185,
+            "outputTokens": 100
+          }
+        }
+      ]
+    }
+  ]
+}

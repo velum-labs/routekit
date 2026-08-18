@@ -104,9 +104,7 @@ export async function detectExternalOwner(
     const components = snapPath.split("/").filter(Boolean);
     const snapIndex = components.indexOf("snap");
     const name =
-      components[snapIndex + 1] === "bin"
-        ? basename(snapPath)
-        : components[snapIndex + 1];
+      components[snapIndex + 1] === "bin" ? basename(snapPath) : components[snapIndex + 1];
     if (name !== undefined) {
       const listed = await successfulLine(context, snap, [
         "list",
@@ -134,8 +132,7 @@ export async function detectExternalOwner(
         return {
           kind: "nix",
           packageName: owner,
-          hint:
-            "this RouteKit executable is owned by the Nix store; update the profile or flake that installed it"
+          hint: "this RouteKit executable is owned by the Nix store; update the profile or flake that installed it"
         };
       }
     }

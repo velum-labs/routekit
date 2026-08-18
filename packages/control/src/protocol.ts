@@ -8,6 +8,7 @@ import type {
   RequestBillingMode,
   UpstreamAuthState
 } from "@velum-labs/routekit-contracts";
+import type { PublishedRoutingActivation } from "@velum-labs/routekit-eval-contracts";
 import type { ControlHandlerContext } from "@velum-labs/routekit-runtime";
 import type {
   CommandCompletedProperties,
@@ -44,6 +45,28 @@ export type IssuedTokenResult = {
    * can run `routekit peer add <joinCredential>` with no location flag.
    */
   joinCredential?: string;
+};
+
+export type EvalSessionPurpose = "authoring" | "qualification";
+
+export type EvalSessionLimits = {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  perCallOutputTokens: number;
+  wallTimeMs: number;
+};
+
+export type OpenedEvalSession = {
+  sessionId: string;
+  gatewayUrl: string;
+  /**
+   * Ephemeral plaintext credential returned once to the authenticated caller.
+   * Callers must immediately wrap this value in `Redacted.Redacted`.
+   */
+  bearerCredential: string;
+  targetIdentity: string;
+  expiresAt: string;
 };
 
 export type RouteKitControlParams = {
@@ -123,6 +146,20 @@ export type RouteKitControlParams = {
   };
   "tokens.list": { plane?: TokenPlane };
   "tokens.revoke": { id: string };
+  "evalSession.open": {
+    purpose: EvalSessionPurpose;
+    operationId: string;
+    allowedModels: string[];
+    limits: EvalSessionLimits;
+    expiresInSeconds: number;
+  };
+  "evalSession.close": { sessionId: string };
+  "evalRouting.status": Record<string, never>;
+  "evalRouting.activate": {
+    /** `null` means the caller expects the target to have no active policy. */
+    expectedEvidenceDigest: string | null;
+    activation: PublishedRoutingActivation;
+  };
 };
 
 export type DaemonStatus = {
@@ -200,15 +237,68 @@ export type LaunchPreparation = {
   };
 };
 
+export type RouteKitCompositionalRoutingInspection = {
+  version: 2;
+  basisDigest: string;
+  evidenceDigest: string;
+  weights: ReadonlyArray<{ dimensionId: string; weight: number }>;
+  unknownWeight: number;
+  requirements: {
+    endpoint: "chat" | "responses" | "anthropic";
+    requiresTools: boolean;
+    requiresVision: boolean;
+    inputTokens?: number;
+    maxOutputTokens?: number;
+  };
+  objective:
+    | { kind: "highest-quality" }
+    | { kind: "lowest-cost"; minimumQuality: number }
+    | { kind: "lowest-latency"; minimumQuality: number }
+    | {
+        kind: "balanced";
+        minimumQuality: number;
+        weights: { quality: number; cost: number; latency: number };
+      }
+    | {
+        kind: "pareto";
+        minimumQuality: number;
+        preference: "quality" | "cost" | "latency";
+      };
+  candidates: ReadonlyArray<{
+    model: string;
+    eligible: boolean;
+    exclusionReasons: ReadonlyArray<string>;
+    quality?: number;
+    failureRate?: number;
+    p95DurationMs?: number;
+    averageCostUsd?: number;
+    costStatus: "known" | "unavailable";
+    utility?: number;
+    rank?: number;
+  }>;
+  selectedModel: string;
+  fallbackModels: ReadonlyArray<string>;
+  classifierCallId?: string;
+  inferenceCallId: string;
+};
+
 export type RouteKitCallInspection = {
   callId: string;
   status: ModelCallStatus;
+  requestedModel?: string;
   effectiveModel: string;
   nativeModel?: string;
   provider: string;
   billingMode: RequestBillingMode;
   account?: { seat: string };
   principal?: { tokenId: string; label?: string };
+  compositionalRouting?: RouteKitCompositionalRoutingInspection;
+  eval?: {
+    role: "author" | "candidate" | "judge";
+    runId: string;
+    caseId?: string;
+    policyBypass: true;
+  };
   retries: {
     attempts: number;
     total: number;
@@ -428,6 +518,10 @@ export type RouteKitControlResults = {
   "tokens.issue": IssuedTokenResult;
   "tokens.list": { tokens: TokenListEntry[] };
   "tokens.revoke": TokenListEntry;
+  "evalSession.open": OpenedEvalSession;
+  "evalSession.close": { sessionId: string; closed: boolean };
+  "evalRouting.status": { activation: PublishedRoutingActivation | null };
+  "evalRouting.activate": { activated: true; activation: PublishedRoutingActivation };
 };
 
 /**

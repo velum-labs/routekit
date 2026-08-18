@@ -9,6 +9,7 @@ Standard commands live in `README.md` and root `package.json` scripts
 caveats.
 
 ### Node / toolchain (important)
+
 - The repo needs **Node >= 22.22.0** (`.npmrc` has `engine-strict=true`, and
   the workspace dependency graph includes packages that require it). Package
   manager is **pnpm 11.15.1** via Corepack (pinned in `package.json`).
@@ -20,6 +21,7 @@ caveats.
 - tmux sessions started with a login shell already get the correct node.
 
 ### Tests / build
+
 - `pnpm test` runs entirely in Node with **no external services, no network, no
   database** (`PORTLESS=0`). `pnpm check` validates repo/registry invariants,
   Biome lint, Effect language-service diagnostics, syncpack catalogs, and
@@ -44,6 +46,7 @@ caveats.
   describe RouteKit only.
 
 ### Running the app
+
 - Build first (`pnpm build`), then run the built CLI via
   `node packages/cli/dist/index.js <cmd>` (published bin: `routekit`), or
   `pnpm dev:run-routekit`.
@@ -68,6 +71,7 @@ caveats.
   the daemon forwards configured providers' key/base-URL env vars to itself.
 
 ### Docker (for testing remote features)
+
 - **Docker CE 28.5.2 is installed** in the VM image. systemd is not active, so
   start the daemon manually each session (it does not auto-start), e.g. in a
   tmux window: `sudo dockerd > /tmp/dockerd.log 2>&1`. It is configured for the
@@ -80,12 +84,14 @@ caveats.
   `daemon.json` + iptables-legacy config above.
 
 ### Testing RouteKit remote features over SSH
+
 `routekit remote add <name> --url <gateway> --ssh <host>` SSHes to `<host>` and
 issues a named data-plane token via `tokens.issue` over the control relay
 (no legacy shared-owner-token fallback), health-checks `<gateway>/health`, then
 relays control calls over `ssh <host> routekit --local daemon exec`. Peer
 accounts can pass `--join rk1_…` so the SSH account is enrolled as a peer first.
 Constraints that matter for a test container:
+
 - The daemon defaults to loopback (`127.0.0.1`); `--url` must be **HTTPS or a
   loopback host**. So run the test container with **`--network host`** (shares
   the host loopback): the container gateway is reachable at
@@ -94,7 +100,7 @@ Constraints that matter for a test container:
 - SSH must be non-interactive: key auth + a `~/.ssh/config` alias with
   `BatchMode yes`, `StrictHostKeyChecking no`, and the `IdentityFile`.
 - Reusable testbed recipe (verified working): image from `node:22-bookworm-slim`
-  + `openssh-server` + `npm install -g @velum-labs/routekit` (or the public
+  - `openssh-server` + `npm install -g @velum-labs/routekit` (or the public
   `install.sh` one-liner); inject an SSH pubkey into
   `/root/.ssh/authorized_keys`; entrypoint runs `ssh-keygen -A`, writes
   `~/.config/routekit/router.yaml` (openai provider, `defaultModel

@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "comparisonId": "2fa9fb22-7368-460b-bd20-1d4b1be2ec91",
+  "profileId": "observability-attribution",
+  "suiteDigest": "e878a5358afe12216f8bc8d90e3128eb6283427cbb625960ffdcf6ce7d3e8510",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-18T12:09:30.423Z",
+  "finishedAt": "2026-08-18T12:11:59.254Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "call-inspection-redaction-and-retention",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4112.380666,
+            "judgeScore": 0.99,
+            "inputTokens": 222,
+            "outputTokens": 348
+          }
+        },
+        {
+          "caseId": "multi-step-usage-and-attempt-semantics",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 11186.335390999999,
+            "judgeScore": 0,
+            "inputTokens": 185,
+            "outputTokens": 1024
+          }
+        },
+        {
+          "caseId": "telemetry-versus-local-inspection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5117.120945000002,
+            "judgeScore": 0.99,
+            "inputTokens": 412,
+            "outputTokens": 446
+          }
+        },
+        {
+          "caseId": "requested-effective-native-model-routing",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5962.111815000004,
+            "judgeScore": 0.99,
+            "inputTokens": 345,
+            "outputTokens": 556
+          }
+        },
+        {
+          "caseId": "billing-mode-and-attribution-limits",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 9102.748934999996,
+            "judgeScore": 0.72,
+            "inputTokens": 285,
+            "outputTokens": 783
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "call-inspection-redaction-and-retention",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3722.194926999997,
+            "judgeScore": 1,
+            "inputTokens": 222,
+            "outputTokens": 256
+          }
+        },
+        {
+          "caseId": "multi-step-usage-and-attempt-semantics",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 8554.494876999997,
+            "judgeScore": 0.96,
+            "inputTokens": 185,
+            "outputTokens": 639
+          }
+        },
+        {
+          "caseId": "telemetry-versus-local-inspection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4883.567161999992,
+            "judgeScore": 0.98,
+            "inputTokens": 412,
+            "outputTokens": 368
+          }
+        },
+        {
+          "caseId": "requested-effective-native-model-routing",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4303.490044999999,
+            "judgeScore": 0.99,
+            "inputTokens": 345,
+            "outputTokens": 424
+          }
+        },
+        {
+          "caseId": "billing-mode-and-attribution-limits",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6645.289835999996,
+            "judgeScore": 0.99,
+            "inputTokens": 285,
+            "outputTokens": 417
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "call-inspection-redaction-and-retention",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3636.8463400000037,
+            "judgeScore": 0.98,
+            "inputTokens": 222,
+            "outputTokens": 169
+          }
+        },
+        {
+          "caseId": "multi-step-usage-and-attempt-semantics",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 13089.303304000001,
+            "judgeScore": 0.98,
+            "inputTokens": 185,
+            "outputTokens": 344
+          }
+        },
+        {
+          "caseId": "telemetry-versus-local-inspection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5844.796794000009,
+            "judgeScore": 0.99,
+            "inputTokens": 412,
+            "outputTokens": 241
+          }
+        },
+        {
+          "caseId": "requested-effective-native-model-routing",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 9218.301770999984,
+            "judgeScore": 0.99,
+            "inputTokens": 345,
+            "outputTokens": 435
+          }
+        },
+        {
+          "caseId": "billing-mode-and-attribution-limits",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 10120.171801999997,
+            "judgeScore": 0.99,
+            "inputTokens": 285,
+            "outputTokens": 437
+          }
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "call-inspection-redaction-and-retention",
+      "measurement": {
+        "durationMs": 4112.380666,
+        "judgeScore": 0.99,
+        "inputTokens": 222,
+        "outputTokens": 348
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "call-inspection-redaction-and-retention",
+      "measurement": {
+        "durationMs": 4166.305114,
+        "inputTokens": 715,
+        "outputTokens": 268
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "multi-step-usage-and-attempt-semantics",
+      "measurement": {
+        "durationMs": 11186.335390999999,
+        "judgeScore": 0,
+        "inputTokens": 185,
+        "outputTokens": 1024
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "multi-step-usage-and-attempt-semantics",
+      "measurement": {
+        "durationMs": 1815.8570519999994,
+        "inputTokens": 468,
+        "outputTokens": 50
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "telemetry-versus-local-inspection",
+      "measurement": {
+        "durationMs": 5117.120945000002,
+        "judgeScore": 0.99,
+        "inputTokens": 412,
+        "outputTokens": 446
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "telemetry-versus-local-inspection",
+      "measurement": {
+        "durationMs": 1926.570811999998,
+        "inputTokens": 1022,
+        "outputTokens": 94
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "requested-effective-native-model-routing",
+      "measurement": {
+        "durationMs": 5962.111815000004,
+        "judgeScore": 0.99,
+        "inputTokens": 345,
+        "outputTokens": 556
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "requested-effective-native-model-routing",
+      "measurement": {
+        "durationMs": 2662.8703120000064,
+        "inputTokens": 1040,
+        "outputTokens": 144
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "billing-mode-and-attribution-limits",
+      "measurement": {
+        "durationMs": 9102.748934999996,
+        "judgeScore": 0.72,
+        "inputTokens": 285,
+        "outputTokens": 783
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "billing-mode-and-attribution-limits",
+      "measurement": {
+        "durationMs": 3190.457233000001,
+        "inputTokens": 900,
+        "outputTokens": 233
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "call-inspection-redaction-and-retention",
+      "measurement": {
+        "durationMs": 3722.194926999997,
+        "judgeScore": 1,
+        "inputTokens": 222,
+        "outputTokens": 256
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "call-inspection-redaction-and-retention",
+      "measurement": {
+        "durationMs": 1907.725129999999,
+        "inputTokens": 746,
+        "outputTokens": 85
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "multi-step-usage-and-attempt-semantics",
+      "measurement": {
+        "durationMs": 8554.494876999997,
+        "judgeScore": 0.96,
+        "inputTokens": 185,
+        "outputTokens": 639
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "multi-step-usage-and-attempt-semantics",
+      "measurement": {
+        "durationMs": 4794.085189000005,
+        "inputTokens": 1012,
+        "outputTokens": 335
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "telemetry-versus-local-inspection",
+      "measurement": {
+        "durationMs": 4883.567161999992,
+        "judgeScore": 0.98,
+        "inputTokens": 412,
+        "outputTokens": 368
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "telemetry-versus-local-inspection",
+      "measurement": {
+        "durationMs": 4082.656369999997,
+        "inputTokens": 1083,
+        "outputTokens": 280
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "requested-effective-native-model-routing",
+      "measurement": {
+        "durationMs": 4303.490044999999,
+        "judgeScore": 0.99,
+        "inputTokens": 345,
+        "outputTokens": 424
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "requested-effective-native-model-routing",
+      "measurement": {
+        "durationMs": 2066.0902510000014,
+        "inputTokens": 1085,
+        "outputTokens": 60
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "billing-mode-and-attribution-limits",
+      "measurement": {
+        "durationMs": 6645.289835999996,
+        "judgeScore": 0.99,
+        "inputTokens": 285,
+        "outputTokens": 417
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "billing-mode-and-attribution-limits",
+      "measurement": {
+        "durationMs": 2402.7982090000005,
+        "inputTokens": 921,
+        "outputTokens": 92
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "call-inspection-redaction-and-retention",
+      "measurement": {
+        "durationMs": 3636.8463400000037,
+        "judgeScore": 0.98,
+        "inputTokens": 222,
+        "outputTokens": 169
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "call-inspection-redaction-and-retention",
+      "measurement": {
+        "durationMs": 4351.928504999989,
+        "inputTokens": 696,
+        "outputTokens": 237
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "multi-step-usage-and-attempt-semantics",
+      "measurement": {
+        "durationMs": 13089.303304000001,
+        "judgeScore": 0.98,
+        "inputTokens": 185,
+        "outputTokens": 344
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "multi-step-usage-and-attempt-semantics",
+      "measurement": {
+        "durationMs": 2682.9442689999996,
+        "inputTokens": 744,
+        "outputTokens": 152
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "telemetry-versus-local-inspection",
+      "measurement": {
+        "durationMs": 5844.796794000009,
+        "judgeScore": 0.99,
+        "inputTokens": 412,
+        "outputTokens": 241
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "telemetry-versus-local-inspection",
+      "measurement": {
+        "durationMs": 3151.9290769999934,
+        "inputTokens": 956,
+        "outputTokens": 188
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "requested-effective-native-model-routing",
+      "measurement": {
+        "durationMs": 9218.301770999984,
+        "judgeScore": 0.99,
+        "inputTokens": 345,
+        "outputTokens": 435
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "requested-effective-native-model-routing",
+      "measurement": {
+        "durationMs": 1976.5934319999942,
+        "inputTokens": 981,
+        "outputTokens": 82
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "billing-mode-and-attribution-limits",
+      "measurement": {
+        "durationMs": 10120.171801999997,
+        "judgeScore": 0.99,
+        "inputTokens": 285,
+        "outputTokens": 437
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "billing-mode-and-attribution-limits",
+      "measurement": {
+        "durationMs": 1815.0251010000065,
+        "inputTokens": 923,
+        "outputTokens": 70
+      }
+    }
+  ]
+}

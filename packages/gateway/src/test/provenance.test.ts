@@ -14,7 +14,7 @@ test("WS7: resolveProducerGitSha returns a real 40-hex SHA from a source checkou
   delete process.env.ROUTEKIT_BUILD_GIT_SHA;
   try {
     // The test runs from the source checkout (not node_modules), so the
-    // runtime `git rev-parse HEAD` fallback resolves the real producer SHA.
+    // runtime reads .git/HEAD and resolves the real producer SHA.
     const sha = resolveProducerGitSha();
     assert.match(sha, GIT_SHA, "a checkout resolves a real git SHA");
     assert.notEqual(sha, "0".repeat(40), "never the all-zero faked-provenance placeholder");
@@ -92,6 +92,85 @@ test("WS7: a built model-call record carries normalized provenance", () => {
     retries: 0,
     account_failovers: 0
   });
+});
+
+test("compositional routing provenance is complete, sanitized, and binds the inference call", () => {
+  const record = buildModelCallRecord(
+    {
+      callId: "model_call_inference",
+      dialect: "openai-responses",
+      requestedModel: "auto",
+      model: "openai/model-b",
+      stream: false,
+      requestBody: { model: "openai/model-b", input: "private request" },
+      startedAt: "2026-08-17T00:00:00.000Z",
+      attribution: {
+        effective_model: "openai/model-b",
+        provider: "openai",
+        billing_mode: "api_key",
+        compositional_routing: {
+          version: 2,
+          basis_digest: "definitions-v2",
+          evidence_digest: "evidence-v2",
+          weights: [
+            { dimension_id: "gateway-protocols", weight: 0.6 },
+            { dimension_id: "eval-driven-routing", weight: 0.4 }
+          ],
+          unknown_weight: 0,
+          requirements: {
+            endpoint: "responses",
+            requires_tools: true,
+            requires_vision: false,
+            input_tokens: 120,
+            max_output_tokens: 800
+          },
+          objective: { kind: "highest-quality" },
+          candidates: [
+            {
+              model: "openai/model-b",
+              eligible: true,
+              exclusion_reasons: [],
+              quality: 0.91,
+              failure_rate: 0.02,
+              p95_duration_ms: 900,
+              cost_status: "unavailable",
+              utility: 0.91,
+              rank: 1
+            },
+            {
+              model: "openai/model-a",
+              eligible: false,
+              exclusion_reasons: ["missing_area_evidence:eval-driven-routing"],
+              cost_status: "unavailable"
+            }
+          ],
+          selected_model: "openai/model-b",
+          fallback_models: [],
+          classifier_call_id: "model_call_classifier"
+        },
+        attempts: 1,
+        retries: 0,
+        account_failovers: 0
+      }
+    },
+    {
+      statusCode: 200,
+      durationMs: 12,
+      responseBody: Buffer.from(JSON.stringify({ id: "response-id" }))
+    }
+  );
+  const routing = (
+    record.metadata?.attribution as { compositional_routing?: Record<string, unknown> } | undefined
+  )?.compositional_routing;
+  assert.equal(routing?.classifier_call_id, "model_call_classifier");
+  assert.equal(routing?.inference_call_id, "model_call_inference");
+  assert.equal(routing?.basis_digest, "definitions-v2");
+  assert.equal(routing?.evidence_digest, "evidence-v2");
+  assert.deepEqual(routing?.weights, [
+    { dimension_id: "gateway-protocols", weight: 0.6 },
+    { dimension_id: "eval-driven-routing", weight: 0.4 }
+  ]);
+  assert.doesNotMatch(JSON.stringify(routing), /private request/);
 });
 
 test("model-call provenance replaces raw upstream errors with a safe summary", () => {

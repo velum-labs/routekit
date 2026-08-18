@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "comparisonId": "d400b294-ef39-4add-aaae-84587b42a151",
+  "profileId": "eval-driven-routing",
+  "suiteDigest": "dc01225f25712443afa5101106daaa2bbd59d9e9863f892bd360ab160ea99d98",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-17T19:27:19.539Z",
+  "finishedAt": "2026-08-17T19:28:35.083Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "manifest-fail-closed",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2233.800346,
+            "judgeScore": 1,
+            "inputTokens": 139,
+            "outputTokens": 144
+          }
+        },
+        {
+          "caseId": "unpriced-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 1695.0414570000003,
+            "judgeScore": 1,
+            "inputTokens": 197,
+            "outputTokens": 152
+          }
+        },
+        {
+          "caseId": "matrix-compilation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3410.607024000001,
+            "judgeScore": 1,
+            "inputTokens": 170,
+            "outputTokens": 269
+          }
+        },
+        {
+          "caseId": "auto-routing-determinism",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4611.747457000001,
+            "judgeScore": 0.98,
+            "inputTokens": 209,
+            "outputTokens": 255
+          }
+        },
+        {
+          "caseId": "testdrive-vs-production",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2126.4554040000003,
+            "judgeScore": 1,
+            "inputTokens": 165,
+            "outputTokens": 181
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "manifest-fail-closed",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2877.007826000001,
+            "judgeScore": 1,
+            "inputTokens": 139,
+            "outputTokens": 119
+          }
+        },
+        {
+          "caseId": "unpriced-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2365.0212949999986,
+            "judgeScore": 1,
+            "inputTokens": 197,
+            "outputTokens": 166
+          }
+        },
+        {
+          "caseId": "matrix-compilation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3761.8363029999964,
+            "judgeScore": 0.99,
+            "inputTokens": 170,
+            "outputTokens": 239
+          }
+        },
+        {
+          "caseId": "auto-routing-determinism",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3843.6113639999967,
+            "judgeScore": 0.99,
+            "inputTokens": 209,
+            "outputTokens": 314
+          }
+        },
+        {
+          "caseId": "testdrive-vs-production",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3224.7273700000005,
+            "judgeScore": 1,
+            "inputTokens": 165,
+            "outputTokens": 192
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "manifest-fail-closed",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2668.8664199999985,
+            "judgeScore": 1,
+            "inputTokens": 139,
+            "outputTokens": 82
+          }
+        },
+        {
+          "caseId": "unpriced-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2845.3892300000007,
+            "judgeScore": 1,
+            "inputTokens": 197,
+            "outputTokens": 153
+          }
+        },
+        {
+          "caseId": "matrix-compilation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3008.1534889999966,
+            "judgeScore": 0.98,
+            "inputTokens": 170,
+            "outputTokens": 113
+          }
+        },
+        {
+          "caseId": "auto-routing-determinism",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4438.390587000009,
+            "judgeScore": 0.99,
+            "inputTokens": 209,
+            "outputTokens": 223
+          }
+        },
+        {
+          "caseId": "testdrive-vs-production",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3563.94767899999,
+            "judgeScore": 1,
+            "inputTokens": 165,
+            "outputTokens": 137
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -20,7 +20,15 @@ import {
   type BackendRequest,
   type BackendRequestOptions
 } from "../backend.js";
-import { evalAutoRouterRejection } from "../eval-policy.js";
+import {
+  type CompositionalRoutingRuntime,
+  compositionalRoutingAttribution,
+  evalAutoRouterRejection,
+  evalRequestAttribution,
+  resolveConfiguredAutoRoutingModel
+} from "../eval-policy.js";
+import { extractClassifiableRequestText } from "../request-classifier.js";
+import { deriveRoutingRequirements } from "../routing-requirements.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -61,6 +69,7 @@ type AnthropicTokenCountRelay = Readonly<{
 
 export type AnthropicEndpointDependencies = Readonly<{
   backend: Backend;
+  compositionalRouting?: CompositionalRoutingRuntime;
   requestRelay?: AnthropicRequestRelay;
   tokenCountRelay?: AnthropicTokenCountRelay;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
@@ -172,8 +181,9 @@ function executeAnthropicRequest(
     }
 
     if (rejectInvalid(context, validateAnthropicRequest(raw))) return;
-    const rawBody = decodeValidatedAnthropicRequest(raw);
-    const evalRejection = evalAutoRouterRejection(headers, rawBody.model);
+    const decodedBody = decodeValidatedAnthropicRequest(raw);
+    const requestEvalAttribution = evalRequestAttribution(headers);
+    const evalRejection = evalAutoRouterRejection(headers, decodedBody.model);
     if (evalRejection !== undefined) {
       transport.writeJson(400, {
         type: "error",
@@ -181,6 +191,23 @@ function executeAnthropicRequest(
       });
       return;
     }
+    let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
+    const autoModel = yield* resolveConfiguredAutoRoutingModel({
+      headers,
+      model: decodedBody.model,
+      requestText: extractClassifiableRequestText(decodedBody),
+      requirements: deriveRoutingRequirements("anthropic", decodedBody),
+      compositionalRouting: dependencies.compositionalRouting,
+      onCompositionalObservation: (observation) => {
+        if (observation.status === "decided") {
+          compositionalRouting = compositionalRoutingAttribution(observation);
+        }
+      }
+    });
+    const rawBody =
+      autoModel !== undefined && autoModel !== decodedBody.model
+        ? withModel(decodedBody, autoModel)
+        : decodedBody;
     if (rawBody.model === undefined && backend.defaultModel === undefined) {
       transport.writeJson(503, {
         type: "error",
@@ -234,11 +261,16 @@ function executeAnthropicRequest(
         dialect: "anthropic-messages",
         body,
         defaultModel: backend.defaultModel,
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           effective_model: canonicalModel ?? rawBody.model,
           native_model: route.nativeId,
           provider: route.provider,
-          billing_mode: "subscription"
+          billing_mode: "subscription",
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           relay.relay(headers, relayBody, signal, {
@@ -260,11 +292,16 @@ function executeAnthropicRequest(
         dialect: "anthropic-messages",
         body,
         defaultModel: backend.defaultModel,
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           effective_model: requestedModel ?? "claude-code/default",
           ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
           provider: "claude-code",
-          billing_mode: "subscription"
+          billing_mode: "subscription",
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           relay.relay(headers, body, signal, {
@@ -278,7 +315,14 @@ function executeAnthropicRequest(
       dialect: "anthropic-messages",
       body,
       defaultModel: backend.defaultModel,
-      attribution: dependencies.attribution(resolvedModel, "claude-code"),
+      ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
+      attribution: {
+        ...dependencies.attribution(resolvedModel, "claude-code"),
+        ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+        ...(compositionalRouting === undefined
+          ? {}
+          : { compositional_routing: compositionalRouting })
+      },
       invoke: (callId, signal, onAttribution) =>
         handleAnthropicMessages(
           backend,

@@ -1,0 +1,28 @@
+---
+description: Use global routekit only for config/setup; run all tests against the repo CLI
+alwaysApply: true
+---
+
+# Local CLI for tests
+
+Global `routekit` (PATH / pnpm bin) is for **config and setup only**: remotes, tokens, `status`, `config`, `accounts`, `providers`.
+
+Every **test, eval, probe, or behavior check** must use the repo CLI, not the global binary:
+
+```bash
+node packages/cli/dist/index.js <cmd>
+# or
+pnpm dev:run-routekit -- <cmd>
+```
+
+Build first if `packages/cli/dist/index.js` is missing (`pnpm build` or `pnpm build:cli`).
+
+```bash
+# ❌ BAD — testing eval/gateway behavior with whatever is on PATH
+routekit eval run --spec suite.json --url … --token …
+
+# ✅ GOOD — same check against this checkout
+node packages/cli/dist/index.js eval run --spec suite.json --url … --token …
+```
+
+`--remote` on the global CLI is fine for reading orbit URL/token/models. Do not use that binary to exercise product commands under test (`eval`, `policy`, gateway probes of new code).

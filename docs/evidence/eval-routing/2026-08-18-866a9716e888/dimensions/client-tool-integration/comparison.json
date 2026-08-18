@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "comparisonId": "3118cbab-ed07-4610-9095-a4c4fa6ba1e5",
+  "profileId": "client-tool-integration",
+  "suiteDigest": "e942670e144bf532900494a20ed89a2fa1490c2a61b17a80a4c23857866513b7",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-18T12:08:08.609Z",
+  "finishedAt": "2026-08-18T12:09:30.264Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "codex-launch-pinned-model",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 6788.411417,
+            "judgeScore": 0.72,
+            "inputTokens": 198,
+            "outputTokens": 598
+          }
+        },
+        {
+          "caseId": "claude-install-credential-isolation",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 2848.152252,
+            "judgeScore": 0.72,
+            "inputTokens": 252,
+            "outputTokens": 185
+          }
+        },
+        {
+          "caseId": "cursor-support-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2061.461222,
+            "judgeScore": 1,
+            "inputTokens": 229,
+            "outputTokens": 99
+          }
+        },
+        {
+          "caseId": "opencode-public-support-status",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3401.5281600000017,
+            "judgeScore": 1,
+            "inputTokens": 169,
+            "outputTokens": 205
+          }
+        },
+        {
+          "caseId": "generic-client-provider-key-boundary",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3039.0605639999994,
+            "judgeScore": 0.96,
+            "inputTokens": 201,
+            "outputTokens": 199
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "codex-launch-pinned-model",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 2563.247486999997,
+            "judgeScore": 0.72,
+            "inputTokens": 198,
+            "outputTokens": 150
+          }
+        },
+        {
+          "caseId": "claude-install-credential-isolation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3652.9049319999976,
+            "judgeScore": 0.99,
+            "inputTokens": 252,
+            "outputTokens": 127
+          }
+        },
+        {
+          "caseId": "cursor-support-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2358.684451999994,
+            "judgeScore": 0.99,
+            "inputTokens": 229,
+            "outputTokens": 135
+          }
+        },
+        {
+          "caseId": "opencode-public-support-status",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2625.232619000002,
+            "judgeScore": 1,
+            "inputTokens": 169,
+            "outputTokens": 183
+          }
+        },
+        {
+          "caseId": "generic-client-provider-key-boundary",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 1885.288787999998,
+            "judgeScore": 0.72,
+            "inputTokens": 201,
+            "outputTokens": 107
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "codex-launch-pinned-model",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3744.6875909999944,
+            "judgeScore": 0.99,
+            "inputTokens": 198,
+            "outputTokens": 166
+          }
+        },
+        {
+          "caseId": "claude-install-credential-isolation",
+          "outcome": "failed",
+          "measurement": {
+            "durationMs": 3093.208068,
+            "judgeScore": 0.78,
+            "inputTokens": 252,
+            "outputTokens": 96
+          }
+        },
+        {
+          "caseId": "cursor-support-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2748.088506999993,
+            "judgeScore": 1,
+            "inputTokens": 229,
+            "outputTokens": 103
+          }
+        },
+        {
+          "caseId": "opencode-public-support-status",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4475.547143000003,
+            "judgeScore": 1,
+            "inputTokens": 169,
+            "outputTokens": 127
+          }
+        },
+        {
+          "caseId": "generic-client-provider-key-boundary",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2376.5941440000024,
+            "judgeScore": 0.94,
+            "inputTokens": 201,
+            "outputTokens": 98
+          }
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "codex-launch-pinned-model",
+      "measurement": {
+        "durationMs": 6788.411417,
+        "judgeScore": 0.72,
+        "inputTokens": 198,
+        "outputTokens": 598
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "codex-launch-pinned-model",
+      "measurement": {
+        "durationMs": 2138.041812999999,
+        "inputTokens": 640,
+        "outputTokens": 120
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "claude-install-credential-isolation",
+      "measurement": {
+        "durationMs": 2848.152252,
+        "judgeScore": 0.72,
+        "inputTokens": 252,
+        "outputTokens": 185
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "claude-install-credential-isolation",
+      "measurement": {
+        "durationMs": 2440.9765719999996,
+        "inputTokens": 624,
+        "outputTokens": 140
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "cursor-support-decision",
+      "measurement": {
+        "durationMs": 2061.461222,
+        "judgeScore": 1,
+        "inputTokens": 229,
+        "outputTokens": 99
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "cursor-support-decision",
+      "measurement": {
+        "durationMs": 1994.4314040000008,
+        "inputTokens": 583,
+        "outputTokens": 83
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "opencode-public-support-status",
+      "measurement": {
+        "durationMs": 3401.5281600000017,
+        "judgeScore": 1,
+        "inputTokens": 169,
+        "outputTokens": 205
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "opencode-public-support-status",
+      "measurement": {
+        "durationMs": 1995.3602919999976,
+        "inputTokens": 557,
+        "outputTokens": 63
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "generic-client-provider-key-boundary",
+      "measurement": {
+        "durationMs": 3039.0605639999994,
+        "judgeScore": 0.96,
+        "inputTokens": 201,
+        "outputTokens": 199
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "generic-client-provider-key-boundary",
+      "measurement": {
+        "durationMs": 3707.963341999999,
+        "inputTokens": 579,
+        "outputTokens": 236
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "codex-launch-pinned-model",
+      "measurement": {
+        "durationMs": 2563.247486999997,
+        "judgeScore": 0.72,
+        "inputTokens": 198,
+        "outputTokens": 150
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "codex-launch-pinned-model",
+      "measurement": {
+        "durationMs": 2249.2749689999982,
+        "inputTokens": 608,
+        "outputTokens": 127
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "claude-install-credential-isolation",
+      "measurement": {
+        "durationMs": 3652.9049319999976,
+        "judgeScore": 0.99,
+        "inputTokens": 252,
+        "outputTokens": 127
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "claude-install-credential-isolation",
+      "measurement": {
+        "durationMs": 1624.6713799999998,
+        "inputTokens": 651,
+        "outputTokens": 75
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "cursor-support-decision",
+      "measurement": {
+        "durationMs": 2358.684451999994,
+        "judgeScore": 0.99,
+        "inputTokens": 229,
+        "outputTokens": 135
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "cursor-support-decision",
+      "measurement": {
+        "durationMs": 2514.099162999999,
+        "inputTokens": 619,
+        "outputTokens": 112
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "opencode-public-support-status",
+      "measurement": {
+        "durationMs": 2625.232619000002,
+        "judgeScore": 1,
+        "inputTokens": 169,
+        "outputTokens": 183
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "opencode-public-support-status",
+      "measurement": {
+        "durationMs": 1494.183732000005,
+        "inputTokens": 583,
+        "outputTokens": 69
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "generic-client-provider-key-boundary",
+      "measurement": {
+        "durationMs": 1885.288787999998,
+        "judgeScore": 0.72,
+        "inputTokens": 201,
+        "outputTokens": 107
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "generic-client-provider-key-boundary",
+      "measurement": {
+        "durationMs": 2160.4128039999996,
+        "inputTokens": 573,
+        "outputTokens": 142
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "codex-launch-pinned-model",
+      "measurement": {
+        "durationMs": 3744.6875909999944,
+        "judgeScore": 0.99,
+        "inputTokens": 198,
+        "outputTokens": 166
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "codex-launch-pinned-model",
+      "measurement": {
+        "durationMs": 3169.0956189999997,
+        "inputTokens": 624,
+        "outputTokens": 159
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "claude-install-credential-isolation",
+      "measurement": {
+        "durationMs": 3093.208068,
+        "judgeScore": 0.78,
+        "inputTokens": 252,
+        "outputTokens": 96
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "claude-install-credential-isolation",
+      "measurement": {
+        "durationMs": 2316.0805820000023,
+        "inputTokens": 620,
+        "outputTokens": 125
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "cursor-support-decision",
+      "measurement": {
+        "durationMs": 2748.088506999993,
+        "judgeScore": 1,
+        "inputTokens": 229,
+        "outputTokens": 103
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "cursor-support-decision",
+      "measurement": {
+        "durationMs": 1678.1557969999994,
+        "inputTokens": 587,
+        "outputTokens": 75
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "opencode-public-support-status",
+      "measurement": {
+        "durationMs": 4475.547143000003,
+        "judgeScore": 1,
+        "inputTokens": 169,
+        "outputTokens": 127
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "opencode-public-support-status",
+      "measurement": {
+        "durationMs": 2139.9803110000066,
+        "inputTokens": 527,
+        "outputTokens": 70
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "generic-client-provider-key-boundary",
+      "measurement": {
+        "durationMs": 2376.5941440000024,
+        "judgeScore": 0.94,
+        "inputTokens": 201,
+        "outputTokens": 98
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "generic-client-provider-key-boundary",
+      "measurement": {
+        "durationMs": 2030.5005530000053,
+        "inputTokens": 564,
+        "outputTokens": 93
+      }
+    }
+  ]
+}

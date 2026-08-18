@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "comparisonId": "bddb5b0b-c821-4186-9d8b-82e64ae4892e",
+  "profileId": "model-routing-registry",
+  "suiteDigest": "e7b7ba58a6bce832895e21575e89437dbc923c5bc27d87ea712781e44a98a28f",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-18T11:58:57.139Z",
+  "finishedAt": "2026-08-18T12:00:26.051Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "default-absent-from-advertised-catalog",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 8049.722681,
+            "judgeScore": 0.99,
+            "inputTokens": 163,
+            "outputTokens": 624
+          }
+        },
+        {
+          "caseId": "explicit-namespaced-route-validation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2925.400099999999,
+            "judgeScore": 1,
+            "inputTokens": 192,
+            "outputTokens": 182
+          }
+        },
+        {
+          "caseId": "policy-filtered-catalog-and-aliases",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3413.024236000001,
+            "judgeScore": 1,
+            "inputTokens": 233,
+            "outputTokens": 218
+          }
+        },
+        {
+          "caseId": "capability-and-metadata-inspection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2647.409523999999,
+            "judgeScore": 1,
+            "inputTokens": 138,
+            "outputTokens": 181
+          }
+        },
+        {
+          "caseId": "subscription-pool-eligibility-and-ordering",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2023.799081000001,
+            "judgeScore": 1,
+            "inputTokens": 145,
+            "outputTokens": 116
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "default-absent-from-advertised-catalog",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6389.195323,
+            "judgeScore": 0.99,
+            "inputTokens": 163,
+            "outputTokens": 448
+          }
+        },
+        {
+          "caseId": "explicit-namespaced-route-validation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2675.054226,
+            "judgeScore": 1,
+            "inputTokens": 192,
+            "outputTokens": 180
+          }
+        },
+        {
+          "caseId": "policy-filtered-catalog-and-aliases",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2649.4053300000014,
+            "judgeScore": 1,
+            "inputTokens": 233,
+            "outputTokens": 211
+          }
+        },
+        {
+          "caseId": "capability-and-metadata-inspection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2563.9436829999977,
+            "judgeScore": 1,
+            "inputTokens": 138,
+            "outputTokens": 132
+          }
+        },
+        {
+          "caseId": "subscription-pool-eligibility-and-ordering",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3098.1651830000046,
+            "judgeScore": 1,
+            "inputTokens": 145,
+            "outputTokens": 191
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "default-absent-from-advertised-catalog",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5767.167965000001,
+            "judgeScore": 0.99,
+            "inputTokens": 163,
+            "outputTokens": 294
+          }
+        },
+        {
+          "caseId": "explicit-namespaced-route-validation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2428.5185369999963,
+            "judgeScore": 1,
+            "inputTokens": 192,
+            "outputTokens": 106
+          }
+        },
+        {
+          "caseId": "policy-filtered-catalog-and-aliases",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3712.661665000007,
+            "judgeScore": 1,
+            "inputTokens": 233,
+            "outputTokens": 106
+          }
+        },
+        {
+          "caseId": "capability-and-metadata-inspection",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5190.530257999999,
+            "judgeScore": 1,
+            "inputTokens": 138,
+            "outputTokens": 134
+          }
+        },
+        {
+          "caseId": "subscription-pool-eligibility-and-ordering",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4094.793452999991,
+            "judgeScore": 0.99,
+            "inputTokens": 145,
+            "outputTokens": 211
+          }
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "default-absent-from-advertised-catalog",
+      "measurement": {
+        "durationMs": 8049.722681,
+        "judgeScore": 0.99,
+        "inputTokens": 163,
+        "outputTokens": 624
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "default-absent-from-advertised-catalog",
+      "measurement": {
+        "durationMs": 2018.463839000001,
+        "inputTokens": 625,
+        "outputTokens": 79
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "explicit-namespaced-route-validation",
+      "measurement": {
+        "durationMs": 2925.400099999999,
+        "judgeScore": 1,
+        "inputTokens": 192,
+        "outputTokens": 182
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "explicit-namespaced-route-validation",
+      "measurement": {
+        "durationMs": 4969.402752000002,
+        "inputTokens": 554,
+        "outputTokens": 57
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "policy-filtered-catalog-and-aliases",
+      "measurement": {
+        "durationMs": 3413.024236000001,
+        "judgeScore": 1,
+        "inputTokens": 233,
+        "outputTokens": 218
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "policy-filtered-catalog-and-aliases",
+      "measurement": {
+        "durationMs": 1736.877199999999,
+        "inputTokens": 598,
+        "outputTokens": 60
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "capability-and-metadata-inspection",
+      "measurement": {
+        "durationMs": 2647.409523999999,
+        "judgeScore": 1,
+        "inputTokens": 138,
+        "outputTokens": 181
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "capability-and-metadata-inspection",
+      "measurement": {
+        "durationMs": 1839.875892,
+        "inputTokens": 480,
+        "outputTokens": 72
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "subscription-pool-eligibility-and-ordering",
+      "measurement": {
+        "durationMs": 2023.799081000001,
+        "judgeScore": 1,
+        "inputTokens": 145,
+        "outputTokens": 116
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "subscription-pool-eligibility-and-ordering",
+      "measurement": {
+        "durationMs": 1647.8752400000012,
+        "inputTokens": 502,
+        "outputTokens": 65
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "default-absent-from-advertised-catalog",
+      "measurement": {
+        "durationMs": 6389.195323,
+        "judgeScore": 0.99,
+        "inputTokens": 163,
+        "outputTokens": 448
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "default-absent-from-advertised-catalog",
+      "measurement": {
+        "durationMs": 1891.670315999996,
+        "inputTokens": 630,
+        "outputTokens": 78
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "explicit-namespaced-route-validation",
+      "measurement": {
+        "durationMs": 2675.054226,
+        "judgeScore": 1,
+        "inputTokens": 192,
+        "outputTokens": 180
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "explicit-namespaced-route-validation",
+      "measurement": {
+        "durationMs": 1788.414985000003,
+        "inputTokens": 615,
+        "outputTokens": 72
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "policy-filtered-catalog-and-aliases",
+      "measurement": {
+        "durationMs": 2649.4053300000014,
+        "judgeScore": 1,
+        "inputTokens": 233,
+        "outputTokens": 211
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "policy-filtered-catalog-and-aliases",
+      "measurement": {
+        "durationMs": 1797.0736529999995,
+        "inputTokens": 634,
+        "outputTokens": 83
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "capability-and-metadata-inspection",
+      "measurement": {
+        "durationMs": 2563.9436829999977,
+        "judgeScore": 1,
+        "inputTokens": 138,
+        "outputTokens": 132
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "capability-and-metadata-inspection",
+      "measurement": {
+        "durationMs": 1751.4163019999978,
+        "inputTokens": 502,
+        "outputTokens": 74
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "subscription-pool-eligibility-and-ordering",
+      "measurement": {
+        "durationMs": 3098.1651830000046,
+        "judgeScore": 1,
+        "inputTokens": 145,
+        "outputTokens": 191
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "subscription-pool-eligibility-and-ordering",
+      "measurement": {
+        "durationMs": 1780.643919000002,
+        "inputTokens": 577,
+        "outputTokens": 78
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "default-absent-from-advertised-catalog",
+      "measurement": {
+        "durationMs": 5767.167965000001,
+        "judgeScore": 0.99,
+        "inputTokens": 163,
+        "outputTokens": 294
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "default-absent-from-advertised-catalog",
+      "measurement": {
+        "durationMs": 2253.811292999999,
+        "inputTokens": 583,
+        "outputTokens": 95
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "explicit-namespaced-route-validation",
+      "measurement": {
+        "durationMs": 2428.5185369999963,
+        "judgeScore": 1,
+        "inputTokens": 192,
+        "outputTokens": 106
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "explicit-namespaced-route-validation",
+      "measurement": {
+        "durationMs": 1682.4814679999981,
+        "inputTokens": 541,
+        "outputTokens": 68
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "policy-filtered-catalog-and-aliases",
+      "measurement": {
+        "durationMs": 3712.661665000007,
+        "judgeScore": 1,
+        "inputTokens": 233,
+        "outputTokens": 106
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "policy-filtered-catalog-and-aliases",
+      "measurement": {
+        "durationMs": 2120.655251999997,
+        "inputTokens": 593,
+        "outputTokens": 64
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "capability-and-metadata-inspection",
+      "measurement": {
+        "durationMs": 5190.530257999999,
+        "judgeScore": 1,
+        "inputTokens": 138,
+        "outputTokens": 134
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "capability-and-metadata-inspection",
+      "measurement": {
+        "durationMs": 1967.759275999997,
+        "inputTokens": 504,
+        "outputTokens": 75
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "subscription-pool-eligibility-and-ordering",
+      "measurement": {
+        "durationMs": 4094.793452999991,
+        "judgeScore": 0.99,
+        "inputTokens": 145,
+        "outputTokens": 211
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "subscription-pool-eligibility-and-ordering",
+      "measurement": {
+        "durationMs": 1702.9498389999935,
+        "inputTokens": 597,
+        "outputTokens": 65
+      }
+    }
+  ]
+}

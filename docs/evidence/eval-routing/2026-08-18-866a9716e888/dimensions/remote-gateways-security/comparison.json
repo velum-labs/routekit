@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "comparisonId": "ac7fc196-927f-4797-b42e-39f4f4d0149d",
+  "profileId": "remote-gateways-security",
+  "suiteDigest": "0361b4234fbd7324fcbfddabd5c3d0920cc66270c79c13bc7d4e12c19cb5619b",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-18T12:04:18.856Z",
+  "finishedAt": "2026-08-18T12:06:22.809Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "ssh-remote-enrollment-security",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 10148.210869,
+            "judgeScore": 0.98,
+            "inputTokens": 403,
+            "outputTokens": 901
+          }
+        },
+        {
+          "caseId": "named-token-revocation-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3779.499012,
+            "judgeScore": 1,
+            "inputTokens": 212,
+            "outputTokens": 314
+          }
+        },
+        {
+          "caseId": "nonloopback-bind-https-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4846.954170999998,
+            "judgeScore": 1,
+            "inputTokens": 207,
+            "outputTokens": 394
+          }
+        },
+        {
+          "caseId": "peer-discovery-file-trust-boundary",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5060.513353999999,
+            "judgeScore": 1,
+            "inputTokens": 257,
+            "outputTokens": 404
+          }
+        },
+        {
+          "caseId": "ssh-and-data-plane-separation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 6759.575578999997,
+            "judgeScore": 1,
+            "inputTokens": 217,
+            "outputTokens": 623
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "ssh-remote-enrollment-security",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 8993.228370000004,
+            "judgeScore": 0.99,
+            "inputTokens": 403,
+            "outputTokens": 755
+          }
+        },
+        {
+          "caseId": "named-token-revocation-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3948.8942929999976,
+            "judgeScore": 1,
+            "inputTokens": 212,
+            "outputTokens": 274
+          }
+        },
+        {
+          "caseId": "nonloopback-bind-https-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2843.8581110000014,
+            "judgeScore": 1,
+            "inputTokens": 207,
+            "outputTokens": 181
+          }
+        },
+        {
+          "caseId": "peer-discovery-file-trust-boundary",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4029.0655939999997,
+            "judgeScore": 1,
+            "inputTokens": 257,
+            "outputTokens": 334
+          }
+        },
+        {
+          "caseId": "ssh-and-data-plane-separation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5750.798634000006,
+            "judgeScore": 0.99,
+            "inputTokens": 217,
+            "outputTokens": 452
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "ssh-remote-enrollment-security",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 12308.235368999987,
+            "judgeScore": 0.99,
+            "inputTokens": 403,
+            "outputTokens": 768
+          }
+        },
+        {
+          "caseId": "named-token-revocation-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3893.3036210000137,
+            "judgeScore": 1,
+            "inputTokens": 212,
+            "outputTokens": 216
+          }
+        },
+        {
+          "caseId": "nonloopback-bind-https-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4712.904803000012,
+            "judgeScore": 1,
+            "inputTokens": 207,
+            "outputTokens": 164
+          }
+        },
+        {
+          "caseId": "peer-discovery-file-trust-boundary",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4930.5023470000015,
+            "judgeScore": 0.99,
+            "inputTokens": 257,
+            "outputTokens": 240
+          }
+        },
+        {
+          "caseId": "ssh-and-data-plane-separation",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 8177.745458999998,
+            "judgeScore": 0.99,
+            "inputTokens": 217,
+            "outputTokens": 476
+          }
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "ssh-remote-enrollment-security",
+      "measurement": {
+        "durationMs": 10148.210869,
+        "judgeScore": 0.98,
+        "inputTokens": 403,
+        "outputTokens": 901
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "ssh-remote-enrollment-security",
+      "measurement": {
+        "durationMs": 3757.776301,
+        "inputTokens": 1245,
+        "outputTokens": 237
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "named-token-revocation-attribution",
+      "measurement": {
+        "durationMs": 3779.499012,
+        "judgeScore": 1,
+        "inputTokens": 212,
+        "outputTokens": 314
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "named-token-revocation-attribution",
+      "measurement": {
+        "durationMs": 2243.0599060000022,
+        "inputTokens": 749,
+        "outputTokens": 76
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "nonloopback-bind-https-decision",
+      "measurement": {
+        "durationMs": 4846.954170999998,
+        "judgeScore": 1,
+        "inputTokens": 207,
+        "outputTokens": 394
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "nonloopback-bind-https-decision",
+      "measurement": {
+        "durationMs": 2536.436534999997,
+        "inputTokens": 699,
+        "outputTokens": 75
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "peer-discovery-file-trust-boundary",
+      "measurement": {
+        "durationMs": 5060.513353999999,
+        "judgeScore": 1,
+        "inputTokens": 257,
+        "outputTokens": 404
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "peer-discovery-file-trust-boundary",
+      "measurement": {
+        "durationMs": 2258.7258719999954,
+        "inputTokens": 872,
+        "outputTokens": 90
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "ssh-and-data-plane-separation",
+      "measurement": {
+        "durationMs": 6759.575578999997,
+        "judgeScore": 1,
+        "inputTokens": 217,
+        "outputTokens": 623
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "ssh-and-data-plane-separation",
+      "measurement": {
+        "durationMs": 1770.7871180000002,
+        "inputTokens": 871,
+        "outputTokens": 81
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "ssh-remote-enrollment-security",
+      "measurement": {
+        "durationMs": 8993.228370000004,
+        "judgeScore": 0.99,
+        "inputTokens": 403,
+        "outputTokens": 755
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "ssh-remote-enrollment-security",
+      "measurement": {
+        "durationMs": 2165.4968850000005,
+        "inputTokens": 1335,
+        "outputTokens": 115
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "named-token-revocation-attribution",
+      "measurement": {
+        "durationMs": 3948.8942929999976,
+        "judgeScore": 1,
+        "inputTokens": 212,
+        "outputTokens": 274
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "named-token-revocation-attribution",
+      "measurement": {
+        "durationMs": 2471.3871230000004,
+        "inputTokens": 775,
+        "outputTokens": 77
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "nonloopback-bind-https-decision",
+      "measurement": {
+        "durationMs": 2843.8581110000014,
+        "judgeScore": 1,
+        "inputTokens": 207,
+        "outputTokens": 181
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "nonloopback-bind-https-decision",
+      "measurement": {
+        "durationMs": 1941.034179000002,
+        "inputTokens": 667,
+        "outputTokens": 76
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "peer-discovery-file-trust-boundary",
+      "measurement": {
+        "durationMs": 4029.0655939999997,
+        "judgeScore": 1,
+        "inputTokens": 257,
+        "outputTokens": 334
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "peer-discovery-file-trust-boundary",
+      "measurement": {
+        "durationMs": 1901.8892710000073,
+        "inputTokens": 890,
+        "outputTokens": 94
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "ssh-and-data-plane-separation",
+      "measurement": {
+        "durationMs": 5750.798634000006,
+        "judgeScore": 0.99,
+        "inputTokens": 217,
+        "outputTokens": 452
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "ssh-and-data-plane-separation",
+      "measurement": {
+        "durationMs": 1660.9266530000023,
+        "inputTokens": 863,
+        "outputTokens": 72
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "ssh-remote-enrollment-security",
+      "measurement": {
+        "durationMs": 12308.235368999987,
+        "judgeScore": 0.99,
+        "inputTokens": 403,
+        "outputTokens": 768
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "ssh-remote-enrollment-security",
+      "measurement": {
+        "durationMs": 2391.4210770000063,
+        "inputTokens": 1255,
+        "outputTokens": 105
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "named-token-revocation-attribution",
+      "measurement": {
+        "durationMs": 3893.3036210000137,
+        "judgeScore": 1,
+        "inputTokens": 212,
+        "outputTokens": 216
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "named-token-revocation-attribution",
+      "measurement": {
+        "durationMs": 1495.2048289999948,
+        "inputTokens": 717,
+        "outputTokens": 66
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "nonloopback-bind-https-decision",
+      "measurement": {
+        "durationMs": 4712.904803000012,
+        "judgeScore": 1,
+        "inputTokens": 207,
+        "outputTokens": 164
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "nonloopback-bind-https-decision",
+      "measurement": {
+        "durationMs": 2119.924304999993,
+        "inputTokens": 650,
+        "outputTokens": 85
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "peer-discovery-file-trust-boundary",
+      "measurement": {
+        "durationMs": 4930.5023470000015,
+        "judgeScore": 0.99,
+        "inputTokens": 257,
+        "outputTokens": 240
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "peer-discovery-file-trust-boundary",
+      "measurement": {
+        "durationMs": 2051.6851060000045,
+        "inputTokens": 796,
+        "outputTokens": 106
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "ssh-and-data-plane-separation",
+      "measurement": {
+        "durationMs": 8177.745458999998,
+        "judgeScore": 0.99,
+        "inputTokens": 217,
+        "outputTokens": 476
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "ssh-and-data-plane-separation",
+      "measurement": {
+        "durationMs": 1567.9099810000043,
+        "inputTokens": 841,
+        "outputTokens": 71
+      }
+    }
+  ]
+}

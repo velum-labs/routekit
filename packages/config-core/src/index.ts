@@ -1,28 +1,35 @@
-export {
-  API_PROVIDER_IDS,
-  configuredProviderIds,
-  DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
-  DEFAULT_LEADERBOARD_LIVE_LIMIT,
-  DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
-  leaderboardConfigSchema,
-  modelPolicySchema,
-  parseRouterConfig,
-  PROVIDER_IDS,
-  providerPolicySchema,
-  reasoningCapabilityOverrideSchema,
-  resolveLeaderboardConfig,
-  routerConfigSchema,
-  splitNamespacedModel,
-  SUBSCRIPTION_PROVIDER_IDS
-} from "./router-config.js";
 export type {
   ApiProviderId,
+  CompositionalRoutingConfig,
   LeaderboardConfig,
   ModelPolicy,
   ProviderId,
   ProviderPolicy,
   RouterConfig,
+  RoutingObjectivePolicyConfig,
   SubscriptionProviderId
+} from "./router-config.js";
+export {
+  API_PROVIDER_IDS,
+  compositionalRoutingConfigSchema,
+  configuredProviderIds,
+  DEFAULT_CLASSIFIER_MODEL,
+  DEFAULT_COMPOSITIONAL_ROUTING_UNKNOWN_WEIGHT,
+  DEFAULT_LEADERBOARD_DURABLE_RETENTION_DAYS,
+  DEFAULT_LEADERBOARD_LIVE_LIMIT,
+  DEFAULT_LEADERBOARD_LIVE_TTL_HOURS,
+  leaderboardConfigSchema,
+  modelPolicySchema,
+  PROVIDER_IDS,
+  parseRouterConfig,
+  providerPolicySchema,
+  reasoningCapabilityOverrideSchema,
+  resolveCompositionalRoutingConfig,
+  resolveLeaderboardConfig,
+  routingObjectivePolicySchema,
+  routerConfigSchema,
+  SUBSCRIPTION_PROVIDER_IDS,
+  splitNamespacedModel
 } from "./router-config.js";
 
 export type ConfigSource = "flag" | "config" | "default";

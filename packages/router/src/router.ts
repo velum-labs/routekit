@@ -6,10 +6,6 @@ import type {
   SubscriptionAccountSetSnapshot,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
-import type {
-  AccountActivityService,
-  AccountAuthService
-} from "@velum-labs/routekit-accounts/effect";
 import {
   CLIPROXY_API_KEY_ENV,
   cliproxyApiKey,
@@ -22,17 +18,33 @@ import {
   snapshotsToUsage,
   subscriptionRelaysFromAccountSets
 } from "@velum-labs/routekit-accounts";
-import type { ProviderId, RouterConfig } from "@velum-labs/routekit-config";
+import type {
+  AccountActivityService,
+  AccountAuthService
+} from "@velum-labs/routekit-accounts/effect";
+import {
+  DEFAULT_CLASSIFIER_MODEL,
+  type ProviderId,
+  type RouterConfig,
+  resolveCompositionalRoutingConfig
+} from "@velum-labs/routekit-config";
 import type {
   CatalogModelInfo,
+  CompositionalRoutingObservation,
+  CompositionalRoutingPolicyReader,
   Gateway,
   ProvenanceSink,
-  ProviderSource
+  ProviderSource,
+  RequestDecomposerService
 } from "@velum-labs/routekit-gateway";
 import {
   AnthropicBackend,
+  ClassificationError,
   CodexResponsesBackend,
-  RoutingBackend
+  invokeObservedModelCall,
+  makeLanguageModelDimensionClassifier,
+  RoutingBackend,
+  routingModelAvailability
 } from "@velum-labs/routekit-gateway";
 import { startGatewayEffect } from "@velum-labs/routekit-gateway/effect";
 import {
@@ -57,6 +69,12 @@ export type StartRouterOptions = {
   env?: NodeJS.ProcessEnv;
   sources?: Partial<Record<ProviderId, ProviderSource>>;
   provenance?: ProvenanceSink;
+  /** Published model-by-dimension evidence used by automatic routing. */
+  compositionalPolicyReader?: CompositionalRoutingPolicyReader;
+  /** Override the default small-LM semantic dimension classifier. */
+  requestDecomposer?: RequestDecomposerService;
+  /** Receives sanitized automatic-routing decisions and failures. */
+  onCompositionalRoutingObservation?(observation: CompositionalRoutingObservation): void;
   /**
    * Daemon-owned activity coordinator shared across router generations.
    * Standalone routers create a private coordinator when omitted.
@@ -179,6 +197,7 @@ export function startRouterEffect(
   options: StartRouterOptions
 ): Effect.Effect<RunningRouter, Error, RouteKitPlatform> {
   return Effect.gen(function* () {
+    const platform = yield* Effect.context<RouteKitPlatform>();
     const host = options.host ?? "127.0.0.1";
     yield* Effect.try({
       try: () => assertAuthenticatedBind(host, options.authToken),
@@ -245,12 +264,67 @@ export function startRouterEffect(
       env: gatewayEnvironment(env),
       sources
     }).pipe(Effect.catch(failedStartup));
+    const configuredClassifierModel = options.config.classifierModel;
+    const classifierModel = configuredClassifierModel ?? DEFAULT_CLASSIFIER_MODEL;
+    const classifierComplete = (endpointId: string) => (body: unknown) =>
+      invokeObservedModelCall(options.provenance, {
+        dialect: "openai-chat",
+        body,
+        defaultModel: backend.defaultModel,
+        requestedModel: classifierModel,
+        endpointId,
+        invoke: (callId, signal, onAttribution) =>
+          backend.chat(body, signal, {
+            modelCallId: callId,
+            responseMode: "buffered",
+            onAttribution
+          })
+      }).pipe(Effect.provide(platform));
+    const unavailableClassifier = () =>
+      Effect.fail(
+        new ClassificationError({
+          message: `classifier model ${JSON.stringify(
+            configuredClassifierModel ?? DEFAULT_CLASSIFIER_MODEL
+          )} is unavailable; configure classifierModel to a served model`
+        })
+      );
+    const compositionalConfig = resolveCompositionalRoutingConfig(options.config);
+    const requestDecomposer =
+      options.requestDecomposer ??
+      (backend.ports.models.serves(classifierModel)
+        ? makeLanguageModelDimensionClassifier({
+            model: classifierModel,
+            complete: classifierComplete("dimension-request-classifier")
+          })
+        : { classify: unavailableClassifier });
+    const compositionalRouting = {
+      policyReader: options.compositionalPolicyReader,
+      classifier: requestDecomposer,
+      availableModels: routingModelAvailability(backend),
+      objective: compositionalConfig.objective,
+      maximumUnknownWeight: compositionalConfig.maximumUnknownWeight,
+      ...((compositionalConfig.minimumDimensionQuality !== undefined ||
+        compositionalConfig.maximumFailureRate !== undefined) && {
+        constraints: {
+          ...(compositionalConfig.minimumDimensionQuality === undefined
+            ? {}
+            : { minimumDimensionQuality: compositionalConfig.minimumDimensionQuality }),
+          ...(compositionalConfig.maximumFailureRate === undefined
+            ? {}
+            : { maximumFailureRate: compositionalConfig.maximumFailureRate })
+        }
+      }),
+      ...(options.onCompositionalRoutingObservation === undefined
+        ? {}
+        : { onObservation: options.onCompositionalRoutingObservation })
+    };
     const gateway = yield* startGatewayEffect({
       backend,
       host,
       ...(options.port !== undefined ? { port: options.port } : {}),
       ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
       ...(options.provenance !== undefined ? { provenance: options.provenance } : {}),
+      compositionalRouting,
       ...(Object.keys(relays).length > 0 ? { providerRelays: relays } : {}),
       usage: () =>
         collectSubscriptionUsage(accountSets).pipe(

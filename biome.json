@@ -16,7 +16,11 @@
       "!apps/docs/.source",
       "!apps/docs/generated",
       "!apps/docs/content/docs/api",
-      "!pnpm-lock.yaml"
+      "!pnpm-lock.yaml",
+      "!packages/eval-engine/src/vendor",
+      "!packages/eval-engine/test/standalone",
+      "!packages/eval-engine/assets/sdk/*.js",
+      "!packages/eval-engine/src/sdk/*.js.txt"
     ]
   },
   "formatter": {

@@ -1,0 +1,493 @@
+{
+  "version": 1,
+  "comparisonId": "a80c8c01-cf76-49ec-be13-68bb31c41138",
+  "profileId": "gateway-protocols",
+  "suiteDigest": "1f5f3e500c3e6c16ee23147234c3465cecc675094b210930cb8d4dfbb5b672a2",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-18T11:57:35.659Z",
+  "finishedAt": "2026-08-18T11:58:56.983Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "authenticated-call-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3236.3531479999997,
+            "judgeScore": 1,
+            "inputTokens": 177,
+            "outputTokens": 255
+          }
+        },
+        {
+          "caseId": "streaming-tool-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 7453.769149,
+            "judgeScore": 0.99,
+            "inputTokens": 109,
+            "outputTokens": 272
+          }
+        },
+        {
+          "caseId": "safe-upstream-failure",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2475.776482000001,
+            "judgeScore": 1,
+            "inputTokens": 126,
+            "outputTokens": 147
+          }
+        },
+        {
+          "caseId": "call-id-through-router-hotswap",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2567.739152000002,
+            "judgeScore": 1,
+            "inputTokens": 106,
+            "outputTokens": 107
+          }
+        },
+        {
+          "caseId": "gateway-scope-and-protocol-role",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3043.090258,
+            "judgeScore": 0.99,
+            "inputTokens": 122,
+            "outputTokens": 172
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "authenticated-call-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3968.154999999995,
+            "judgeScore": 1,
+            "inputTokens": 177,
+            "outputTokens": 177
+          }
+        },
+        {
+          "caseId": "streaming-tool-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4873.257675000001,
+            "judgeScore": 0.99,
+            "inputTokens": 109,
+            "outputTokens": 253
+          }
+        },
+        {
+          "caseId": "safe-upstream-failure",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 1815.879433999995,
+            "judgeScore": 1,
+            "inputTokens": 126,
+            "outputTokens": 104
+          }
+        },
+        {
+          "caseId": "call-id-through-router-hotswap",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 1728.7423520000011,
+            "judgeScore": 1,
+            "inputTokens": 106,
+            "outputTokens": 56
+          }
+        },
+        {
+          "caseId": "gateway-scope-and-protocol-role",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2302.9991819999996,
+            "judgeScore": 0.98,
+            "inputTokens": 122,
+            "outputTokens": 126
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "authenticated-call-attribution",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2857.4081790000055,
+            "judgeScore": 1,
+            "inputTokens": 177,
+            "outputTokens": 167
+          }
+        },
+        {
+          "caseId": "streaming-tool-accounting",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 5742.127729000007,
+            "judgeScore": 0.99,
+            "inputTokens": 109,
+            "outputTokens": 138
+          }
+        },
+        {
+          "caseId": "safe-upstream-failure",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2402.493505999999,
+            "judgeScore": 1,
+            "inputTokens": 126,
+            "outputTokens": 97
+          }
+        },
+        {
+          "caseId": "call-id-through-router-hotswap",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 1941.8021960000042,
+            "judgeScore": 1,
+            "inputTokens": 106,
+            "outputTokens": 52
+          }
+        },
+        {
+          "caseId": "gateway-scope-and-protocol-role",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3710.747596000001,
+            "judgeScore": 0.99,
+            "inputTokens": 122,
+            "outputTokens": 75
+          }
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "authenticated-call-attribution",
+      "measurement": {
+        "durationMs": 3236.3531479999997,
+        "judgeScore": 1,
+        "inputTokens": 177,
+        "outputTokens": 255
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "authenticated-call-attribution",
+      "measurement": {
+        "durationMs": 1636.1599589999996,
+        "inputTokens": 628,
+        "outputTokens": 60
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "streaming-tool-accounting",
+      "measurement": {
+        "durationMs": 7453.769149,
+        "judgeScore": 0.99,
+        "inputTokens": 109,
+        "outputTokens": 272
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "streaming-tool-accounting",
+      "measurement": {
+        "durationMs": 1812.4037860000008,
+        "inputTokens": 517,
+        "outputTokens": 88
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "safe-upstream-failure",
+      "measurement": {
+        "durationMs": 2475.776482000001,
+        "judgeScore": 1,
+        "inputTokens": 126,
+        "outputTokens": 147
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "safe-upstream-failure",
+      "measurement": {
+        "durationMs": 4497.324991999998,
+        "inputTokens": 458,
+        "outputTokens": 66
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "call-id-through-router-hotswap",
+      "measurement": {
+        "durationMs": 2567.739152000002,
+        "judgeScore": 1,
+        "inputTokens": 106,
+        "outputTokens": 107
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "call-id-through-router-hotswap",
+      "measurement": {
+        "durationMs": 1601.6952070000007,
+        "inputTokens": 400,
+        "outputTokens": 60
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-luna",
+      "caseId": "gateway-scope-and-protocol-role",
+      "measurement": {
+        "durationMs": 3043.090258,
+        "judgeScore": 0.99,
+        "inputTokens": 122,
+        "outputTokens": 172
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "gateway-scope-and-protocol-role",
+      "measurement": {
+        "durationMs": 2168.495748999998,
+        "inputTokens": 461,
+        "outputTokens": 103
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "authenticated-call-attribution",
+      "measurement": {
+        "durationMs": 3968.154999999995,
+        "judgeScore": 1,
+        "inputTokens": 177,
+        "outputTokens": 177
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "authenticated-call-attribution",
+      "measurement": {
+        "durationMs": 1779.7565929999982,
+        "inputTokens": 640,
+        "outputTokens": 60
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "streaming-tool-accounting",
+      "measurement": {
+        "durationMs": 4873.257675000001,
+        "judgeScore": 0.99,
+        "inputTokens": 109,
+        "outputTokens": 253
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "streaming-tool-accounting",
+      "measurement": {
+        "durationMs": 1678.9070280000014,
+        "inputTokens": 527,
+        "outputTokens": 62
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "safe-upstream-failure",
+      "measurement": {
+        "durationMs": 1815.879433999995,
+        "judgeScore": 1,
+        "inputTokens": 126,
+        "outputTokens": 104
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "safe-upstream-failure",
+      "measurement": {
+        "durationMs": 1692.633038999993,
+        "inputTokens": 482,
+        "outputTokens": 64
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "call-id-through-router-hotswap",
+      "measurement": {
+        "durationMs": 1728.7423520000011,
+        "judgeScore": 1,
+        "inputTokens": 106,
+        "outputTokens": 56
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "call-id-through-router-hotswap",
+      "measurement": {
+        "durationMs": 2367.4966179999974,
+        "inputTokens": 392,
+        "outputTokens": 58
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "gateway-scope-and-protocol-role",
+      "measurement": {
+        "durationMs": 2302.9991819999996,
+        "judgeScore": 0.98,
+        "inputTokens": 122,
+        "outputTokens": 126
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "gateway-scope-and-protocol-role",
+      "measurement": {
+        "durationMs": 3034.2367559999984,
+        "inputTokens": 495,
+        "outputTokens": 174
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "authenticated-call-attribution",
+      "measurement": {
+        "durationMs": 2857.4081790000055,
+        "judgeScore": 1,
+        "inputTokens": 177,
+        "outputTokens": 167
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "authenticated-call-attribution",
+      "measurement": {
+        "durationMs": 1871.070706999999,
+        "inputTokens": 630,
+        "outputTokens": 62
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "streaming-tool-accounting",
+      "measurement": {
+        "durationMs": 5742.127729000007,
+        "judgeScore": 0.99,
+        "inputTokens": 109,
+        "outputTokens": 138
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "streaming-tool-accounting",
+      "measurement": {
+        "durationMs": 1483.113897999996,
+        "inputTokens": 470,
+        "outputTokens": 71
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "safe-upstream-failure",
+      "measurement": {
+        "durationMs": 2402.493505999999,
+        "judgeScore": 1,
+        "inputTokens": 126,
+        "outputTokens": 97
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "safe-upstream-failure",
+      "measurement": {
+        "durationMs": 2092.740407999998,
+        "inputTokens": 474,
+        "outputTokens": 69
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "call-id-through-router-hotswap",
+      "measurement": {
+        "durationMs": 1941.8021960000042,
+        "judgeScore": 1,
+        "inputTokens": 106,
+        "outputTokens": 52
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "call-id-through-router-hotswap",
+      "measurement": {
+        "durationMs": 1380.9164889999956,
+        "inputTokens": 388,
+        "outputTokens": 52
+      }
+    },
+    {
+      "role": "candidate",
+      "model": "openai/gpt-5.6-sol",
+      "caseId": "gateway-scope-and-protocol-role",
+      "measurement": {
+        "durationMs": 3710.747596000001,
+        "judgeScore": 0.99,
+        "inputTokens": 122,
+        "outputTokens": 75
+      }
+    },
+    {
+      "role": "judge",
+      "model": "openai/gpt-5.6-terra",
+      "caseId": "gateway-scope-and-protocol-role",
+      "measurement": {
+        "durationMs": 1774.1339159999916,
+        "inputTokens": 444,
+        "outputTokens": 56
+      }
+    }
+  ]
+}

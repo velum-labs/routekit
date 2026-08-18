@@ -25,10 +25,7 @@ export function writeStateSnapshot(
   return path;
 }
 
-export function readStateSnapshot(
-  category: "catalog" | "health",
-  name: string
-): unknown {
+export function readStateSnapshot(category: "catalog" | "health", name: string): unknown {
   if (!/^[a-z0-9-]+$/i.test(name)) {
     throw new Error(`invalid state snapshot name: ${name}`);
   }

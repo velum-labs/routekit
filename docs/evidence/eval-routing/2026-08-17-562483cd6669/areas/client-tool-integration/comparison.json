@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "comparisonId": "67d9a2fb-6be6-4ead-a8bf-b39587238509",
+  "profileId": "client-tool-integration",
+  "suiteDigest": "29ecc573591886b83c59ea7034b92485219b1ee36fdfdfc440bdae410231978e",
+  "judgeModel": "openai/gpt-5.6-terra",
+  "startedAt": "2026-08-17T19:28:35.251Z",
+  "finishedAt": "2026-08-17T19:29:55.796Z",
+  "models": [
+    {
+      "model": "openai/gpt-5.6-luna",
+      "cases": [
+        {
+          "caseId": "codex-launch-pinned-model",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2939.3977290000003,
+            "judgeScore": 1,
+            "inputTokens": 165,
+            "outputTokens": 223
+          }
+        },
+        {
+          "caseId": "codex-auth-isolation-install",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3419.046491,
+            "judgeScore": 1,
+            "inputTokens": 239,
+            "outputTokens": 249
+          }
+        },
+        {
+          "caseId": "claude-model-and-effort",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4122.873766000001,
+            "judgeScore": 1,
+            "inputTokens": 199,
+            "outputTokens": 280
+          }
+        },
+        {
+          "caseId": "cursor-support-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3454.2861029999985,
+            "judgeScore": 1,
+            "inputTokens": 217,
+            "outputTokens": 190
+          }
+        },
+        {
+          "caseId": "opencode-public-contract",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3217.125694999999,
+            "judgeScore": 1,
+            "inputTokens": 214,
+            "outputTokens": 248
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "cases": [
+        {
+          "caseId": "codex-launch-pinned-model",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2129.0739699999976,
+            "judgeScore": 1,
+            "inputTokens": 165,
+            "outputTokens": 153
+          }
+        },
+        {
+          "caseId": "codex-auth-isolation-install",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2194.101558000002,
+            "judgeScore": 0.99,
+            "inputTokens": 239,
+            "outputTokens": 139
+          }
+        },
+        {
+          "caseId": "claude-model-and-effort",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4077.6923000000024,
+            "judgeScore": 1,
+            "inputTokens": 199,
+            "outputTokens": 181
+          }
+        },
+        {
+          "caseId": "cursor-support-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 2653.846442999995,
+            "judgeScore": 1,
+            "inputTokens": 217,
+            "outputTokens": 162
+          }
+        },
+        {
+          "caseId": "opencode-public-contract",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3513.4405259999985,
+            "judgeScore": 1,
+            "inputTokens": 214,
+            "outputTokens": 212
+          }
+        }
+      ]
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "cases": [
+        {
+          "caseId": "codex-launch-pinned-model",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3259.232871999993,
+            "judgeScore": 1,
+            "inputTokens": 165,
+            "outputTokens": 146
+          }
+        },
+        {
+          "caseId": "codex-auth-isolation-install",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3226.3235700000005,
+            "judgeScore": 1,
+            "inputTokens": 239,
+            "outputTokens": 134
+          }
+        },
+        {
+          "caseId": "claude-model-and-effort",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4021.9550660000023,
+            "judgeScore": 1,
+            "inputTokens": 199,
+            "outputTokens": 228
+          }
+        },
+        {
+          "caseId": "cursor-support-decision",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 3810.019253000006,
+            "judgeScore": 1,
+            "inputTokens": 217,
+            "outputTokens": 115
+          }
+        },
+        {
+          "caseId": "opencode-public-contract",
+          "outcome": "passed",
+          "measurement": {
+            "durationMs": 4731.331506000002,
+            "judgeScore": 1,
+            "inputTokens": 214,
+            "outputTokens": 155
+          }
+        }
+      ]
+    }
+  ]
+}

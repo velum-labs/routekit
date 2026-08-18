@@ -1,0 +1,59 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+const ORI_OPENROUTER_SESSION_ID_ENV = "ORI_OPENROUTER_SESSION_ID";
+const ORI_APP_HTTP_REFERER = "https://or.bot";
+const ORI_APP_TITLE = "Ori";
+
+interface OpenRouterProviderConfig {
+  readonly headers?: Record<string, string>;
+}
+
+const buildAttributionHeaders = (
+  sessionId: string
+): Record<string, string> => ({
+  "HTTP-Referer": ORI_APP_HTTP_REFERER,
+  "X-OpenRouter-Title": ORI_APP_TITLE,
+  "X-Session-Id": sessionId,
+});
+
+// This file is materialized standalone and loaded by pi, so it cannot import
+// ori's own env helpers.
+const readEnv = (name: string): string | undefined => {
+  const value = globalThis.process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+};
+
+const openRouterProviderConfig = (input: {
+  readonly sessionId: string | undefined;
+}): OpenRouterProviderConfig =>
+  input.sessionId === undefined
+    ? {}
+    : { headers: buildAttributionHeaders(input.sessionId) };
+
+const register = (pi: Pick<ExtensionAPI, "on" | "registerProvider">): void => {
+  const sessionId = readEnv(ORI_OPENROUTER_SESSION_ID_ENV);
+  if (sessionId !== undefined) {
+    pi.registerProvider(
+      "openrouter",
+      openRouterProviderConfig({
+        sessionId,
+      })
+    );
+  }
+
+  pi.on("session_start", (_event, ctx) => {
+    const piSessionId = ctx.sessionManager.getSessionId().trim();
+    if (piSessionId.length === 0) {
+      return;
+    }
+    pi.registerProvider(
+      "openrouter",
+      openRouterProviderConfig({
+        sessionId: piSessionId,
+      })
+    );
+  });
+};
+
+export { buildAttributionHeaders, openRouterProviderConfig, register };
+export default register;

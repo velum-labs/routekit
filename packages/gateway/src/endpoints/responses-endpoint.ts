@@ -18,8 +18,16 @@ import {
   type BackendRequestOptions
 } from "../backend.js";
 import { gatewayTry } from "../effect/gateway.js";
-import { evalAutoRouterRejection } from "../eval-policy.js";
+import {
+  type CompositionalRoutingRuntime,
+  compositionalRoutingAttribution,
+  evalAutoRouterRejection,
+  evalRequestAttribution,
+  resolveConfiguredAutoRoutingModel
+} from "../eval-policy.js";
+import { extractClassifiableRequestText } from "../request-classifier.js";
 import { UnknownModelError } from "../router.js";
+import { deriveRoutingRequirements } from "../routing-requirements.js";
 import type {
   EndpointAuthenticator,
   EndpointContext,
@@ -52,6 +60,7 @@ type ResponsesRelay = Readonly<{
 
 export type ResponsesEndpointDependencies = Readonly<{
   backend: Backend;
+  compositionalRouting?: CompositionalRoutingRuntime;
   providerRelay?: ResponsesRelay;
   clientRelay?: ResponsesRelay;
   rejectInvalid(context: EndpointContext, rejection: WireRejection | undefined): boolean;
@@ -126,14 +135,47 @@ function executeResponsesRequest(
     const raw = yield* context.transport.readJson();
     if (raw === undefined) return;
     if (rejectInvalid(context, validateResponsesRequest(raw))) return;
-    const body = decodeValidatedResponsesRequest(raw);
-    const evalRejection = evalAutoRouterRejection(context.headers, body.model);
+    const decodedBody = decodeValidatedResponsesRequest(raw);
+    const requestEvalAttribution = evalRequestAttribution(context.headers);
+    const evalRejection = evalAutoRouterRejection(context.headers, decodedBody.model);
     if (evalRejection !== undefined) {
       context.transport.writeJson(400, {
         error: { message: evalRejection, type: "invalid_request_error" }
       });
       return;
     }
+    if (
+      decodedBody.model?.trim().toLowerCase() === "auto" &&
+      decodedBody.previous_response_id != null
+    ) {
+      context.transport.writeJson(400, {
+        error: {
+          type: "invalid_request_error",
+          code: "auto_previous_response_id_unsupported",
+          param: "previous_response_id",
+          message:
+            'model "auto" cannot safely route a stateful Responses continuation; replay prior output items or use the original explicit model'
+        }
+      });
+      return;
+    }
+    let compositionalRouting: ReturnType<typeof compositionalRoutingAttribution> | undefined;
+    const autoModel = yield* resolveConfiguredAutoRoutingModel({
+      headers: context.headers,
+      model: decodedBody.model,
+      requestText: extractClassifiableRequestText(decodedBody),
+      requirements: deriveRoutingRequirements("responses", decodedBody),
+      compositionalRouting: dependencies.compositionalRouting,
+      onCompositionalObservation: (observation) => {
+        if (observation.status === "decided") {
+          compositionalRouting = compositionalRoutingAttribution(observation);
+        }
+      }
+    });
+    const body =
+      autoModel !== undefined && autoModel !== decodedBody.model
+        ? withModel(decodedBody, autoModel)
+        : decodedBody;
     const requestedModel = typeof body.model === "string" ? body.model : undefined;
     const resolved = yield* gatewayTry(() =>
       dependencies.providerRelay === undefined
@@ -148,7 +190,14 @@ function executeResponsesRequest(
         dialect: "openai-responses",
         body,
         defaultModel: backend.defaultModel,
-        attribution: dependencies.attribution(requestedModel, "codex"),
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
+        attribution: {
+          ...dependencies.attribution(requestedModel, "codex"),
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
+        },
         invoke: () => Effect.fail(resolved.error)
       });
       return;
@@ -171,11 +220,16 @@ function executeResponsesRequest(
         dialect: "openai-responses",
         body: canonicalBody,
         defaultModel: backend.defaultModel,
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           effective_model: route.publicId,
           native_model: route.nativeId,
           provider: route.provider,
-          billing_mode: "subscription"
+          billing_mode: "subscription",
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           Effect.gen(function* () {
@@ -213,11 +267,16 @@ function executeResponsesRequest(
         dialect: "openai-responses",
         body,
         defaultModel: backend.defaultModel,
+        ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
         attribution: {
           effective_model: requestedModel ?? "codex/default",
           ...(requestedModel !== undefined ? { native_model: requestedModel } : {}),
           provider: "codex",
-          billing_mode: "client_auth"
+          billing_mode: "client_auth",
+          ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+          ...(compositionalRouting === undefined
+            ? {}
+            : { compositional_routing: compositionalRouting })
         },
         invoke: (_callId, signal, onAttribution) =>
           Effect.gen(function* () {
@@ -238,10 +297,17 @@ function executeResponsesRequest(
       dialect: "openai-responses",
       body: canonicalBody,
       defaultModel: backend.defaultModel,
-      attribution: dependencies.attribution(
-        requestedModel,
-        dependencies.providerRelay !== undefined ? "codex" : undefined
-      ),
+      ...(decodedBody.model === undefined ? {} : { requestedModel: decodedBody.model }),
+      attribution: {
+        ...dependencies.attribution(
+          requestedModel,
+          dependencies.providerRelay !== undefined ? "codex" : undefined
+        ),
+        ...(requestEvalAttribution === undefined ? {} : { eval: requestEvalAttribution }),
+        ...(compositionalRouting === undefined
+          ? {}
+          : { compositional_routing: compositionalRouting })
+      },
       invoke: (callId, signal, onAttribution) =>
         handleResponses(
           backend,

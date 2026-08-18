@@ -1,0 +1,313 @@
+{
+  "schemaVersion": 1,
+  "basisId": "routekit-maintainer",
+  "basisVersion": 1,
+  "status": "seed-only",
+  "minimumReviewedCasesPerDimensionForQualification": 20,
+  "specifications": [
+    {
+      "dimensionId": "gateway-protocols",
+      "cases": [
+        {
+          "id": "gateway-responses-stream",
+          "difficulty": "medium",
+          "intent": "Diagnose ordering and termination of a Responses API stream.",
+          "evaluationCriteria": [
+            "identifies the protocol boundary",
+            "preserves event ordering",
+            "requires exactly one terminal condition",
+            "does not conflate routing with encoding"
+          ]
+        },
+        {
+          "id": "gateway-tool-roundtrip",
+          "difficulty": "hard",
+          "intent": "Specify a lossless tool-call round trip across supported protocol dialects.",
+          "evaluationCriteria": [
+            "preserves tool-call identity",
+            "distinguishes arguments from results",
+            "handles streaming fragments",
+            "states validation failures explicitly"
+          ]
+        },
+        {
+          "id": "gateway-safe-error-mapping",
+          "difficulty": "medium",
+          "intent": "Map an upstream failure to a compatible, sanitized gateway error.",
+          "evaluationCriteria": [
+            "keeps protocol status semantics",
+            "does not expose credentials or raw upstream bodies",
+            "retains a stable machine-readable error",
+            "does not invent a retry"
+          ]
+        }
+      ]
+    },
+    {
+      "dimensionId": "model-routing-registry",
+      "cases": [
+        {
+          "id": "registry-explicit-resolution",
+          "difficulty": "medium",
+          "intent": "Resolve a namespaced explicit model through the advertised registry.",
+          "evaluationCriteria": [
+            "uses provider/model identity",
+            "checks current availability",
+            "does not use semantic classification",
+            "returns a deterministic resolution"
+          ]
+        },
+        {
+          "id": "registry-missing-default",
+          "difficulty": "medium",
+          "intent": "Handle a configured default absent from discovery.",
+          "evaluationCriteria": [
+            "fails or falls back according to explicit policy",
+            "does not silently choose an arbitrary model",
+            "reports the unavailable route",
+            "keeps candidate order deterministic"
+          ]
+        },
+        {
+          "id": "registry-capability-filter",
+          "difficulty": "hard",
+          "intent": "Filter advertised models using required endpoint and context capabilities.",
+          "evaluationCriteria": [
+            "applies hard requirements before ranking",
+            "distinguishes absent from unknown capability",
+            "explains exclusion reasons",
+            "does not treat missing metadata as support"
+          ]
+        }
+      ]
+    },
+    {
+      "dimensionId": "subscription-pooling",
+      "cases": [
+        {
+          "id": "pool-eligibility-window",
+          "difficulty": "medium",
+          "intent": "Determine eligible accounts from usage and reset windows.",
+          "evaluationCriteria": [
+            "uses measured account state",
+            "excludes exhausted accounts",
+            "handles reset timing",
+            "does not confuse account and model availability"
+          ]
+        },
+        {
+          "id": "pool-account-429",
+          "difficulty": "hard",
+          "intent": "Reconcile an account-specific rate limit and select a safe retry.",
+          "evaluationCriteria": [
+            "attributes the failure to the selected account",
+            "updates eligibility before retry",
+            "bounds retry behavior",
+            "does not duplicate a non-retryable request"
+          ]
+        },
+        {
+          "id": "pool-concurrent-reservation",
+          "difficulty": "hard",
+          "intent": "Prevent concurrent schedulers from oversubscribing the same remaining quota.",
+          "evaluationCriteria": [
+            "uses an atomic reservation concept",
+            "reconciles completion and failure",
+            "avoids process-global shortcuts",
+            "leaves no active reservation after cleanup"
+          ]
+        }
+      ]
+    },
+    {
+      "dimensionId": "daemon-control-operations",
+      "cases": [
+        {
+          "id": "daemon-singleton-race",
+          "difficulty": "hard",
+          "intent": "Handle concurrent startup against one RouteKit home.",
+          "evaluationCriteria": [
+            "preserves one owner",
+            "distinguishes starting from ready",
+            "cleans stale state safely",
+            "does not kill an unrelated process"
+          ]
+        },
+        {
+          "id": "daemon-config-failure",
+          "difficulty": "medium",
+          "intent": "Diagnose and recover from invalid canonical configuration.",
+          "evaluationCriteria": [
+            "identifies the canonical configuration",
+            "fails startup clearly",
+            "does not overwrite user configuration",
+            "provides a bounded recovery sequence"
+          ]
+        },
+        {
+          "id": "daemon-process-cleanup",
+          "difficulty": "hard",
+          "intent": "Terminate a detached child process group on timeout and interruption.",
+          "evaluationCriteria": [
+            "covers descendants",
+            "escalates after a bounded grace period",
+            "preserves typed sanitized errors",
+            "does not add a process-wide signal handler"
+          ]
+        }
+      ]
+    },
+    {
+      "dimensionId": "remote-gateways-security",
+      "cases": [
+        {
+          "id": "remote-peer-enrollment",
+          "difficulty": "hard",
+          "intent": "Enroll a remote peer over SSH and issue least-privilege data access.",
+          "evaluationCriteria": [
+            "uses the control relay for issuance",
+            "requires non-interactive SSH safety",
+            "does not copy an owner credential",
+            "health-checks the enrolled gateway"
+          ]
+        },
+        {
+          "id": "remote-bind-policy",
+          "difficulty": "medium",
+          "intent": "Validate loopback, non-loopback, authentication, and HTTPS constraints.",
+          "evaluationCriteria": [
+            "allows the documented loopback case",
+            "rejects unauthenticated non-loopback binds",
+            "requires HTTPS for remote non-loopback URLs",
+            "does not weaken the rule for convenience"
+          ]
+        },
+        {
+          "id": "remote-token-revocation",
+          "difficulty": "medium",
+          "intent": "Revoke one named remote token without disrupting unrelated peers.",
+          "evaluationCriteria": [
+            "identifies the named token boundary",
+            "does not rotate or reveal the owner token",
+            "preserves unrelated tokens",
+            "produces auditable sanitized state"
+          ]
+        }
+      ]
+    },
+    {
+      "dimensionId": "eval-driven-routing",
+      "cases": [
+        {
+          "id": "eval-evidence-completeness",
+          "difficulty": "hard",
+          "intent": "Reject comparison evidence with a missing, duplicate, unknown, or unjudged case.",
+          "evaluationCriteria": [
+            "uses stable case identity",
+            "requires every candidate-case cell",
+            "checks observed candidate and judge models",
+            "fails before publication"
+          ]
+        },
+        {
+          "id": "eval-unpriced-objective",
+          "difficulty": "medium",
+          "intent": "Apply routing objectives when selected models lack authoritative prices.",
+          "evaluationCriteria": [
+            "never treats unknown price as zero",
+            "allows objectives that do not require cost",
+            "excludes unpriced models from cost-required optimization",
+            "reports unpriced coverage explicitly"
+          ]
+        },
+        {
+          "id": "eval-compositional-decision",
+          "difficulty": "hard",
+          "intent": "Reproduce a model decision from an dimension vector, evidence matrix, and objective.",
+          "evaluationCriteria": [
+            "checks eligibility before scoring",
+            "uses conservative quality",
+            "applies deterministic tie-breakers",
+            "records candidate exclusions and fallbacks"
+          ]
+        }
+      ]
+    },
+    {
+      "dimensionId": "client-tool-integration",
+      "cases": [
+        {
+          "id": "client-codex-pinned-model",
+          "difficulty": "medium",
+          "intent": "Launch Codex through RouteKit with an explicit startup model.",
+          "evaluationCriteria": [
+            "uses the RouteKit launch boundary",
+            "keeps the namespaced model",
+            "does not mutate the global default",
+            "preserves client authentication isolation"
+          ]
+        },
+        {
+          "id": "client-openai-sdk-config",
+          "difficulty": "easy",
+          "intent": "Configure a generic OpenAI-compatible SDK for the local gateway.",
+          "evaluationCriteria": [
+            "uses the advertised base URL",
+            "requires a RouteKit data token",
+            "keeps provider credentials out of the client",
+            "selects a supported endpoint"
+          ]
+        },
+        {
+          "id": "client-dialect-compatibility",
+          "difficulty": "hard",
+          "intent": "Diagnose a client that assumes unsupported streaming or tool semantics.",
+          "evaluationCriteria": [
+            "identifies the client-specific assumption",
+            "separates client setup from gateway translation",
+            "uses documented compatibility evidence",
+            "does not claim untested support"
+          ]
+        }
+      ]
+    },
+    {
+      "dimensionId": "observability-attribution",
+      "cases": [
+        {
+          "id": "observability-call-provenance",
+          "difficulty": "medium",
+          "intent": "Reconstruct a routed call from its public call ID without retaining content.",
+          "evaluationCriteria": [
+            "reports requested and effective model",
+            "reports attempts and billing mode",
+            "omits prompt and response content",
+            "uses stable sanitized identifiers"
+          ]
+        },
+        {
+          "id": "observability-pricing-coverage",
+          "difficulty": "medium",
+          "intent": "Report mixed known-priced and unpriced calls correctly.",
+          "evaluationCriteria": [
+            "keeps the known-priced subtotal",
+            "reports unpriced call count",
+            "marks total estimated cost unknown",
+            "does not invent pricing"
+          ]
+        },
+        {
+          "id": "observability-retry-accounting",
+          "difficulty": "hard",
+          "intent": "Attribute multiple provider attempts and final token usage to one routed call.",
+          "evaluationCriteria": [
+            "preserves attempt ordering",
+            "distinguishes failed and effective attempts",
+            "does not double-count final usage",
+            "retains zero unresolved measurements"
+          ]
+        }
+      ]
+    }
+  ]
+}

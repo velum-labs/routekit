@@ -1,0 +1,52 @@
+{
+  "name": "@velum-labs/routekit-eval-setup",
+  "private": false,
+  "version": "0.18.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velum-labs/routekit.git",
+    "directory": "packages/eval-setup"
+  },
+  "description": "Durable Effect onboarding for compositional RouteKit eval routing.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./effect": {
+      "types": "./dist/effect-api.d.ts",
+      "default": "./dist/effect-api.js"
+    }
+  },
+  "files": [
+    "dist",
+    "skills",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "provenance": true
+  },
+  "dependencies": {
+    "@velum-labs/routekit-eval-contracts": "workspace:*",
+    "@velum-labs/routekit-runtime": "workspace:*",
+    "effect": "catalog:"
+  },
+  "keywords": [
+    "routekit",
+    "eval",
+    "onboarding",
+    "routing"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "test": "node --test \"dist/test/*.test.js\""
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:"
+  }
+}

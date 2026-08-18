@@ -1,17 +1,8 @@
 import { dirname, join } from "node:path";
 
 import { samePath } from "../candidate.js";
-import type {
-  DiscoveryContext,
-  PnpmOwner,
-  SelfUpdateAdapter
-} from "../types.js";
-import {
-  contextId,
-  managerExecutables,
-  outputLine,
-  verifyDetectedOwner
-} from "./shared.js";
+import type { DiscoveryContext, PnpmOwner, SelfUpdateAdapter } from "../types.js";
+import { contextId, managerExecutables, outputLine, verifyDetectedOwner } from "./shared.js";
 
 function parseLocations(output: string): string[] {
   return output

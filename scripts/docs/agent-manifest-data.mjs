@@ -385,18 +385,62 @@ add(["leaderboard", "calls inspect", "models list", "models info", "doctor"], {
   docs: docs("/docs/guides/operations", "/docs/guides/troubleshooting")
 });
 
+add(["eval setup", "eval answer"], {
+  category: "evaluate",
+  effect: "write",
+  target: "local-repository",
+  docs: docs(),
+  verification: verify(
+    ["routekit", "eval", "status", "--json"],
+    "Inspect the durable project stage and current question."
+  )
+});
+add(
+  [
+    "eval propose dimensions",
+    "eval propose evaluations",
+    "eval approve dimensions",
+    "eval approve evaluations"
+  ],
+  {
+    category: "evaluate",
+    effect: "write",
+    target: "local-repository",
+    docs: docs(),
+    verification: verify(
+      ["routekit", "eval", "status", "--json"],
+      "Confirm the exact proposed or approved digest in durable project state."
+    )
+  }
+);
+add(["eval status", "eval validate", "eval estimate", "eval results"], {
+  category: "evaluate",
+  effect: "read",
+  target: "local-repository",
+  docs: docs()
+});
 add(["eval run"], {
   category: "evaluate",
   effect: "write",
-  target: "local-eval-store-and-explicit-gateway",
-  sensitiveInputs: ["--token <token>"],
+  target: "local-repository-and-selected-routekit-target",
+  sensitiveInputs: ["--token-file <path>"],
   docs: docs(),
   verification: verify(
-    ["routekit", "eval", "show", "--run-id", "<id>", "--json"],
-    "Read the immutable raw evaluation run that was just written."
+    ["routekit", "eval", "results", "--json"],
+    "Inspect the sanitized qualification result after the scoped target session closes."
   )
 });
-add(["eval show", "policy show"], {
+add(["eval publish"], {
+  category: "evaluate",
+  effect: "write",
+  target: "selected-routekit-target",
+  docs: docs(),
+  verification: verify(
+    ["routekit", "eval", "status", "--json"],
+    "Confirm that the qualified activation and target identity are durable."
+  )
+});
+add(["policy show"], {
   category: "evaluate",
   effect: "read",
   target: "local",
@@ -460,8 +504,19 @@ export const commandSummaryOverrides = {
   "telemetry status": "show telemetry consent and category state",
   "telemetry on": "enable anonymous telemetry",
   "telemetry off": "disable anonymous telemetry",
-  "eval run": "run an offline evaluation suite against explicit model IDs",
-  "eval show": "read an immutable raw evaluation run",
+  "calls inspect": "show routing, billing, retry, usage, and cost attribution for one call",
+  "eval setup": "initialize or resume a compositional routing eval project",
+  "eval status": "show durable compositional routing eval project state",
+  "eval answer": "answer exactly one eval project setup question",
+  "eval propose dimensions": "record a proposed routing basis for review",
+  "eval propose evaluations": "record proposed dimension suites for review",
+  "eval approve dimensions": "approve an exact reviewed routing-basis digest",
+  "eval approve evaluations": "approve an exact reviewed evaluation digest",
+  "eval validate": "validate current approvals and project state without model calls",
+  "eval estimate": "create an immutable pilot or full execution plan",
+  "eval run": "execute an approved immutable plan on the selected RouteKit target",
+  "eval results": "show sanitized structured qualification results",
+  "eval publish": "atomically activate qualified compositional routing evidence",
   "policy show": "print the eval isolation policy"
 };
 

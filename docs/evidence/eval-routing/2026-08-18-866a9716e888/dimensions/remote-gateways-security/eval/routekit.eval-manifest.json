@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "profileId": "remote-gateways-security",
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "judgeModel": "openai/gpt-5.6-terra",
+  "caseCount": 5,
+  "caseIds": [
+    "ssh-remote-enrollment-security",
+    "named-token-revocation-attribution",
+    "nonloopback-bind-https-decision",
+    "peer-discovery-file-trust-boundary",
+    "ssh-and-data-plane-separation"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 30
+}

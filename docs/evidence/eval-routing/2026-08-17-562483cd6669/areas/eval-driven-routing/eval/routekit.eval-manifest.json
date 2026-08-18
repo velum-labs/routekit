@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "profileId": "eval-driven-routing",
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "judgeModel": "openai/gpt-5.6-terra",
+  "caseCount": 5,
+  "caseIds": [
+    "manifest-fail-closed",
+    "unpriced-accounting",
+    "matrix-compilation",
+    "auto-routing-determinism",
+    "testdrive-vs-production"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 30
+}

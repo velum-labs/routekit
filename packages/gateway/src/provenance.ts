@@ -1,7 +1,6 @@
-import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   JsonValue,
@@ -26,6 +25,7 @@ export const MODEL_CALL_ID_HEADER = "x-routekit-model-call-id";
 export const UNKNOWN_GIT_SHA = "unknown";
 
 const GIT_SHA_PATTERN = /^[a-f0-9]{40}$/;
+const GIT_REF_PREFIX = "ref: ";
 
 function moduleDir(): string {
   return dirname(fileURLToPath(import.meta.url));
@@ -34,13 +34,60 @@ function moduleDir(): string {
 export function resolveProducerGitSha(fromDir: string = moduleDir()): string {
   const stamped = process.env.ROUTEKIT_BUILD_GIT_SHA?.trim();
   if (stamped !== undefined && GIT_SHA_PATTERN.test(stamped)) return stamped;
-  if (!fromDir.includes("node_modules")) {
-    const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: fromDir, encoding: "utf8" });
-    if (result.status === 0 && GIT_SHA_PATTERN.test(result.stdout.trim())) {
-      return result.stdout.trim();
+  if (fromDir.includes("node_modules")) return UNKNOWN_GIT_SHA;
+  let directory = fromDir;
+  for (let depth = 0; depth < 16; depth += 1) {
+    const gitDirectory = resolveGitDirectory(directory);
+    if (gitDirectory !== undefined) {
+      return readGitHead(gitDirectory) ?? UNKNOWN_GIT_SHA;
     }
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
   }
   return UNKNOWN_GIT_SHA;
+}
+
+function readText(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8").trim();
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveGitDirectory(repositoryRoot: string): string | undefined {
+  const marker = join(repositoryRoot, ".git");
+  if (readText(join(marker, "HEAD")) !== undefined) return marker;
+  const pointer = readText(marker);
+  if (pointer === undefined || !pointer.startsWith("gitdir:")) return undefined;
+  const target = pointer.slice("gitdir:".length).trim();
+  return isAbsolute(target) ? target : resolve(repositoryRoot, target);
+}
+
+function readGitHead(gitDirectory: string): string | undefined {
+  const head = readText(join(gitDirectory, "HEAD"));
+  if (head === undefined) return undefined;
+  if (GIT_SHA_PATTERN.test(head)) return head;
+  if (!head.startsWith(GIT_REF_PREFIX)) return undefined;
+  const reference = head.slice(GIT_REF_PREFIX.length).trim();
+  const commonDirectory = readText(join(gitDirectory, "commondir"));
+  const roots = [
+    gitDirectory,
+    ...(commonDirectory === undefined ? [] : [resolve(gitDirectory, commonDirectory)])
+  ];
+  for (const root of roots) {
+    const loose = readText(join(root, reference));
+    if (loose !== undefined && GIT_SHA_PATTERN.test(loose)) return loose;
+    const packed = readText(join(root, "packed-refs"));
+    if (packed === undefined) continue;
+    for (const line of packed.split("\n")) {
+      if (line.startsWith("#") || line.startsWith("^")) continue;
+      const [sha, name] = line.trim().split(/\s+/u);
+      if (name === reference && sha !== undefined && GIT_SHA_PATTERN.test(sha)) return sha;
+    }
+  }
+  return undefined;
 }
 
 export function readProducerVersion(fromDir: string = moduleDir(), fallback = "0.0.0"): string {
@@ -259,6 +306,86 @@ export function buildModelCallRecord(
                     ...(context.attribution.principal.label !== undefined
                       ? { label: context.attribution.principal.label }
                       : {})
+                  }
+                }
+              : {}),
+            ...(context.attribution.compositional_routing !== undefined
+              ? {
+                  compositional_routing: {
+                    version: 2,
+                    basis_digest:
+                      context.attribution.compositional_routing.basis_digest,
+                    evidence_digest: context.attribution.compositional_routing.evidence_digest,
+                    weights: context.attribution.compositional_routing.weights.map((entry) => ({
+                      dimension_id: entry.dimension_id,
+                      weight: entry.weight
+                    })),
+                    unknown_weight: context.attribution.compositional_routing.unknown_weight,
+                    requirements: {
+                      endpoint: context.attribution.compositional_routing.requirements.endpoint,
+                      requires_tools:
+                        context.attribution.compositional_routing.requirements.requires_tools,
+                      requires_vision:
+                        context.attribution.compositional_routing.requirements.requires_vision,
+                      ...(context.attribution.compositional_routing.requirements.input_tokens ===
+                      undefined
+                        ? {}
+                        : {
+                            input_tokens:
+                              context.attribution.compositional_routing.requirements.input_tokens
+                          }),
+                      ...(context.attribution.compositional_routing.requirements
+                        .max_output_tokens === undefined
+                        ? {}
+                        : {
+                            max_output_tokens:
+                              context.attribution.compositional_routing.requirements
+                                .max_output_tokens
+                          })
+                    },
+                    objective: context.attribution.compositional_routing.objective,
+                    candidates: context.attribution.compositional_routing.candidates.map(
+                      (candidate) => ({
+                        model: candidate.model,
+                        eligible: candidate.eligible,
+                        exclusion_reasons: [...candidate.exclusion_reasons],
+                        ...(candidate.quality === undefined ? {} : { quality: candidate.quality }),
+                        ...(candidate.failure_rate === undefined
+                          ? {}
+                          : { failure_rate: candidate.failure_rate }),
+                        ...(candidate.p95_duration_ms === undefined
+                          ? {}
+                          : { p95_duration_ms: candidate.p95_duration_ms }),
+                        ...(candidate.average_cost_usd === undefined
+                          ? {}
+                          : { average_cost_usd: candidate.average_cost_usd }),
+                        cost_status: candidate.cost_status,
+                        ...(candidate.utility === undefined ? {} : { utility: candidate.utility }),
+                        ...(candidate.rank === undefined ? {} : { rank: candidate.rank })
+                      })
+                    ),
+                    selected_model: context.attribution.compositional_routing.selected_model,
+                    fallback_models: [...context.attribution.compositional_routing.fallback_models],
+                    ...(context.attribution.compositional_routing.classifier_call_id === undefined
+                      ? {}
+                      : {
+                          classifier_call_id:
+                            context.attribution.compositional_routing.classifier_call_id
+                        }),
+                    inference_call_id: context.callId
+                  }
+                }
+              : {}),
+            ...(context.attribution.eval !== undefined
+              ? {
+                  eval: {
+                    purpose: "eval",
+                    role: context.attribution.eval.role,
+                    run_id: context.attribution.eval.run_id,
+                    ...(context.attribution.eval.case_id === undefined
+                      ? {}
+                      : { case_id: context.attribution.eval.case_id }),
+                    policy_bypass: true
                   }
                 }
               : {}),

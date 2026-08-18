@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "basisId": "routekit-maintainer",
+  "basisVersion": 1,
+  "status": "proposed",
+  "dimensions": [
+    {
+      "id": "gateway-protocols",
+      "title": "Gateway protocols",
+      "definition": "Compatibility and translation at RouteKit's authenticated HTTP data plane, including OpenAI Chat Completions, OpenAI Responses, Anthropic messages, streaming, tool calls, and response metadata.",
+      "includes": [
+        "request and response schema compatibility",
+        "streaming frame and termination behavior",
+        "tool-call encoding and translation",
+        "authentication and data-plane headers",
+        "protocol-specific errors and response metadata"
+      ],
+      "excludes": [
+        "choosing a provider or model route",
+        "subscription account scheduling",
+        "client installation and launch commands",
+        "evaluation policy compilation"
+      ],
+      "counterexamples": [
+        "Why was a depleted Codex account selected?",
+        "Which model should model: auto choose for this request?"
+      ],
+      "sourceAnchors": ["packages/gateway", "packages/contracts"]
+    },
+    {
+      "id": "model-routing-registry",
+      "title": "Model routing and registry",
+      "definition": "Discovery and deterministic resolution of namespaced provider/model routes, default models, advertised availability, aliases, fallbacks, and registry metadata.",
+      "includes": [
+        "provider/model namespace resolution",
+        "model discovery and advertised catalogs",
+        "default-model and explicit-model route selection",
+        "route availability and fallback ordering",
+        "registry metadata and model capabilities"
+      ],
+      "excludes": [
+        "subscription account rotation within a selected route",
+        "HTTP protocol translation",
+        "semantic model: auto classification",
+        "call usage and cost reporting"
+      ],
+      "counterexamples": [
+        "How does the Responses API stream tool output?",
+        "How do I enroll a second Codex subscription account?"
+      ],
+      "sourceAnchors": ["packages/router", "packages/registry", "packages/config"]
+    },
+    {
+      "id": "subscription-pooling",
+      "title": "Subscription pooling",
+      "definition": "Enrollment, quota awareness, eligibility, scheduling, rotation, retry, and recovery for multiple coding-tool subscription accounts.",
+      "includes": [
+        "account enrollment and activation",
+        "usage windows and quota state",
+        "eligible-account selection and rotation",
+        "retry after account-specific throttling",
+        "pool health and account recovery"
+      ],
+      "excludes": [
+        "generic provider/model route resolution",
+        "API-key provider billing",
+        "gateway protocol schemas",
+        "post-call attribution display"
+      ],
+      "counterexamples": [
+        "What fields are returned by calls inspect?",
+        "How is an OpenAI Responses request translated?"
+      ],
+      "sourceAnchors": ["packages/accounts", "packages/tool-codex", "packages/tool-claude"]
+    },
+    {
+      "id": "daemon-control-operations",
+      "title": "Daemon control and operations",
+      "definition": "Local singleton daemon lifecycle, control-plane commands, canonical configuration, process ownership, readiness, health, and safe operational recovery.",
+      "includes": [
+        "start, stop, status, and doctor behavior",
+        "singleton process and state ownership",
+        "control listener and command execution",
+        "canonical configuration loading and reload",
+        "local health and operational recovery"
+      ],
+      "excludes": [
+        "remote peer enrollment",
+        "data-plane protocol translation",
+        "coding-client-specific launch behavior",
+        "evaluation suite scoring"
+      ],
+      "counterexamples": [
+        "How do I add a gateway over SSH?",
+        "Why did the Anthropic streaming decoder reject this frame?"
+      ],
+      "sourceAnchors": ["packages/daemon", "packages/control", "packages/runtime", "packages/cli"]
+    },
+    {
+      "id": "remote-gateways-security",
+      "title": "Remote gateways and security",
+      "definition": "Secure access to RouteKit across hosts, including SSH control relays, peer enrollment, token issuance and revocation, authenticated binds, TLS requirements, and trust boundaries.",
+      "includes": [
+        "remote add and remote use flows",
+        "SSH relay and peer enrollment",
+        "named data-plane tokens",
+        "non-loopback bind authentication",
+        "TLS and remote trust requirements"
+      ],
+      "excludes": [
+        "ordinary local daemon lifecycle",
+        "model quality evaluation",
+        "provider-specific account scheduling",
+        "client prompt or response content"
+      ],
+      "counterexamples": [
+        "How is the default model chosen locally?",
+        "Which candidate won an authored eval suite?"
+      ],
+      "sourceAnchors": ["packages/daemon", "packages/control", "packages/cli", "packages/gateway"]
+    },
+    {
+      "id": "eval-driven-routing",
+      "title": "Eval-driven routing",
+      "definition": "Authoring and executing evaluation suites, validating comparison evidence, compiling and publishing routing snapshots, classifying model: auto requests, and reproducing routing decisions.",
+      "includes": [
+        "eval interview and suite authoring",
+        "candidate and judge comparison execution",
+        "complete evidence validation",
+        "routing snapshot compilation and publication",
+        "semantic dimension decomposition and model: auto decisions"
+      ],
+      "excludes": [
+        "general model discovery without eval evidence",
+        "ordinary explicit-model routing",
+        "operational call usage reporting",
+        "coding-client installation"
+      ],
+      "counterexamples": [
+        "How do I inspect the cost of one completed explicit-model call?",
+        "Why is the local daemon not starting?"
+      ],
+      "sourceAnchors": [
+        "packages/eval-contracts",
+        "packages/eval-core",
+        "packages/eval-service",
+        "packages/eval-store",
+        "packages/eval-setup",
+        "packages/eval-engine"
+      ]
+    },
+    {
+      "id": "client-tool-integration",
+      "title": "Client and coding-tool integration",
+      "definition": "Connecting and launching Codex, Claude Code, Cursor, OpenCode, and generic OpenAI-compatible clients through RouteKit, including client-specific environment and compatibility behavior.",
+      "includes": [
+        "coding-agent launch commands",
+        "client environment configuration",
+        "client compatibility and endpoint selection",
+        "tool-specific authentication handoff",
+        "client-specific model naming constraints"
+      ],
+      "excludes": [
+        "provider implementation internals",
+        "generic route selection policy",
+        "subscription quota scheduling",
+        "remote gateway peer authorization"
+      ],
+      "counterexamples": [
+        "How does the account pool choose among two healthy accounts?",
+        "How is an eval comparison evidence digest computed?"
+      ],
+      "sourceAnchors": [
+        "packages/tool-registry",
+        "packages/tool-codex",
+        "packages/tool-claude",
+        "packages/tool-cursor",
+        "packages/tool-opencode",
+        "packages/tools"
+      ]
+    },
+    {
+      "id": "observability-attribution",
+      "title": "Observability and attribution",
+      "definition": "Privacy-preserving inspection of routed calls, including call IDs, effective models, provider attempts, token usage, known cost, billing mode, account attribution, telemetry, and retention boundaries.",
+      "includes": [
+        "call inspection and route provenance",
+        "token usage and known-cost accounting",
+        "provider attempts and retry attribution",
+        "billing mode and account attribution",
+        "telemetry privacy and retention"
+      ],
+      "excludes": [
+        "choosing the next subscription account",
+        "eval judge quality scores",
+        "HTTP schema compatibility",
+        "remote peer enrollment"
+      ],
+      "counterexamples": [
+        "Which account is eligible before the next Codex call?",
+        "How should a model: auto classifier decompose this prompt?"
+      ],
+      "sourceAnchors": [
+        "packages/telemetry-core",
+        "packages/tracing",
+        "packages/daemon",
+        "packages/contracts"
+      ]
+    }
+  ]
+}

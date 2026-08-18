@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `ac5de6d9c089143d26e44a1160f89aad25df594f11472ee0739f2cd3a02781e2`
+Declaration SHA-256: `4bdcd4d29a311b1a46f7c7879c9b16c88a4e32be3ebfaa9322f06353bf3d7b8f`
 
 ## Root declarations
 
@@ -18,6 +18,7 @@ export type AccountActivityState = {
 export type AccountReadinessReason = {
 export type AccountReadinessState = {
 export type CapabilityStatus = "supported" | "unsupported" | "degraded" | "unknown";
+export type CompositionalRoutingAttribution = {
 export type ModelArchitecture = {
 export type ModelCallContract<E extends {
 export type ModelCallSideEffects = "none" | "read_only" | "writes_workspace" | "network" | "tool_execution" | "unknown";

@@ -1,0 +1,1278 @@
+{
+  "version": 1,
+  "runId": "20260817T191548324Z-562483cd6669",
+  "revision": "562483cd66693d44576c343c3daa5288cbe1a8cc",
+  "startedAt": "2026-08-17T19:15:48.324Z",
+  "finishedAt": "2026-08-17T19:33:02.100Z",
+  "status": "passed",
+  "failsafes": {
+    "maxEgressCalls": 512,
+    "maxInputTokens": 5000000,
+    "maxOutputTokens": 1000000,
+    "maxEstimatedCostUsd": 100,
+    "maxWallTimeMs": 7200000,
+    "maxOutputTokensPerCall": 16384
+  },
+  "ledger": {
+    "calls": 298,
+    "activeReservations": 0,
+    "inputTokens": 179823,
+    "outputTokens": 64430,
+    "estimatedCostUsd": 0,
+    "estimatedCostUsdStatus": "known-priced-subtotal",
+    "dollarFailsafeStatus": "unavailable-for-unpriced-calls",
+    "unknownMeasurements": 0,
+    "unpricedCalls": 298
+  },
+  "models": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "areaMatrixQualification": {
+    "qualificationTier": "testdrive",
+    "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+    "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+    "snapshotPath": "published-routing.v2.json",
+    "candidateCount": 3,
+    "areaCount": 8,
+    "casesPerArea": 5,
+    "areas": [
+      {
+        "areaId": "gateway-protocols",
+        "description": "Compatibility and translation at RouteKit's authenticated HTTP data plane, including OpenAI Chat Completions, OpenAI Responses, Anthropic messages, streaming, tool calls, and response metadata.",
+        "suiteDigest": "99570b53c1765bc77ce99de4f071f5643388841f6f359eb7d5b44b768495b0b5",
+        "artifacts": {
+          "evalDirectory": "areas/gateway-protocols/eval",
+          "routingProfilePath": "areas/gateway-protocols/routing-profile.yaml",
+          "comparisonPath": "areas/gateway-protocols/comparison.json"
+        }
+      },
+      {
+        "areaId": "model-routing-registry",
+        "description": "Discovery and deterministic resolution of namespaced provider/model routes, default models, advertised availability, aliases, fallbacks, and registry metadata.",
+        "suiteDigest": "b3bc1df709f9aad1d0156978e572c1f3bab7591608f1a065009e314a3f2a18ec",
+        "artifacts": {
+          "evalDirectory": "areas/model-routing-registry/eval",
+          "routingProfilePath": "areas/model-routing-registry/routing-profile.yaml",
+          "comparisonPath": "areas/model-routing-registry/comparison.json"
+        }
+      },
+      {
+        "areaId": "subscription-pooling",
+        "description": "Enrollment, quota awareness, eligibility, scheduling, rotation, retry, and recovery for multiple coding-tool subscription accounts.",
+        "suiteDigest": "06c3ae8cb1a1ba6c307947046b6eee1880a11e285e0f9cd2df66a960dd8069a5",
+        "artifacts": {
+          "evalDirectory": "areas/subscription-pooling/eval",
+          "routingProfilePath": "areas/subscription-pooling/routing-profile.yaml",
+          "comparisonPath": "areas/subscription-pooling/comparison.json"
+        }
+      },
+      {
+        "areaId": "daemon-control-operations",
+        "description": "Local singleton daemon lifecycle, control-plane commands, canonical configuration, process ownership, readiness, health, and safe operational recovery.",
+        "suiteDigest": "75a5b7dd2bd489d020665e5843185dd26db16cd0af61663fd4b88aba2086ed1d",
+        "artifacts": {
+          "evalDirectory": "areas/daemon-control-operations/eval",
+          "routingProfilePath": "areas/daemon-control-operations/routing-profile.yaml",
+          "comparisonPath": "areas/daemon-control-operations/comparison.json"
+        }
+      },
+      {
+        "areaId": "remote-gateways-security",
+        "description": "Secure access to RouteKit across hosts, including SSH control relays, peer enrollment, token issuance and revocation, authenticated binds, TLS requirements, and trust boundaries.",
+        "suiteDigest": "1c6f54b181049633561ba5bb2afdc59cb807d60f1af9f20849f58dc30ae11656",
+        "artifacts": {
+          "evalDirectory": "areas/remote-gateways-security/eval",
+          "routingProfilePath": "areas/remote-gateways-security/routing-profile.yaml",
+          "comparisonPath": "areas/remote-gateways-security/comparison.json"
+        }
+      },
+      {
+        "areaId": "eval-driven-routing",
+        "description": "Authoring and executing evaluation suites, validating comparison evidence, compiling and publishing routing snapshots, classifying model: auto requests, and reproducing routing decisions.",
+        "suiteDigest": "dc01225f25712443afa5101106daaa2bbd59d9e9863f892bd360ab160ea99d98",
+        "artifacts": {
+          "evalDirectory": "areas/eval-driven-routing/eval",
+          "routingProfilePath": "areas/eval-driven-routing/routing-profile.yaml",
+          "comparisonPath": "areas/eval-driven-routing/comparison.json"
+        }
+      },
+      {
+        "areaId": "client-tool-integration",
+        "description": "Connecting and launching Codex, Claude Code, Cursor, OpenCode, and generic OpenAI-compatible clients through RouteKit, including client-specific environment and compatibility behavior.",
+        "suiteDigest": "29ecc573591886b83c59ea7034b92485219b1ee36fdfdfc440bdae410231978e",
+        "artifacts": {
+          "evalDirectory": "areas/client-tool-integration/eval",
+          "routingProfilePath": "areas/client-tool-integration/routing-profile.yaml",
+          "comparisonPath": "areas/client-tool-integration/comparison.json"
+        }
+      },
+      {
+        "areaId": "observability-attribution",
+        "description": "Privacy-preserving inspection of routed calls, including call IDs, effective models, provider attempts, token usage, known cost, billing mode, account attribution, telemetry, and retention boundaries.",
+        "suiteDigest": "de22cc33253978f7861122697ed986b35216a33e63574f5b12940979f0147a78",
+        "artifacts": {
+          "evalDirectory": "areas/observability-attribution/eval",
+          "routingProfilePath": "areas/observability-attribution/routing-profile.yaml",
+          "comparisonPath": "areas/observability-attribution/comparison.json"
+        }
+      }
+    ]
+  },
+  "compositionalRoutingDecisions": [
+    {
+      "promptKind": "gateway-protocols",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 1
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 11235.429664000003,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 21281.037788999995,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.23072428127601285,
+            "failureRate": 0.4,
+            "p95DurationMs": 11199.128422,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-terra",
+        "fallbackModels": [
+          "openai/gpt-5.6-sol",
+          "openai/gpt-5.6-luna"
+        ]
+      },
+      "classifierCallId": "model_call_b24081b4-1d50-4512-a9f4-705460137167",
+      "inferenceCallId": "model_call_f8ad0d72-f183-448f-b9b9-f55168c74168"
+    },
+    {
+      "promptKind": "model-routing-registry",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 1
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 6629.535497000003,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 8144.693675999995,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 11768.539165000002,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-luna",
+        "fallbackModels": [
+          "openai/gpt-5.6-sol",
+          "openai/gpt-5.6-terra"
+        ]
+      },
+      "classifierCallId": "model_call_1dda5c16-c81d-47b0-a5d1-6d4d07af7887",
+      "inferenceCallId": "model_call_fb86d86d-4002-47b0-8327-ce3c6db02d08"
+    },
+    {
+      "promptKind": "subscription-pooling",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0.03
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0.95
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0.02
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5598180480531962,
+            "failureRate": 0.006,
+            "p95DurationMs": 4865.276121450001,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5598180480531962,
+            "failureRate": 0.006,
+            "p95DurationMs": 11210.677560059998,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.3749899774170159,
+            "failureRate": 0.202,
+            "p95DurationMs": 6135.15508938,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-terra",
+        "fallbackModels": [
+          "openai/gpt-5.6-sol",
+          "openai/gpt-5.6-luna"
+        ]
+      },
+      "classifierCallId": "model_call_71c289c5-84df-4f5c-b175-760232d2730e",
+      "inferenceCallId": "model_call_a856eb1b-4eb4-4957-8559-2d26c658b84c"
+    },
+    {
+      "promptKind": "daemon-control-operations",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 1
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 5830.319683999995,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 6333.009692000001,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 7039.148391000002,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-terra",
+        "fallbackModels": [
+          "openai/gpt-5.6-luna",
+          "openai/gpt-5.6-sol"
+        ]
+      },
+      "classifierCallId": "model_call_1ff3f10a-5a2a-47a2-ae0b-b89a1b92cd55",
+      "inferenceCallId": "model_call_3abf68ce-2177-4a47-84d4-3cd90c25fe9f"
+    },
+    {
+      "promptKind": "remote-gateways-security",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 1
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 8418.750535000003,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 9705.580405,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 18443.110577,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-luna",
+        "fallbackModels": [
+          "openai/gpt-5.6-terra",
+          "openai/gpt-5.6-sol"
+        ]
+      },
+      "classifierCallId": "model_call_b89b0bed-17f5-4df3-aa99-5c6040f1a7d9",
+      "inferenceCallId": "model_call_da2ce499-896a-4434-b4c9-228c6397f42d"
+    },
+    {
+      "promptKind": "eval-driven-routing",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 1
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 3843.6113639999967,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 4438.390587000009,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 4611.747457000001,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-terra",
+        "fallbackModels": [
+          "openai/gpt-5.6-sol",
+          "openai/gpt-5.6-luna"
+        ]
+      },
+      "classifierCallId": "model_call_3dbf83ce-42ed-4ba7-8e7e-938649c079f9",
+      "inferenceCallId": "model_call_f03631bc-813a-4934-861e-03393a28f11f"
+    },
+    {
+      "promptKind": "client-tool-integration",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0.25
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0.2
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0.55
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.48181922173162217,
+            "failureRate": 0.1,
+            "p95DurationMs": 6393.269776200001,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.4800252277623903,
+            "failureRate": 0.09000000000000001,
+            "p95DurationMs": 7405.296014000003,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.4800252277623903,
+            "failureRate": 0.09000000000000001,
+            "p95DurationMs": 9551.43051075,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-luna",
+        "fallbackModels": [
+          "openai/gpt-5.6-terra",
+          "openai/gpt-5.6-sol"
+        ]
+      },
+      "classifierCallId": "model_call_931f9b7c-829f-48e5-af50-641b7dd7b3f8",
+      "inferenceCallId": "model_call_b718b6b1-6142-46da-a882-fbb10a7a7220"
+    },
+    {
+      "promptKind": "observability-attribution",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 1
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 3444.648596,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 4004.4286340000035,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 5745.618611999998,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-luna",
+        "fallbackModels": [
+          "openai/gpt-5.6-terra",
+          "openai/gpt-5.6-sol"
+        ]
+      },
+      "classifierCallId": "model_call_9b410e58-b179-4eb2-9700-4b847dd206db",
+      "inferenceCallId": "model_call_b9ace8c3-93cc-43ce-8674-2d065451c9a7"
+    },
+    {
+      "promptKind": "composite-route-and-protocol",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0.5
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0.5
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.39812090824641905,
+            "failureRate": 0.2,
+            "p95DurationMs": 8914.331959500001,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 11501.984414500002,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.37553462976252533,
+            "failureRate": 0.2,
+            "p95DurationMs": 14712.865732499995,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-luna",
+        "fallbackModels": [
+          "openai/gpt-5.6-terra",
+          "openai/gpt-5.6-sol"
+        ]
+      },
+      "classifierCallId": "model_call_77d99104-ca33-4811-b464-69426d73ecbe",
+      "inferenceCallId": "model_call_e26092de-1416-4155-8fd7-2a6b99bc8511"
+    },
+    {
+      "promptKind": "composite-pool-attribution",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0.55
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0.05
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0.4
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168254,
+            "failureRate": 0,
+            "p95DurationMs": 4380.886134250002,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168254,
+            "failureRate": 0,
+            "p95DurationMs": 8589.06005145,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.4610269372169603,
+            "failureRate": 0.11000000000000001,
+            "p95DurationMs": 4901.538437900001,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-terra",
+        "fallbackModels": [
+          "openai/gpt-5.6-sol",
+          "openai/gpt-5.6-luna"
+        ]
+      },
+      "classifierCallId": "model_call_0770c0f0-a9b5-4290-8092-8e1d4b6dae09",
+      "inferenceCallId": "model_call_b4b428b6-dee9-411b-9b3d-483c8ef761ae"
+    },
+    {
+      "promptKind": "composite-remote-operations",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0.45
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0.55
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.4800252277623903,
+            "failureRate": 0.09000000000000001,
+            "p95DurationMs": 7480.167155650003,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.4610269372169603,
+            "failureRate": 0.11000000000000001,
+            "p95DurationMs": 7961.713080549998,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.3755346297625254,
+            "failureRate": 0.2,
+            "p95DurationMs": 13311.3275933,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-luna",
+        "fallbackModels": [
+          "openai/gpt-5.6-terra",
+          "openai/gpt-5.6-sol"
+        ]
+      },
+      "classifierCallId": "model_call_aca2a7b8-0536-4c89-bfef-d804e9227afd",
+      "inferenceCallId": "model_call_a5005166-4c93-4019-a725-519cb1c5627c"
+    },
+    {
+      "promptKind": "composite-auto-provenance",
+      "decision": {
+        "version": 2,
+        "decomposition": {
+          "version": 2,
+          "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+          "weights": [
+            {
+              "areaId": "gateway-protocols",
+              "weight": 0
+            },
+            {
+              "areaId": "model-routing-registry",
+              "weight": 0
+            },
+            {
+              "areaId": "subscription-pooling",
+              "weight": 0
+            },
+            {
+              "areaId": "daemon-control-operations",
+              "weight": 0
+            },
+            {
+              "areaId": "remote-gateways-security",
+              "weight": 0
+            },
+            {
+              "areaId": "eval-driven-routing",
+              "weight": 0.65
+            },
+            {
+              "areaId": "client-tool-integration",
+              "weight": 0
+            },
+            {
+              "areaId": "observability-attribution",
+              "weight": 0.35
+            }
+          ],
+          "unknownWeight": 0
+        },
+        "requirements": {
+          "endpoint": "chat",
+          "requiresTools": false,
+          "requiresVision": false,
+          "maxOutputTokens": 512
+        },
+        "objective": {
+          "kind": "highest-quality"
+        },
+        "evidenceDigest": "b23c26202d21cc47fd9a82c293b7d45819431bb41a710f08a6d7b9c7c2b0652a",
+        "candidates": [
+          {
+            "model": "openai/gpt-5.6-terra",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 3899.897408499999,
+            "costStatus": "unavailable",
+            "rank": 1
+          },
+          {
+            "model": "openai/gpt-5.6-luna",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 4203.26285565,
+            "costStatus": "unavailable",
+            "rank": 2
+          },
+          {
+            "model": "openai/gpt-5.6-sol",
+            "eligible": true,
+            "exclusionReasons": [],
+            "quality": 0.5655175352168252,
+            "failureRate": 0,
+            "p95DurationMs": 4895.920395750005,
+            "costStatus": "unavailable",
+            "rank": 3
+          }
+        ],
+        "selectedModel": "openai/gpt-5.6-terra",
+        "fallbackModels": [
+          "openai/gpt-5.6-luna",
+          "openai/gpt-5.6-sol"
+        ]
+      },
+      "classifierCallId": "model_call_f5d34bd2-447a-4d23-950e-cbf58a80de00",
+      "inferenceCallId": "model_call_f2242abd-2c20-4a96-af47-123c3dee733a"
+    }
+  ],
+  "classifierQualification": {
+    "definitionSetDigest": "739b982aff5fe69fcf0dfe09ed074a5d160a4066f5e5f8298ee59b6d09693e39",
+    "passed": true,
+    "expectedCaseCount": 26,
+    "observedCaseCount": 26,
+    "validVectorCount": 26,
+    "meanVectorL1Error": 0.10827838827838829,
+    "maximumVectorL1Error": 0.30000000000000004,
+    "reportPath": "classifier-qualification-v2.json"
+  },
+  "cleanup": [
+    {
+      "phase": "embedded-router",
+      "status": "passed"
+    },
+    {
+      "phase": "egress-guard",
+      "status": "closed"
+    },
+    {
+      "phase": "detached-worktree",
+      "status": "passed"
+    }
+  ],
+  "eventCount": 634
+}

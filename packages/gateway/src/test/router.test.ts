@@ -169,6 +169,26 @@ test("model policy validates and matches anchored canonical model globs", () => 
   }
 });
 
+test("already-namespaced upstream ids are not prefixed a second time", async () => {
+  const calls: Array<{ source: string; model?: string }> = [];
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: {
+        providers: { openai: {} },
+        defaultModel: "openai/gpt-5.6-sol"
+      },
+      sources: {
+        openai: fakeSource("openai", [{ id: "openai/gpt-5.6-sol" }, { id: "gpt-5.5" }], calls)
+      }
+    })
+  );
+  assert.deepEqual([...backend.listModelIds()].sort(), ["openai/gpt-5.5", "openai/gpt-5.6-sol"]);
+  assert.equal(backend.modelInfo("openai/gpt-5.6-sol")?.nativeModel, "openai/gpt-5.6-sol");
+  assert.equal(backend.modelInfo("openai/gpt-5.5")?.nativeModel, "gpt-5.5");
+  await runRouteKitEffect(backend.chat({ model: "openai/gpt-5.6-sol", messages: [] }));
+  assert.deepEqual(calls, [{ source: "openai", model: "openai/gpt-5.6-sol" }]);
+});
+
 test("model policy filters every catalog-backed surface and preserves routing", async () => {
   const calls: Array<{ source: string; model?: string }> = [];
   const backend = await runRouteKitEffect(

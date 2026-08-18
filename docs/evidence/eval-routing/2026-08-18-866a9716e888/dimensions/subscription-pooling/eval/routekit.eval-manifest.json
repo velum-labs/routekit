@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "profileId": "subscription-pooling",
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "judgeModel": "openai/gpt-5.6-terra",
+  "caseCount": 5,
+  "caseIds": [
+    "quota-429-account-cooldown-retry",
+    "model-scoped-403-eligibility",
+    "credential-recovery-bounded-attempt",
+    "transaction-interruption-recovery",
+    "codex-banked-reset-scheduling"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 30
+}

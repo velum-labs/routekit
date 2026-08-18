@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "profileId": "model-routing-registry",
+  "candidateModels": [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol"
+  ],
+  "judgeModel": "openai/gpt-5.6-terra",
+  "caseCount": 5,
+  "caseIds": [
+    "default-absent-from-catalog",
+    "unknown-and-unnamespaced-rejection",
+    "policy-alias-default-order",
+    "duplicate-native-id-claude",
+    "subscription-advertised-availability"
+  ],
+  "maxOutputTokens": 1024,
+  "expectedCallCount": 30
+}

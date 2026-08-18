@@ -18,6 +18,9 @@
       "path": "../eval-contracts"
     },
     {
+      "path": "../eval-core"
+    },
+    {
       "path": "../registry"
     },
     {

@@ -85,6 +85,7 @@ export {
 export type { WebSearchDialect, WebSearchExecutor } from "./adapters/web-search.js";
 export { MAX_WEB_SEARCHES_PER_TURN, resolveWebSearchExecutor } from "./adapters/web-search.js";
 export type {
+  EvalSessionAdmission,
   GatewayPrincipal,
   WorkloadJwtPrincipalPolicy,
   WorkloadJwtVerifierOptions
@@ -143,6 +144,14 @@ export {
   resolveCodexStartupModel
 } from "./codex-model-selection.js";
 export type {
+  CompositionalRoutingErrorCode,
+  CompositionalRoutingInput
+} from "./compositional-routing.js";
+export {
+  CompositionalRoutingError,
+  routeCompositionalRequest
+} from "./compositional-routing.js";
+export type {
   CallCostRecord,
   ModelPricing,
   ProviderCostMetadata,
@@ -172,6 +181,21 @@ export {
 } from "./endpoint-health.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
+export type {
+  CompositionalRoutingObservation,
+  CompositionalRoutingPolicyReader,
+  CompositionalRoutingRuntime
+} from "./eval-policy.js";
+export {
+  AutoRoutingUnavailableError,
+  compositionalRoutingAttribution,
+  compositionalRoutingPolicyReaderFromSnapshot,
+  EvalAutoRoutingForbiddenError,
+  RoutingPolicyReadError,
+  resolveCompositionalAutoRoutingModel,
+  resolveConfiguredAutoRoutingModel
+} from "./eval-policy.js";
+export { invokeObservedModelCall } from "./model-call-service.js";
 export type { OpenAiBackendOptions } from "./openai-backend.js";
 export { OpenAiBackend } from "./openai-backend.js";
 export type {
@@ -230,6 +254,23 @@ export {
   PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_IDS
 } from "./provider-source.js";
+export type {
+  ObservedDecompositionResult,
+  RequestDecomposerService
+} from "./request-classifier.js";
+export {
+  CLASSIFIABLE_REQUEST_TEXT_LIMIT,
+  ClassificationError,
+  classifyRequestDimensions,
+  extractClassifiableRequestText,
+  makeFakeRequestDecomposer,
+  makeLanguageModelDimensionClassifier,
+  makeRequestDecomposerLayer,
+  parseDecompositionResult,
+  RequestDecomposer,
+  validateDecompositionInput,
+  validateDecompositionResult
+} from "./request-classifier.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./router.js";
 export {
   isSubscriptionProvider,
@@ -248,6 +289,10 @@ export {
   RoutePlanner,
   RoutePolicy
 } from "./routing-core.js";
+export {
+  deriveRoutingRequirements,
+  routingModelAvailability
+} from "./routing-requirements.js";
 export type {
   Gateway,
   GatewayOptions,

@@ -129,6 +129,75 @@ test("method-specific validators reject malformed mutations at the protocol edge
     () => validateRouteKitParams("calls.leaderboard", { limit: 0 }),
     /positive integer/
   );
+  const evalSession = {
+    purpose: "qualification",
+    operationId: "run-1",
+    allowedModels: ["openai/gpt-5.6-luna"],
+    limits: {
+      calls: 10,
+      inputTokens: 100_000,
+      outputTokens: 10_000,
+      perCallOutputTokens: 1_000,
+      wallTimeMs: 60_000
+    },
+    expiresInSeconds: 60
+  } as const;
+  assert.deepEqual(validateRouteKitParams("evalSession.open", evalSession), evalSession);
+  assert.throws(
+    () =>
+      validateRouteKitParams("evalSession.open", {
+        ...evalSession,
+        allowedModels: ["auto"]
+      }),
+    /explicit provider\/model/
+  );
+  assert.throws(
+    () =>
+      validateRouteKitParams("evalSession.open", {
+        ...evalSession,
+        allowedModels: ["openai/gpt-5.6-luna", "openai/gpt-5.6-luna"]
+      }),
+    /duplicates/
+  );
+  assert.throws(
+    () =>
+      validateRouteKitParams("evalSession.open", {
+        ...evalSession,
+        limits: { ...evalSession.limits, outputTokens: 100 }
+      }),
+    /cannot exceed/
+  );
+  assert.throws(
+    () =>
+      validateRouteKitParams("evalSession.open", {
+        ...evalSession,
+        expiresInSeconds: 14_401
+      }),
+    /between 1 and 14400/
+  );
+  const activation = { version: 2, evidenceDigest: "evidence-1" };
+  assert.deepEqual(
+    validateRouteKitParams("evalRouting.activate", {
+      expectedEvidenceDigest: null,
+      activation
+    }),
+    { expectedEvidenceDigest: null, activation }
+  );
+  assert.throws(
+    () =>
+      validateRouteKitParams("evalRouting.activate", {
+        expectedEvidenceDigest: "",
+        activation
+      }),
+    /expectedEvidenceDigest/
+  );
+  assert.throws(
+    () =>
+      validateRouteKitParams("evalRouting.activate", {
+        expectedEvidenceDigest: null
+      }),
+    /activation/
+  );
   assert.deepEqual(validateRouteKitParams("telemetry.set", { enabled: true }), { enabled: true });
   assert.deepEqual(
     validateRouteKitParams("telemetry.set", { category: "usage", categoryEnabled: false }),

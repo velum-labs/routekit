@@ -1,0 +1,611 @@
+// Generated from framework/contracts/author/src by `bun run contracts:generate`.
+// Do not edit by hand.
+import type { HarnessOutputSchema } from "./index";
+import { Effect, Fiber, Option, Ref, Stream } from "effect";
+import type { ChildProcessHandle } from "effect/unstable/process/ChildProcessSpawner";
+import { constants } from "node:fs";
+import { access } from "node:fs/promises";
+import { delimiter, isAbsolute, join } from "node:path";
+import { layer as BunServicesLayer } from "@effect/platform-bun/BunServices";
+import { ChildProcess } from "effect/unstable/process";
+import { log } from "./logger";
+
+// --- harness-env.ts ---
+const EMPTY_COUNT = 0;
+const HEADER_SEPARATOR = ": ";
+const HEADER_LINE_SEPARATOR = "\n";
+const HEADER_NAME_VALUE_SPLIT = /:(.*)/su;
+
+const normalizeEnvValue = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+  if (trimmed === undefined || trimmed.length === EMPTY_COUNT) {
+    return undefined;
+  }
+  return trimmed;
+};
+
+const parseHeaderName = (line: string): string | undefined => {
+  const [name] = line.split(HEADER_NAME_VALUE_SPLIT);
+  const trimmed = name.trim();
+  return trimmed.length === EMPTY_COUNT ? undefined : trimmed;
+};
+
+/**
+ * Merge attribution headers into an existing `ANTHROPIC_CUSTOM_HEADERS` value
+ * (newline-separated `Name: Value` pairs) without clobbering headers the caller
+ * already set. A header is appended only when its name is absent
+ * (case-insensitive), so a user override always wins. Returns `undefined` only
+ * when there is nothing to emit.
+ */
+export const mergeAnthropicCustomHeaders = (
+  existing: string | undefined,
+  headers: readonly (readonly [string, string])[]
+): string | undefined => {
+  const existingValue = normalizeEnvValue(existing);
+  const existingLines =
+    existingValue === undefined ? [] : existingValue.split(/\r?\n/u);
+  const presentNames = new Set(
+    existingLines
+      .map(parseHeaderName)
+      .filter((name): name is string => name !== undefined)
+      .map((name) => name.toLowerCase())
+  );
+
+  const additions = headers
+    .filter(([name]) => !presentNames.has(name.toLowerCase()))
+    .map(([name, value]) => `${name}${HEADER_SEPARATOR}${value}`);
+
+  const lines = [...existingLines, ...additions].filter(
+    (line) => line.trim().length !== EMPTY_COUNT
+  );
+  return lines.length === EMPTY_COUNT
+    ? undefined
+    : lines.join(HEADER_LINE_SEPARATOR);
+};
+
+/**
+ * A positive-integer millisecond timeout from an env value, or `undefined`
+ * when the variable is unset, blank, non-numeric, or non-positive — the shared
+ * parse for the harnesses' `ORI_*_TIMEOUT_MS` overrides.
+ */
+const parseTimeoutMs = (value: string | undefined): number | undefined => {
+  const normalized = normalizeEnvValue(value);
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+/**
+ * The one boolean-env grammar for `ORI_*` flags: `1`/`true`/`yes` (any case,
+ * surrounding whitespace ignored) is true, everything else — including unset —
+ * is false. Shared here so each harness or feature does not grow its own
+ * accepted-spelling set and drift.
+ */
+const parseBooleanEnv = (value: string | undefined): boolean => {
+  const normalized = normalizeEnvValue(value)?.toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+};
+
+export { normalizeEnvValue, parseBooleanEnv, parseTimeoutMs };
+
+// --- output-schema.ts ---
+const JSON_INDENT = 2;
+const STRUCTURED_OUTPUT_HEADER = "## Structured output";
+
+const formatSchemaName = (name: string | undefined): string =>
+  name === undefined ? "" : ` named "${name}"`;
+
+const safeJsonStringify = (value: unknown): string =>
+  JSON.stringify(value, null, JSON_INDENT);
+
+/**
+ * Render a structured-output request as a system-prompt instruction (RFC
+ * 0002 schedule.md). Agentic harnesses (pi, claude) cannot constrain the model
+ * with a
+ * native `response_format`, so the JSON Schema is injected as guidance: the run's
+ * final message must be a single JSON value that validates against it. The
+ * framework then parses and validates that value against the author's schema.
+ */
+export const formatOutputSchemaInstruction = (
+  outputSchema: HarnessOutputSchema
+): string => {
+  const sections = [
+    STRUCTURED_OUTPUT_HEADER,
+    "",
+    `Your final message must be a single JSON value${formatSchemaName(outputSchema.name)} that validates against this JSON Schema.`,
+    "Output only that JSON value as your final message — no prose, no explanation, and no markdown code fences.",
+    "",
+    "JSON Schema:",
+    safeJsonStringify(outputSchema.schema),
+  ];
+
+  if (outputSchema.definitions !== undefined) {
+    sections.push(
+      "",
+      "Shared definitions ($defs):",
+      safeJsonStringify(outputSchema.definitions)
+    );
+  }
+
+  return sections.join("\n");
+};
+
+/**
+ * Combine an existing system prompt with the structured-output instruction for an
+ * optional output schema, returning `undefined` when neither is present.
+ */
+export const withOutputSchemaInstruction = (
+  systemPrompt: string | undefined,
+  outputSchema: HarnessOutputSchema | undefined
+): string | undefined => {
+  if (outputSchema === undefined) {
+    return systemPrompt;
+  }
+  const instruction = formatOutputSchemaInstruction(outputSchema);
+  return systemPrompt === undefined
+    ? instruction
+    : `${systemPrompt}\n\n${instruction}`;
+};
+
+// --- process-group.ts ---
+// Ceiling on the SIGTERM -> SIGKILL escalation. Finite, so no misbehaving
+// child can wedge the stream forever.
+const KILL_GRACE_MS = 1000;
+// Liveness-poll cadence during the grace window, so a well-behaved subtree is
+// reaped promptly instead of holding teardown for the full grace.
+const REAP_POLL_MS = 50;
+
+const signalProcessGroup = (pid: number, signal: NodeJS.Signals): boolean => {
+  try {
+    globalThis.process.kill(-pid, signal);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const isProcessGroupAlive = (pid: number): boolean => {
+  try {
+    globalThis.process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Descendants the child leaves behind (nested harness runs, node, esbuild
+// service daemons) stay in its process group after the child itself exits —
+// including a clean exit 0, where the spawner's own release does nothing. Sweep
+// the group at scope close with SIGTERM -> grace -> SIGKILL so no teardown path
+// can leak a subtree (ORI-472). An empty group fails the first signal with
+// ESRCH, so the common no-orphan case skips the grace window entirely; a
+// SIGTERM-obeying subtree exits within one poll tick, so only a
+// SIGTERM-ignoring subtree pays the full grace before the SIGKILL.
+export const reapProcessGroup = Effect.fn("reapProcessGroup")(function* (
+  pid: number
+) {
+  if (globalThis.process.platform === "win32") {
+    return;
+  }
+  if (!signalProcessGroup(pid, "SIGTERM")) {
+    return;
+  }
+  for (let waited = 0; waited < KILL_GRACE_MS; waited += REAP_POLL_MS) {
+    yield* Effect.sleep(REAP_POLL_MS);
+    if (!isProcessGroupAlive(pid)) {
+      return;
+    }
+  }
+  signalProcessGroup(pid, "SIGKILL");
+});
+
+// --- process-stream.ts ---
+const EXECUTABLE_MODE = constants.X_OK;
+
+interface HarnessProcessResult {
+  readonly exitCode: number | null;
+  /** Set when the binary is absent, so nothing was spawned. */
+  readonly missingBinary?: boolean | undefined;
+  readonly stderr: string;
+  readonly timedOut: boolean;
+}
+
+interface HarnessProcessBinaryRequirement {
+  readonly binaryEnvVar?: string | undefined;
+  readonly installCommand: string;
+}
+
+const stdinFromString = (input: string): Stream.Stream<Uint8Array> =>
+  Stream.succeed(input).pipe(Stream.encodeText);
+
+interface RunningHarnessProcess {
+  readonly handle: ChildProcessHandle;
+  readonly stderrText: Effect.Effect<string, Error>;
+}
+
+const missingBinaryEvents = <State, Event>(
+  input: StreamJsonlProcessInput<State, Event>,
+  stderr: string
+): Stream.Stream<Event> =>
+  Stream.fromIterable(
+    input.finalize(input.initialState, {
+      exitCode: null,
+      missingBinary: true,
+      stderr,
+      timedOut: false,
+    })
+  );
+
+const executableCandidates = (
+  binary: string,
+  env: NodeJS.ProcessEnv
+): readonly string[] => {
+  if (isAbsolute(binary) || binary.includes("/")) {
+    return [binary];
+  }
+
+  return (env.PATH ?? "")
+    .split(delimiter)
+    .filter((entry) => entry.length !== EMPTY_COUNT)
+    .map((entry) => join(entry, binary));
+};
+
+const executableExists = (
+  binary: string,
+  env: NodeJS.ProcessEnv
+): Effect.Effect<boolean, Error> =>
+  Effect.promise(async () => {
+    const candidates = executableCandidates(binary, env);
+    for (const candidate of candidates) {
+      try {
+        await access(candidate, EXECUTABLE_MODE);
+        return true;
+      } catch {
+        // keep searching PATH
+      }
+    }
+    return false;
+  });
+
+const formatMissingHarnessProcessBinary = (
+  binary: string,
+  requirement: HarnessProcessBinaryRequirement
+): string => {
+  const location =
+    isAbsolute(binary) || binary.includes("/")
+      ? "at the configured path"
+      : "on PATH";
+  const configuredBinaryHint =
+    requirement.binaryEnvVar === undefined
+      ? ""
+      : ` If it is already installed, set ${requirement.binaryEnvVar}.`;
+  return `${binary} was not found ${location}. Install it with: ${requirement.installCommand}.${configuredBinaryHint}`;
+};
+
+const detectMissingHarnessProcessBinary = Effect.fn(
+  "HarnessProcess.detectMissingHarnessProcessBinary"
+)(function* (input: {
+  readonly binary: string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly missingBinary?: HarnessProcessBinaryRequirement | undefined;
+}) {
+  const exists = yield* executableExists(input.binary, input.env);
+  if (exists || input.missingBinary === undefined) {
+    return Option.none<string>();
+  }
+
+  return Option.some(
+    formatMissingHarnessProcessBinary(input.binary, input.missingBinary)
+  );
+});
+
+const normalizeLine = <State, Event>(
+  stateRef: Ref.Ref<State>,
+  input: StreamJsonlProcessInput<State, Event>,
+  line: string
+): Effect.Effect<readonly Event[]> =>
+  Ref.modify(stateRef, (state) => {
+    const [nextState, events] = input.normalizeLine(state, line);
+    return [events, nextState];
+  });
+
+interface StreamJsonlProcessInput<State, Event> {
+  readonly args: readonly string[];
+  readonly binary: string;
+  readonly cwd?: string | undefined;
+  readonly env: NodeJS.ProcessEnv;
+  readonly finalize: (
+    state: State,
+    result: HarnessProcessResult
+  ) => readonly Event[];
+  readonly initialState: State;
+  readonly missingBinary?: HarnessProcessBinaryRequirement | undefined;
+  readonly normalizeLine: (
+    state: State,
+    line: string
+  ) => readonly [State, readonly Event[]];
+  /**
+   * Optional sink for the process's stderr, invoked once per line *as it arrives*
+   * (3a / RFC 0011): the host forwards the binary's diagnostics live into
+   * `ori logs`, not just the aggregated `stderr` on a non-zero exit. Best-effort
+   * (a throw is swallowed so logging can never break the stream); when absent,
+   * stderr is collected only for the error path. A plain function (RFC 0007).
+   */
+  readonly onStderrLine?: ((line: string) => void) | undefined;
+  readonly prompt: string;
+  readonly shouldSkipFinalize?: ((state: State) => boolean) | undefined;
+  readonly timeoutMs?: number | undefined;
+}
+
+const toProcessError =
+  (command: string) =>
+  (cause: unknown): Error =>
+    cause instanceof Error
+      ? cause
+      : new Error(`Failed to run ${command}: ${String(cause)}`);
+
+const streamStdoutEvents = <State, Event>(input: {
+  readonly input: StreamJsonlProcessInput<State, Event>;
+  readonly running: RunningHarnessProcess;
+  readonly stateRef: Ref.Ref<State>;
+}): Stream.Stream<Event, Error> =>
+  input.running.handle.stdout.pipe(
+    Stream.mapError(toProcessError(input.input.binary)),
+    Stream.decodeText(),
+    Stream.splitLines,
+    Stream.map((line) => line.trim()),
+    Stream.filter((line) => line.length !== EMPTY_COUNT),
+    Stream.mapEffect((line) =>
+      normalizeLine(input.stateRef, input.input, line)
+    ),
+    Stream.flatMap((normalizedEvents) => Stream.fromIterable(normalizedEvents))
+  );
+
+const readProcessText = Effect.fn("HarnessProcess.readProcessText")(
+  function* (input: {
+    readonly command: string;
+    readonly onLine?: (line: string) => void;
+    readonly stream: Stream.Stream<Uint8Array, unknown>;
+  }) {
+    const decoded = input.stream.pipe(
+      Stream.mapError(toProcessError(input.command)),
+      Stream.decodeText()
+    );
+    if (input.onLine === undefined) {
+      return yield* decoded.pipe(Stream.mkString);
+    }
+    const { onLine } = input;
+    const lines: string[] = [];
+    yield* decoded.pipe(
+      Stream.splitLines,
+      Stream.tap((line) =>
+        Effect.sync(() => {
+          lines.push(line);
+          if (line.length === EMPTY_COUNT) {
+            return;
+          }
+          try {
+            onLine(line);
+          } catch {
+            /* swallow: logging must never break the stream */
+          }
+        })
+      ),
+      Stream.runDrain
+    );
+    return lines.join("\n");
+  }
+);
+
+const spawnHarnessProcess = Effect.fn("HarnessProcess.spawn")(function* <
+  State,
+  Event,
+>(input: StreamJsonlProcessInput<State, Event>) {
+  const handle = yield* ChildProcess.make(input.binary, input.args, {
+    cwd: input.cwd,
+    // Own process group, so `reapProcessGroup` can signal the whole subtree.
+    detached: true,
+    env: input.env,
+    extendEnv: false,
+    stderr: "pipe",
+    stdin: stdinFromString(input.prompt),
+    stdout: "pipe",
+  }).pipe(Effect.mapError(toProcessError(input.binary)));
+  // Default to the process-global `log` (a no-op when uninstalled) so stderr is
+  // still forwarded when no `onStderrLine` sink is supplied.
+  const stderrSink =
+    input.onStderrLine ??
+    ((line: string): void => {
+      log.child("harness", { binary: input.binary }).warn(line);
+    });
+  const stderrFiber = yield* readProcessText({
+    command: input.binary,
+    onLine: stderrSink,
+    stream: handle.stderr,
+  }).pipe(Effect.forkScoped);
+
+  return {
+    handle,
+    stderrText: Fiber.join(stderrFiber),
+  };
+});
+
+// Why the run terminated. The deadline fiber writes `Timeout` *before* it kills; the finalizer reads it so classification (deadline kill vs genuine exit) never depends on the runtime's error-shape.
+type TerminationReason = "None" | "Timeout";
+type TimeoutState = Ref.Ref<TerminationReason>;
+
+const TIMED_OUT_EXIT = {
+  exitCode: null,
+  timedOut: true,
+} as const;
+
+// Grace before SIGTERM -> SIGKILL escalation; ceiling on the finalizer's stderr join. Both finite, so no misbehaving child can wedge the stream forever.
+const KILL_GRACE = "1 second";
+const STDERR_JOIN_GRACE = "5 seconds";
+
+// Resolve the terminal exit, respecting the timeout latch. VERIFIED INVARIANT
+// (Bun / @effect/platform-node-shared 4.0.0-beta.93): `handle.exitCode` succeeds
+// with the code on a normal exit and *fails* with a `PlatformError` on signal
+// death (`code === null`) — confirmed by reading `NodeChildProcessSpawner` and a
+// live SIGTERM experiment. We never classify a timeout from that failure (the
+// latch is authoritative); we only use it to know a post-deadline failure is benign.
+const waitForProcessExit = Effect.fn("waitForProcessExit")(function* (
+  command: string,
+  handle: ChildProcessHandle,
+  timedOutRef: TimeoutState
+) {
+  // Deadline already fired: the child was killed by us, so `handle.exitCode` would fail with the signal error — report the timeout directly.
+  if ((yield* Ref.get(timedOutRef)) === "Timeout") {
+    return TIMED_OUT_EXIT;
+  }
+  // Otherwise wait for a real exit. The deadline can still fire *during* this wait, failing `handle.exitCode` — re-read the latch on failure: `Timeout` = deadline kill; `None` = a real process error.
+  return yield* handle.exitCode.pipe(
+    Effect.map((exitCode) => ({
+      exitCode: Number(exitCode),
+      timedOut: false,
+    })),
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        if ((yield* Ref.get(timedOutRef)) === "Timeout") {
+          return TIMED_OUT_EXIT;
+        }
+        return yield* Effect.fail(toProcessError(command)(error));
+      })
+    )
+  );
+});
+
+const finalizeProcess = Effect.fn("HarnessProcess.finalizeProcess")(function* <
+  State,
+  Event,
+>(input: {
+  readonly command: string;
+  readonly handle: ChildProcessHandle;
+  readonly input: StreamJsonlProcessInput<State, Event>;
+  readonly stateRef: Ref.Ref<State>;
+  readonly stderrText: Effect.Effect<string, Error>;
+  readonly timedOutRef: TimeoutState;
+}) {
+  const exit = yield* waitForProcessExit(
+    input.command,
+    input.handle,
+    input.timedOutRef
+  );
+  // Join the stderr collector, but never block indefinitely: a stderr fd leaked to a surviving grandchild would wedge the finalizer forever. On the grace ceiling fall back to empty so a terminal event is always emitted.
+  const stderr = yield* input.stderrText.pipe(
+    Effect.timeoutOrElse({
+      duration: STDERR_JOIN_GRACE,
+      orElse: () => Effect.succeed(""),
+    })
+  );
+  const state = yield* Ref.get(input.stateRef);
+
+  if (input.input.shouldSkipFinalize?.(state) === true) {
+    return [];
+  }
+
+  return input.input.finalize(state, {
+    exitCode: exit.exitCode,
+    stderr,
+    timedOut: exit.timedOut,
+  });
+});
+
+const streamProcessFinalizer = <State, Event>(input: {
+  readonly input: StreamJsonlProcessInput<State, Event>;
+  readonly running: RunningHarnessProcess;
+  readonly stateRef: Ref.Ref<State>;
+  readonly timedOutRef: TimeoutState;
+}): Stream.Stream<Event, Error> =>
+  Stream.fromEffect(
+    finalizeProcess({
+      command: input.input.binary,
+      handle: input.running.handle,
+      input: input.input,
+      stateRef: input.stateRef,
+      stderrText: input.running.stderrText,
+      timedOutRef: input.timedOutRef,
+    })
+  ).pipe(Stream.flatMap((finalEvents) => Stream.fromIterable(finalEvents)));
+
+// The deadline fiber breaks the "hangs past its deadline" deadlock: it latches
+// `Timeout` *before* it signals (so the finalizer sees the reason even if it
+// wakes first), then kills so stdout closes and the single finalizer can run.
+// The kill is an explicit SIGTERM -> SIGKILL escalation, NOT
+// `handle.kill({ forceKillAfter })`, which in the Bun/node-shared spawner bounds
+// only *sending* the signal, not the exit wait — so a SIGTERM-ignoring child is
+// never escalated and it blocks forever (confirmed live). So fire SIGTERM as a
+// child fiber whose uninterruptible kill-wait we join with a bound; on grace,
+// send an untrappable SIGKILL. That reaps the child, resolving the spawner's
+// exit Deferred so the timed-out SIGTERM fiber then settles cleanly (its
+// `handle.kill` is `Effect.ignore`d, so it never surfaces an error either way).
+const armTimeoutKill = Effect.fn("armTimeoutKill")(function* (
+  handle: ChildProcessHandle,
+  timeoutMs: number,
+  timedOutRef: TimeoutState
+) {
+  yield* Effect.sleep(timeoutMs);
+  yield* Ref.set(timedOutRef, "Timeout");
+  const termFiber = yield* Effect.forkChild(
+    handle.kill({}).pipe(Effect.ignore)
+  );
+  yield* Fiber.join(termFiber).pipe(
+    Effect.timeoutOrElse({
+      duration: KILL_GRACE,
+      orElse: () => handle.kill({ killSignal: "SIGKILL" }).pipe(Effect.ignore),
+    }),
+    Effect.ignore
+  );
+});
+
+const streamHarnessProcess = <State, Event>(input: {
+  readonly input: StreamJsonlProcessInput<State, Event>;
+  readonly running: RunningHarnessProcess;
+  readonly stateRef: Ref.Ref<State>;
+  readonly timedOutRef: TimeoutState;
+}): Stream.Stream<Event, Error> =>
+  streamStdoutEvents(input).pipe(Stream.concat(streamProcessFinalizer(input)));
+
+const prepareJsonlProcessStream = Effect.fn(
+  "HarnessProcess.prepareJsonlProcessStream"
+)(function* <State, Event>(input: StreamJsonlProcessInput<State, Event>) {
+  const stateRef = yield* Ref.make(input.initialState);
+  const timedOutRef = yield* Ref.make<TerminationReason>("None");
+  const missingBinaryError = yield* detectMissingHarnessProcessBinary(input);
+  if (Option.isSome(missingBinaryError)) {
+    return missingBinaryEvents(input, missingBinaryError.value);
+  }
+
+  const process = yield* spawnHarnessProcess(input);
+  yield* Effect.addFinalizer(() => reapProcessGroup(process.handle.pid));
+  // Arm the single deadline killer under this scope: `forkScoped` ties the timer
+  // to the process scope so a clean early exit interrupts it (no orphaned timer).
+  if (input.timeoutMs !== undefined) {
+    yield* armTimeoutKill(process.handle, input.timeoutMs, timedOutRef).pipe(
+      Effect.forkScoped
+    );
+  }
+  return streamHarnessProcess({
+    input,
+    running: process,
+    stateRef,
+    timedOutRef,
+  });
+});
+
+export const streamJsonlProcess = <State, Event>(
+  input: StreamJsonlProcessInput<State, Event>
+): Stream.Stream<Event, Error> =>
+  Stream.scoped(Stream.unwrap(prepareJsonlProcessStream(input))).pipe(
+    Stream.provide(BunServicesLayer)
+  );
+
+export { detectMissingHarnessProcessBinary };
+export type {
+  HarnessProcessResult,
+  HarnessProcessBinaryRequirement,
+  StreamJsonlProcessInput,
+};
