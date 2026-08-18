@@ -47,89 +47,103 @@ export const makeRequestDecomposerLayer = (
 ): Layer.Layer<RequestDecomposer> =>
   Layer.succeed(RequestDecomposer, RequestDecomposer.of(service));
 
-export const classifyRequestDimensions = (
+const classifyRequestDimensionsEffect = Effect.fn("RequestDecomposer.classify")(function* (
   input: DecompositionInput
-): Effect.Effect<ObservedDecompositionResult, ClassificationError, RequestDecomposer> =>
-  Effect.gen(function* () {
-    const classifier = yield* RequestDecomposer;
-    const classification = yield* Effect.try({
-      try: () => classifier.classify(input),
-      catch: (cause) =>
-        new ClassificationError({
-          message: "dimension request classifier failed before returning an Effect",
-          cause
-        })
-    });
-    return yield* classification;
+): Effect.fn.Return<ObservedDecompositionResult, ClassificationError, RequestDecomposer> {
+  const classifier = yield* RequestDecomposer;
+  const classification = yield* Effect.try({
+    try: () => classifier.classify(input),
+    catch: (cause) =>
+      new ClassificationError({
+        message: "dimension request classifier failed before returning an Effect",
+        cause
+      })
   });
+  return yield* classification;
+});
+
+export function classifyRequestDimensions(
+  input: DecompositionInput
+): Effect.Effect<ObservedDecompositionResult, ClassificationError, RequestDecomposer> {
+  return classifyRequestDimensionsEffect(input);
+}
+
+const validateDecompositionInputEffect = Effect.fn("RequestDecomposer.validateInput")(function* (
+  input: unknown
+): Effect.fn.Return<DecompositionInput, ClassificationError> {
+  const decoded = yield* Schema.decodeUnknownEffect(DecompositionInputSchema)(input).pipe(
+    Effect.mapError(
+      () =>
+        new ClassificationError({
+          message: "dimension classifier received malformed input"
+        })
+    )
+  );
+  if (decoded.request.length > CLASSIFIABLE_REQUEST_TEXT_LIMIT) {
+    return yield* new ClassificationError({
+      message: `dimension classification request exceeds the ${String(CLASSIFIABLE_REQUEST_TEXT_LIMIT)} character limit`
+    });
+  }
+  yield* Effect.try({
+    try: () => assertDecompositionInput(decoded),
+    catch: () =>
+      new ClassificationError({
+        message: "dimension classifier received an invalid dimension basis"
+      })
+  });
+  return decoded;
+});
 
 export function validateDecompositionInput(
   input: unknown
 ): Effect.Effect<DecompositionInput, ClassificationError> {
-  return Effect.gen(function* () {
-    const decoded = yield* Schema.decodeUnknownEffect(DecompositionInputSchema)(input).pipe(
-      Effect.mapError(
-        () =>
-          new ClassificationError({
-            message: "dimension classifier received malformed input"
-          })
-      )
-    );
-    if (decoded.request.length > CLASSIFIABLE_REQUEST_TEXT_LIMIT) {
-      return yield* new ClassificationError({
-        message: `dimension classification request exceeds the ${String(CLASSIFIABLE_REQUEST_TEXT_LIMIT)} character limit`
-      });
-    }
-    yield* Effect.try({
-      try: () => assertDecompositionInput(decoded),
-      catch: () =>
-        new ClassificationError({
-          message: "dimension classifier received an invalid dimension basis"
-        })
-    });
-    return decoded;
-  });
+  return validateDecompositionInputEffect(input);
 }
+
+const validateDecompositionResultEffect = Effect.fn("RequestDecomposer.validateResult")(function* (
+  result: unknown,
+  basis: RoutingBasis
+): Effect.fn.Return<ObservedDecompositionResult, ClassificationError> {
+  const classifierCallId =
+    typeof result === "object" &&
+    result !== null &&
+    !Array.isArray(result) &&
+    typeof (result as { classifierCallId?: unknown }).classifierCallId === "string" &&
+    (result as { classifierCallId: string }).classifierCallId.length > 0
+      ? (result as { classifierCallId: string }).classifierCallId
+      : undefined;
+  const decoded = yield* Schema.decodeUnknownEffect(DecompositionResultSchema)(result).pipe(
+    Effect.mapError(
+      () =>
+        new ClassificationError({
+          message: "dimension classifier returned a malformed decomposition vector"
+        })
+    )
+  );
+  yield* Effect.try({
+    try: () => assertDecompositionResult(decoded, basis),
+    catch: () =>
+      new ClassificationError({
+        message: "dimension classifier returned an invalid decomposition vector"
+      })
+  });
+  const weightsByDimension = new Map(
+    decoded.weights.map((entry) => [entry.dimensionId, entry] as const)
+  );
+  return {
+    weights: basis.dimensions.map(
+      (dimension) => weightsByDimension.get(dimension.id) as (typeof decoded.weights)[number]
+    ),
+    unknownWeight: decoded.unknownWeight,
+    ...(classifierCallId === undefined ? {} : { classifierCallId })
+  };
+});
 
 export function validateDecompositionResult(
   result: unknown,
   basis: RoutingBasis
 ): Effect.Effect<ObservedDecompositionResult, ClassificationError> {
-  return Effect.gen(function* () {
-    const classifierCallId =
-      typeof result === "object" &&
-      result !== null &&
-      !Array.isArray(result) &&
-      typeof (result as { classifierCallId?: unknown }).classifierCallId === "string" &&
-      (result as { classifierCallId: string }).classifierCallId.length > 0
-        ? (result as { classifierCallId: string }).classifierCallId
-        : undefined;
-    const decoded = yield* Schema.decodeUnknownEffect(DecompositionResultSchema)(result).pipe(
-      Effect.mapError(
-        () =>
-          new ClassificationError({
-            message: "dimension classifier returned a malformed decomposition vector"
-          })
-      )
-    );
-    yield* Effect.try({
-      try: () => assertDecompositionResult(decoded, basis),
-      catch: () =>
-        new ClassificationError({
-          message: "dimension classifier returned an invalid decomposition vector"
-        })
-    });
-    const weightsByDimension = new Map(
-      decoded.weights.map((entry) => [entry.dimensionId, entry] as const)
-    );
-    return {
-      weights: basis.dimensions.map(
-        (dimension) => weightsByDimension.get(dimension.id) as (typeof decoded.weights)[number]
-      ),
-      unknownWeight: decoded.unknownWeight,
-      ...(classifierCallId === undefined ? {} : { classifierCallId })
-    };
-  });
+  return validateDecompositionResultEffect(result, basis);
 }
 
 export function extractClassifiableRequestText(body: unknown): string {

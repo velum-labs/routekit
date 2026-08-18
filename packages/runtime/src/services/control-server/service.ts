@@ -159,257 +159,261 @@ export type ControlServerOptions = {
   onError?: (error: unknown, context: ControlServerErrorContext) => void;
 };
 
-export function startControlServerEffect(
+const startControlServerOperation = Effect.fn("ControlServer.start")(function* (
   input: ControlServerOptions
-): Effect.Effect<RunningControlServer, Error, RouteKitPlatform> {
-  return Effect.gen(function* () {
-    const host = input.host ?? "127.0.0.1";
-    const token = input.token ?? generateControlToken();
-    const reportError = (error: unknown, context: ControlServerErrorContext): void => {
-      try {
-        input.onError?.(error, context);
-      } catch {
-        // Observability must never change the control response or crash the server.
-      }
-    };
-    const resolveCaller = (presented: string | undefined): ControlPrincipal | undefined => {
-      if (presented === undefined) return undefined;
-      if (controlTokenMatches(token, presented)) {
-        return { id: "ephemeral", label: "local", role: "ephemeral" };
-      }
-      return input.authorize?.(presented);
-    };
-    const authorize = (
-      request: HttpServerRequest.HttpServerRequest
-    ): ControlPrincipal | HttpServerResponse.HttpServerResponse => {
-      const nodeReq = incomingRequest(request);
-      if (!loopbackHost(nodeReq)) {
-        return controlJson(403, {
-          error: { code: "unauthorized", message: "invalid control host" }
-        });
-      }
-      const principal = resolveCaller(bearer(nodeReq));
-      if (principal === undefined) {
-        return controlJson(401, { error: { code: "unauthorized", message: "unauthorized" } });
-      }
-      return principal;
-    };
+): Effect.fn.Return<RunningControlServer, Error, RouteKitPlatform> {
+  const host = input.host ?? "127.0.0.1";
+  const token = input.token ?? generateControlToken();
+  const reportError = (error: unknown, context: ControlServerErrorContext): void => {
+    try {
+      input.onError?.(error, context);
+    } catch {
+      // Observability must never change the control response or crash the server.
+    }
+  };
+  const resolveCaller = (presented: string | undefined): ControlPrincipal | undefined => {
+    if (presented === undefined) return undefined;
+    if (controlTokenMatches(token, presented)) {
+      return { id: "ephemeral", label: "local", role: "ephemeral" };
+    }
+    return input.authorize?.(presented);
+  };
+  const authorize = (
+    request: HttpServerRequest.HttpServerRequest
+  ): ControlPrincipal | HttpServerResponse.HttpServerResponse => {
+    const nodeReq = incomingRequest(request);
+    if (!loopbackHost(nodeReq)) {
+      return controlJson(403, {
+        error: { code: "unauthorized", message: "invalid control host" }
+      });
+    }
+    const principal = resolveCaller(bearer(nodeReq));
+    if (principal === undefined) {
+      return controlJson(401, { error: { code: "unauthorized", message: "unauthorized" } });
+    }
+    return principal;
+  };
 
-    const handleCall = (request: HttpServerRequest.HttpServerRequest) => {
-      const authorized = authorize(request);
-      if (!("id" in authorized) || !("role" in authorized)) return Effect.succeed(authorized);
-      const principal = authorized;
-      const nodeReq = incomingRequest(request);
-      let requestId = "unknown";
-      let requestMethod: string | undefined;
-      return Effect.gen(function* () {
-        const parsed = yield* Effect.tryPromise({
-          try: async () => parseRequest(await readJson(nodeReq)),
-          catch: (error) => toRouteKitFailure(error)
-        });
-        requestId = parsed.id;
-        requestMethod = parsed.method;
-        if (parsed.protocol !== CONTROL_PROTOCOL_VERSION) {
-          const failure = asFailure(
-            parsed.id,
-            new ControlError({
-              code: "upgrade_required",
-              message: `unsupported control protocol ${parsed.protocol}`,
-              details: { supported: [CONTROL_PROTOCOL_VERSION] }
-            })
-          );
-          return controlJson(failure.status, failure.body);
-        }
-        if (parsed.method === "hello") {
-          return controlJson(200, {
-            protocol: CONTROL_PROTOCOL_VERSION,
-            id: parsed.id,
-            ok: true,
-            result: {
-              protocolVersion: CONTROL_PROTOCOL_VERSION,
-              product: input.product,
-              packageVersion: input.packageVersion,
-              capabilities: input.capabilities ?? []
-            }
-          } satisfies ControlSuccess);
-        }
-        const aborter = yield* Effect.acquireRelease(
-          Effect.sync(() => new AbortController()),
-          (controller) =>
-            Effect.sync(() => controller.abort(new Error("control client disconnected")))
+  const handleCall = (request: HttpServerRequest.HttpServerRequest) => {
+    const authorized = authorize(request);
+    if (!("id" in authorized) || !("role" in authorized)) return Effect.succeed(authorized);
+    const principal = authorized;
+    const nodeReq = incomingRequest(request);
+    let requestId = "unknown";
+    let requestMethod: string | undefined;
+    return Effect.gen(function* () {
+      const parsed = yield* Effect.tryPromise({
+        try: async () => parseRequest(await readJson(nodeReq)),
+        catch: (error) => toRouteKitFailure(error)
+      });
+      requestId = parsed.id;
+      requestMethod = parsed.method;
+      if (parsed.protocol !== CONTROL_PROTOCOL_VERSION) {
+        const failure = asFailure(
+          parsed.id,
+          new ControlError({
+            code: "upgrade_required",
+            message: `unsupported control protocol ${parsed.protocol}`,
+            details: { supported: [CONTROL_PROTOCOL_VERSION] }
+          })
         );
-        const result = yield* Effect.tryPromise({
-          try: async () =>
-            await input.handler(parsed.method, parsed.params, {
-              signal: aborter.signal,
-              requestId: parsed.id,
-              principal,
-              ...(parsed.idempotencyKey !== undefined
-                ? { idempotencyKey: parsed.idempotencyKey }
-                : {}),
-              ...(parsed.client !== undefined ? { client: parsed.client } : {})
-            }),
-          catch: (error) => toRouteKitFailure(error)
-        });
-        if (!isAsyncIterable(result)) {
-          return controlJson(200, {
+        return controlJson(failure.status, failure.body);
+      }
+      if (parsed.method === "hello") {
+        return controlJson(200, {
+          protocol: CONTROL_PROTOCOL_VERSION,
+          id: parsed.id,
+          ok: true,
+          result: {
+            protocolVersion: CONTROL_PROTOCOL_VERSION,
+            product: input.product,
+            packageVersion: input.packageVersion,
+            capabilities: input.capabilities ?? []
+          }
+        } satisfies ControlSuccess);
+      }
+      const aborter = yield* Effect.acquireRelease(
+        Effect.sync(() => new AbortController()),
+        (controller) =>
+          Effect.sync(() => controller.abort(new Error("control client disconnected")))
+      );
+      const result = yield* Effect.tryPromise({
+        try: async () =>
+          await input.handler(parsed.method, parsed.params, {
+            signal: aborter.signal,
+            requestId: parsed.id,
+            principal,
+            ...(parsed.idempotencyKey !== undefined
+              ? { idempotencyKey: parsed.idempotencyKey }
+              : {}),
+            ...(parsed.client !== undefined ? { client: parsed.client } : {})
+          }),
+        catch: (error) => toRouteKitFailure(error)
+      });
+      if (!isAsyncIterable(result)) {
+        return controlJson(200, {
+          protocol: CONTROL_PROTOCOL_VERSION,
+          id: parsed.id,
+          ok: true,
+          result
+        } satisfies ControlSuccess);
+      }
+      const encoder = (event: ControlEvent): Uint8Array => ndjsonBytes(event);
+      const stream = Stream.fromAsyncIterable(result, (error) => error).pipe(
+        Stream.map((data) =>
+          encoder({
             protocol: CONTROL_PROTOCOL_VERSION,
             id: parsed.id,
-            ok: true,
-            result
-          } satisfies ControlSuccess);
-        }
-        const encoder = (event: ControlEvent): Uint8Array => ndjsonBytes(event);
-        const stream = Stream.fromAsyncIterable(result, (error) => error).pipe(
-          Stream.map((data) =>
+            event: "data",
+            data
+          })
+        ),
+        Stream.concat(
+          Stream.succeed(
             encoder({
               protocol: CONTROL_PROTOCOL_VERSION,
               id: parsed.id,
-              event: "data",
-              data
+              event: "done"
             })
-          ),
-          Stream.concat(
-            Stream.succeed(
-              encoder({
-                protocol: CONTROL_PROTOCOL_VERSION,
-                id: parsed.id,
-                event: "done"
-              })
-            )
-          ),
-          Stream.catch((error) => {
-            const boundaryError = routeKitError(error);
-            if (!(boundaryError instanceof ControlError)) {
-              reportError(boundaryError, { requestId, method: parsed.method });
-            }
-            const failure = asFailure(parsed.id, boundaryError);
-            return Stream.succeed(
-              encoder({
-                protocol: CONTROL_PROTOCOL_VERSION,
-                id: parsed.id,
-                event: "error",
-                error: failure.body.error
-              })
-            );
-          })
-        );
-        return HttpEffect.scopeTransferToStream(
-          HttpServerResponse.stream(stream, {
-            status: 200,
-            headers: {
-              "content-type": "application/x-ndjson",
-              "cache-control": "no-store"
-            }
-          })
-        );
-      }).pipe(
-        Effect.catch((error) => {
+          )
+        ),
+        Stream.catch((error) => {
           const boundaryError = routeKitError(error);
           if (!(boundaryError instanceof ControlError)) {
-            reportError(boundaryError, {
-              requestId,
-              ...(requestMethod !== undefined ? { method: requestMethod } : {})
-            });
+            reportError(boundaryError, { requestId, method: parsed.method });
           }
-          const failure = asFailure(requestId, boundaryError);
-          return Effect.succeed(controlJson(failure.status, failure.body));
+          const failure = asFailure(parsed.id, boundaryError);
+          return Stream.succeed(
+            encoder({
+              protocol: CONTROL_PROTOCOL_VERSION,
+              id: parsed.id,
+              event: "error",
+              error: failure.body.error
+            })
+          );
         })
       );
-    };
-
-    const httpEffect = yield* Effect.gen(function* () {
-      const router = yield* HttpRouter.make;
-      yield* router.add("GET", "/control/v2/health", (request) => {
-        const authorized = authorize(request);
-        if (!("id" in authorized) || !("role" in authorized)) return Effect.succeed(authorized);
-        return Effect.succeed(
-          controlJson(200, {
-            status: "ok",
-            protocol: CONTROL_PROTOCOL_VERSION,
-            product: input.product,
-            version: input.packageVersion
-          })
-        );
-      });
-      yield* router.add("POST", "/control/v2/call", handleCall);
-      return router;
+      return HttpEffect.scopeTransferToStream(
+        HttpServerResponse.stream(stream, {
+          status: 200,
+          headers: {
+            "content-type": "application/x-ndjson",
+            "cache-control": "no-store"
+          }
+        })
+      );
     }).pipe(
-      Effect.map((router) => {
-        const routed = router.asHttpEffect();
-        return Effect.gen(function* () {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          const authorized = authorize(request);
-          if (!("id" in authorized) || !("role" in authorized)) return authorized;
-          return yield* routed;
-        }).pipe(
-          Effect.catch((error) => {
-            if (error instanceof HttpServerError && error.reason._tag === "RouteNotFound") {
-              return Effect.succeed(
-                controlJson(404, {
-                  error: { code: "not_found", message: "control route not found" }
-                })
-              );
-            }
-            reportError(error, { requestId: "unknown" });
-            return Effect.succeed(
-              controlJson(500, { error: { code: "internal", message: "control request failed" } })
-            );
-          })
-        );
+      Effect.catch((error) => {
+        const boundaryError = routeKitError(error);
+        if (!(boundaryError instanceof ControlError)) {
+          reportError(boundaryError, {
+            requestId,
+            ...(requestMethod !== undefined ? { method: requestMethod } : {})
+          });
+        }
+        const failure = asFailure(requestId, boundaryError);
+        return Effect.succeed(controlJson(failure.status, failure.body));
       })
     );
-    const nodeHandler = yield* createNodeHttpHandlerEffect(httpEffect);
-    const server = createServer((req, res) => {
-      nodeHandler.handle(req, res);
+  };
+
+  const httpEffect = yield* Effect.gen(function* () {
+    const router = yield* HttpRouter.make;
+    yield* router.add("GET", "/control/v2/health", (request) => {
+      const authorized = authorize(request);
+      if (!("id" in authorized) || !("role" in authorized)) return Effect.succeed(authorized);
+      return Effect.succeed(
+        controlJson(200, {
+          status: "ok",
+          protocol: CONTROL_PROTOCOL_VERSION,
+          product: input.product,
+          version: input.packageVersion
+        })
+      );
     });
-    yield* Effect.tryPromise({
-      try: () =>
-        new Promise<void>((resolve, reject) => {
-          server.once("error", reject);
-          server.listen(input.port ?? 0, host, () => {
-            server.off("error", reject);
-            resolve();
-          });
-        }),
-      catch: toRouteKitFailure
-    });
-    const address = server.address();
-    const port = typeof address === "object" && address !== null ? address.port : (input.port ?? 0);
-    const retireDone = Deferred.makeUnsafe<void, Error>();
-    let retireStarted = false;
-    const retire = (graceMs = 2_000): Effect.Effect<void, Error> =>
-      Effect.suspend(() => {
-        if (retireStarted) return Deferred.await(retireDone);
-        retireStarted = true;
-        const program = Effect.gen(function* () {
-          const closed = Deferred.makeUnsafe<void, Error>();
-          yield* Effect.sync(() =>
-            server.close((error) =>
-              Deferred.doneUnsafe(
-                closed,
-                error === undefined ? Effect.void : Effect.fail(toRouteKitFailure(error))
-              )
-            )
+    yield* router.add("POST", "/control/v2/call", handleCall);
+    return router;
+  }).pipe(
+    Effect.map((router) => {
+      const routed = router.asHttpEffect();
+      return Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const authorized = authorize(request);
+        if (!("id" in authorized) || !("role" in authorized)) return authorized;
+        return yield* routed;
+      }).pipe(
+        Effect.catch((error) => {
+          if (error instanceof HttpServerError && error.reason._tag === "RouteNotFound") {
+            return Effect.succeed(
+              controlJson(404, {
+                error: { code: "not_found", message: "control route not found" }
+              })
+            );
+          }
+          reportError(error, { requestId: "unknown" });
+          return Effect.succeed(
+            controlJson(500, { error: { code: "internal", message: "control request failed" } })
           );
-          server.closeIdleConnections();
-          yield* Effect.raceFirst(Deferred.await(closed), Effect.sleep(`${graceMs} millis`));
-          server.closeAllConnections();
-          yield* Deferred.await(closed);
-          yield* nodeHandler.close;
-        });
-        return Deferred.complete(retireDone, program).pipe(
-          Effect.andThen(Deferred.await(retireDone))
-        );
-      });
-    return {
-      url: `http://${host === "::1" ? "[::1]" : host}:${port}`,
-      token,
-      port,
-      retire,
-      close: retire(2_000)
-    };
+        })
+      );
+    })
+  );
+  const nodeHandler = yield* createNodeHttpHandlerEffect(httpEffect);
+  const server = createServer((req, res) => {
+    nodeHandler.handle(req, res);
   });
+  yield* Effect.tryPromise({
+    try: () =>
+      new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(input.port ?? 0, host, () => {
+          server.off("error", reject);
+          resolve();
+        });
+      }),
+    catch: toRouteKitFailure
+  });
+  const address = server.address();
+  const port = typeof address === "object" && address !== null ? address.port : (input.port ?? 0);
+  const retireDone = Deferred.makeUnsafe<void, Error>();
+  let retireStarted = false;
+  const retire = (graceMs = 2_000): Effect.Effect<void, Error> =>
+    Effect.suspend(() => {
+      if (retireStarted) return Deferred.await(retireDone);
+      retireStarted = true;
+      const program = Effect.gen(function* () {
+        const closed = Deferred.makeUnsafe<void, Error>();
+        yield* Effect.sync(() =>
+          server.close((error) =>
+            Deferred.doneUnsafe(
+              closed,
+              error === undefined ? Effect.void : Effect.fail(toRouteKitFailure(error))
+            )
+          )
+        );
+        server.closeIdleConnections();
+        yield* Effect.raceFirst(Deferred.await(closed), Effect.sleep(`${graceMs} millis`));
+        server.closeAllConnections();
+        yield* Deferred.await(closed);
+        yield* nodeHandler.close;
+      });
+      return Deferred.complete(retireDone, program).pipe(
+        Effect.andThen(Deferred.await(retireDone))
+      );
+    });
+  return {
+    url: `http://${host === "::1" ? "[::1]" : host}:${port}`,
+    token,
+    port,
+    retire,
+    close: retire(2_000)
+  };
+});
+
+export function startControlServerEffect(
+  input: ControlServerOptions
+): Effect.Effect<RunningControlServer, Error, RouteKitPlatform> {
+  return startControlServerOperation(input);
 }
 
 /** Promise adapter for standalone control-plane hosts. */

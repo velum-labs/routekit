@@ -121,19 +121,25 @@ export function readLogTail(path: string, maxBytes = LOG_TAIL_BYTES): string {
   }
 }
 
+const waitForProcessExitOperation = Effect.fn("Runtime.waitForProcessExit")(function* (
+  pid: number,
+  timeoutMs: number,
+  identity?: string
+): Effect.fn.Return<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!processAlive(pid, identity)) return true;
+    yield* Effect.sleep("50 millis");
+  }
+  return !processAlive(pid, identity);
+});
+
 export function waitForProcessExitEffect(
   pid: number,
   timeoutMs: number,
   identity?: string
 ): Effect.Effect<boolean> {
-  return Effect.gen(function* () {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (!processAlive(pid, identity)) return true;
-      yield* Effect.sleep("50 millis");
-    }
-    return !processAlive(pid, identity);
-  });
+  return waitForProcessExitOperation(pid, timeoutMs, identity);
 }
 
 export async function waitForProcessExit(
@@ -166,7 +172,7 @@ function startFailure(label: string, reason: string, logFile: string): Error {
  * daemonizer and supervisor installs, where the spawning is done by the init
  * system instead of us.
  */
-export function waitForServiceReadyEffect(input: {
+type WaitForServiceReadyEffectInput = {
   home: string;
   product: string;
   kind: string;
@@ -178,34 +184,42 @@ export function waitForServiceReadyEffect(input: {
   label?: string;
   /** Product-specific readiness check; defaults to loopback GET /health. */
   ready?: (record: ServiceRecord) => Effect.Effect<boolean, Error, any>;
-}): Effect.Effect<ServiceRecord, Error, any> {
-  return Effect.gen(function* () {
-    const store = createServiceRecordStore({ home: input.home, product: input.product });
-    const label = input.label ?? `${input.product} ${input.kind}`;
-    const logFile = input.logFile ?? serviceLogPath(input.home, input.kind);
-    const timeoutMs = input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
-    const deadline = Date.now() + timeoutMs;
-    let lastState = "no service record yet";
-    while (Date.now() < deadline) {
-      const expected = input.expectPid?.();
-      if (input.expectPid !== undefined && expected === undefined) {
-        return yield* Effect.fail(startFailure(label, "exited before becoming ready", logFile));
-      }
-      const record = store.read(input.kind);
-      if (record !== undefined && record.pid !== input.previousPid) {
-        const ok =
-          input.ready !== undefined
-            ? yield* input.ready(record)
-            : yield* healthOk(`http://127.0.0.1:${record.port}`);
-        if (ok) return record;
-        lastState = `pid ${record.pid} is not answering /health on port ${record.port}`;
-      }
-      yield* Effect.sleep(`${READY_POLL_MS} millis`);
+};
+
+const waitForServiceReadyOperation = Effect.fn("Runtime.waitForServiceReady")(function* (
+  input: WaitForServiceReadyEffectInput
+): Effect.fn.Return<ServiceRecord, Error, any> {
+  const store = createServiceRecordStore({ home: input.home, product: input.product });
+  const label = input.label ?? `${input.product} ${input.kind}`;
+  const logFile = input.logFile ?? serviceLogPath(input.home, input.kind);
+  const timeoutMs = input.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  let lastState = "no service record yet";
+  while (Date.now() < deadline) {
+    const expected = input.expectPid?.();
+    if (input.expectPid !== undefined && expected === undefined) {
+      return yield* Effect.fail(startFailure(label, "exited before becoming ready", logFile));
     }
-    return yield* Effect.fail(
-      startFailure(label, `did not become ready within ${timeoutMs}ms (${lastState})`, logFile)
-    );
-  });
+    const record = store.read(input.kind);
+    if (record !== undefined && record.pid !== input.previousPid) {
+      const ok =
+        input.ready !== undefined
+          ? yield* input.ready(record)
+          : yield* healthOk(`http://127.0.0.1:${record.port}`);
+      if (ok) return record;
+      lastState = `pid ${record.pid} is not answering /health on port ${record.port}`;
+    }
+    yield* Effect.sleep(`${READY_POLL_MS} millis`);
+  }
+  return yield* Effect.fail(
+    startFailure(label, `did not become ready within ${timeoutMs}ms (${lastState})`, logFile)
+  );
+});
+
+export function waitForServiceReadyEffect(
+  input: WaitForServiceReadyEffectInput
+): Effect.Effect<ServiceRecord, Error, any> {
+  return waitForServiceReadyOperation(input);
 }
 
 export async function waitForServiceReady(input: {
