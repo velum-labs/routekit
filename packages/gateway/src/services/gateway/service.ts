@@ -2,26 +2,12 @@ import type { IncomingMessage } from "node:http";
 import { createServer } from "node:http";
 import {
   createNodeHttpHandlerEffect,
-  EffectResourceScope,
   type RouteKitPlatform,
   runRouteKitEffect
 } from "@velum-labs/routekit-runtime/effect";
-import { Deferred, Effect } from "effect";
+import { Cause, Context, Deferred, Effect, Exit, Scope } from "effect";
 import type { AnthropicRequest } from "../../adapters/anthropic-wire.js";
 import type { ResponsesRequest } from "../../adapters/responses-wire.js";
-import { authorizedHeaders } from "../../http/auth.js";
-import {
-  type Backend,
-  type BackendRequest,
-  type BackendRequestOptions
-} from "../../providers/backend.js";
-import {
-  codexPickerModels,
-  configuredAnthropicCatalog,
-  initialAttribution,
-  mergeAnthropicCatalogs,
-  resolveClaudeSelection
-} from "../catalog/service.js";
 import { gatewayTryPromise } from "../../effect/gateway.js";
 import { AnthropicMessagesEndpoint } from "../../endpoints/anthropic-messages-endpoint.js";
 import { ChatEndpoint } from "../../endpoints/chat-endpoint.js";
@@ -32,9 +18,22 @@ import {
 import { ModelsEndpoint } from "../../endpoints/models-endpoint.js";
 import { ResponsesEndpoint } from "../../endpoints/responses-endpoint.js";
 import { UsageEndpoint } from "../../endpoints/usage-endpoint.js";
-import type { CompositionalRoutingRuntime } from "../../routing/eval-policy.js";
 import { buildGatewayHttpEffect } from "../../http/app.js";
+import { authorizedHeaders } from "../../http/auth.js";
 import type { ProvenanceSink } from "../../observability/provenance.js";
+import {
+  type Backend,
+  type BackendRequest,
+  type BackendRequestOptions
+} from "../../providers/backend.js";
+import type { CompositionalRoutingRuntime } from "../../routing/eval-policy.js";
+import {
+  codexPickerModels,
+  configuredAnthropicCatalog,
+  initialAttribution,
+  mergeAnthropicCatalogs,
+  resolveClaudeSelection
+} from "../catalog/service.js";
 
 /**
  * The local-model gateway HTTP server. It fronts a single OpenAI Chat
@@ -45,6 +44,8 @@ import type { ProvenanceSink } from "../../observability/provenance.js";
 
 export type GatewayOptions = {
   backend: Backend;
+  /** Whether this gateway closes the backend; defaults to `owned`. */
+  backendOwnership?: "owned" | "borrowed";
   /** Bind host; defaults to loopback. */
   host?: string;
   /** Bind port; defaults to an ephemeral free port. */
@@ -59,6 +60,8 @@ export type GatewayOptions = {
   codexRelay?: ProviderRelayPorts;
   /** Provider-native relays sharing this HTTP boundary. */
   providerRelays?: Partial<Record<ProviderRelayDialect, ProviderRelayPorts>>;
+  /** Whether this gateway closes supplied relay lifecycles; defaults to `owned`. */
+  relayOwnership?: "owned" | "borrowed";
   /** Optional provider usage payload for `GET /usage`. */
   usage?: () => Effect.Effect<unknown, Error, RouteKitPlatform>;
 };
@@ -157,10 +160,11 @@ function endpointAuthenticator(authToken: string | undefined) {
   };
 }
 
-const startGatewayOperation = Effect.fn("Gateway.start")(function* (
-  options: GatewayOptions
+const acquireGatewayOperation = Effect.fn("Gateway.acquire")(function* (
+  options: GatewayOptions,
+  resources: Scope.Closeable,
+  platform: Context.Context<RouteKitPlatform>
 ): Effect.fn.Return<Gateway, Error, RouteKitPlatform> {
-  const platform = yield* Effect.context<RouteKitPlatform>();
   const host = options.host ?? "127.0.0.1";
   const { backend, authToken, provenance } = options;
   // Client-forwarded Codex auth and server-owned subscription accounts are
@@ -180,6 +184,26 @@ const startGatewayOperation = Effect.fn("Gateway.start")(function* (
     codexProviderPorts?.catalog?.kind === "merged-models" ? codexProviderPorts.catalog : undefined;
   const codexCatalogRelay = codexProviderCatalog ?? codexClientCatalog;
   const codexRequestRelay = codexProviderRequest ?? codexClientRelay;
+  const lifecycles = new Set(
+    [codexClientPorts?.lifecycle, anthropicPorts?.lifecycle, codexProviderPorts?.lifecycle].filter(
+      (lifecycle): lifecycle is RelayLifecycle => lifecycle !== undefined
+    )
+  );
+  if (options.relayOwnership !== "borrowed") {
+    for (const lifecycle of lifecycles) {
+      yield* Scope.addFinalizer(
+        resources,
+        lifecycle.close.pipe(Effect.provide(platform), Effect.orDie)
+      );
+    }
+  }
+  const backendLifecycle = backend.ports.lifecycle;
+  if (options.backendOwnership !== "borrowed" && backendLifecycle.kind === "owned") {
+    yield* Scope.addFinalizer(
+      resources,
+      backendLifecycle.close.pipe(Effect.provide(platform), Effect.orDie)
+    );
+  }
   const endpointAuthenticate = endpointAuthenticator(authToken);
   const usageEndpoint = new UsageEndpoint(endpointAuthenticate, options.usage);
   const modelsEndpoint = new ModelsEndpoint(endpointAuthenticate, {
@@ -328,28 +352,40 @@ const startGatewayOperation = Effect.fn("Gateway.start")(function* (
       });
       return Deferred.complete(drainDone, program).pipe(Effect.andThen(Deferred.await(drainDone)));
     });
-  const resources = new EffectResourceScope();
-  const lifecycles = new Set(
-    [codexClientPorts?.lifecycle, anthropicPorts?.lifecycle, codexProviderPorts?.lifecycle].filter(
-      (lifecycle): lifecycle is RelayLifecycle => lifecycle !== undefined
-    )
+  yield* Scope.addFinalizer(
+    resources,
+    nodeHandler.close.pipe(Effect.provide(platform), Effect.orDie)
   );
-  for (const lifecycle of lifecycles) {
-    yield* resources.deferEffect(lifecycle.close);
-  }
-  const backendLifecycle = backend.ports.lifecycle;
-  if (backendLifecycle.kind === "owned") {
-    yield* resources.deferEffect(backendLifecycle.close);
-  }
-  yield* resources.deferEffect(nodeHandler.close);
-  yield* resources.deferEffect(drain(0));
+  yield* Scope.addFinalizer(resources, drain(0).pipe(Effect.provide(platform), Effect.orDie));
 
   return {
     url: () => `http://${host}:${port}`,
     port: () => port,
     drain,
-    close: resources.dispose().pipe(Effect.provide(platform))
+    close: Scope.close(resources, Exit.void)
   };
+});
+
+const startGatewayOperation = Effect.fn("Gateway.start")(function* (
+  options: GatewayOptions
+): Effect.fn.Return<Gateway, Error, RouteKitPlatform> {
+  const platform = yield* Effect.context<RouteKitPlatform>();
+  const resources = yield* Scope.make("sequential");
+  const opened = yield* Effect.exit(acquireGatewayOperation(options, resources, platform));
+  if (Exit.isSuccess(opened)) return opened.value;
+  const cleanup = yield* Effect.exit(Scope.close(resources, opened));
+  const startupError = Cause.squash(opened.cause);
+  if (Exit.isFailure(cleanup)) {
+    return yield* Effect.fail(
+      new AggregateError(
+        [startupError, Cause.squash(cleanup.cause)],
+        "gateway startup failed and cleanup was incomplete"
+      )
+    );
+  }
+  return yield* Effect.fail(
+    startupError instanceof Error ? startupError : new Error(String(startupError))
+  );
 });
 
 export function startGatewayEffect(

@@ -11,11 +11,11 @@ import type {
 } from "@velum-labs/routekit-contracts";
 import { resolveReasoningSelection } from "@velum-labs/routekit-contracts";
 import {
-  EffectResourceScope,
   RouteKitFailure,
+  type RouteKitPlatform,
   routeKitError
 } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { Cause, Effect, Exit, Scope } from "effect";
 import {
   anthropicRequestMetadataOf,
   attachAnthropicRequestMetadata,
@@ -23,6 +23,7 @@ import {
   reasoningSelectionOf,
   routeKitRequestValidationErrorOf
 } from "../adapters/openai-chat-wire.js";
+import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
 import type {
   Backend,
   BackendModelRoute,
@@ -31,7 +32,6 @@ import type {
   BackendRequestOptions
 } from "../providers/backend.js";
 import { BedrockProviderSource } from "../providers/bedrock-source.js";
-import { gatewayTry, gatewayTryPromise } from "../effect/gateway.js";
 import type {
   ApiProviderId,
   DiscoveredModel,
@@ -159,11 +159,15 @@ export class RoutingBackend implements Backend {
   readonly planner: RoutePlanner;
   readonly executor: BackendExecutor;
   readonly providers: ProviderLifecycle;
+  readonly #scope: Scope.Closeable;
+  readonly #closeErrors: unknown[];
 
   private constructor(
     defaultModel: string | undefined,
     catalog: ModelCatalog,
-    sources: readonly ProviderSource[]
+    sources: readonly ProviderSource[],
+    scope: Scope.Closeable,
+    closeErrors: unknown[]
   ) {
     this.defaultModel = defaultModel;
     this.catalog = catalog;
@@ -171,6 +175,8 @@ export class RoutingBackend implements Backend {
     this.planner = new RoutePlanner(this.resolver);
     this.executor = new BackendExecutor(sources);
     this.providers = new ProviderLifecycle(sources);
+    this.#scope = scope;
+    this.#closeErrors = closeErrors;
     this.ports = {
       models: {
         kind: "model-catalog",
@@ -195,155 +201,168 @@ export class RoutingBackend implements Backend {
 
   static create(options: RoutingBackendOptions) {
     return Effect.gen(function* () {
+      const platform = yield* Effect.context<RouteKitPlatform>();
       const config = yield* gatewayTry(() => parseRouterConfig(options.config));
       const env = options.env ?? process.env;
-      const startup = new EffectResourceScope();
+      const scope = yield* Scope.make("sequential");
+      const closeErrors: unknown[] = [];
       const sources: ProviderSource[] = [];
       const entries = new Map<string, ModelCatalogEntry>();
       const discoveredIds = new Set<string>();
-      return yield* Effect.gen(function* () {
-        for (const provider of configuredProviderIds(config)) {
-          const injected = options.sources?.[provider];
-          const source = yield* gatewayTry(() => {
-            if (injected !== undefined) return injected;
-            if (provider === "bedrock") return new BedrockProviderSource();
-            if (isApiProvider(provider)) {
-              return (
-                options.createApiSource?.(provider, env) ?? new ApiProviderSource({ provider, env })
-              );
-            }
-            throw new RouteKitFailure({
-              message: `provider "${provider}" requires enrolled subscription accounts`
-            });
-          });
-          if (source.sourceId !== provider) {
-            return yield* new RouteKitFailure({
-              message: `provider source mismatch: configured "${provider}", received "${source.sourceId}"`
-            });
-          }
-          sources.push(source);
-          yield* startup.own(source, {
-            finalizeEffect: (ownedSource) =>
-              ownedSource.resource.kind === "owned" ? ownedSource.resource.close : Effect.void
-          });
-          const discovered = yield* source.discovery.discoverModels(options.signal).pipe(
-            Effect.mapError(
-              (error) =>
-                new RouteKitFailure({
-                  message: `provider "${provider}" discovery failed: ${
-                    error instanceof Error ? error.message : String(error)
-                  }`,
-                  cause: error
-                })
-            )
-          );
-          if (discovered.length === 0) {
-            return yield* new RouteKitFailure({
-              message: `provider "${provider}" discovery returned no models`
-            });
-          }
-          for (const model of discovered) {
-            const publicId = namespaced(provider, model.id);
-            discoveredIds.add(publicId);
-            if (
-              !new RoutePolicy((modelId) =>
-                modelPolicyAllowsModel(config.modelPolicy, modelId)
-              ).admit(publicId)
-            ) {
-              continue;
-            }
-            if (entries.has(publicId)) continue;
-            const override = config.reasoningCapabilities?.[publicId];
-            const reasoning =
-              override !== undefined
-                ? {
-                    ...override,
-                    provenance: "config" as const
-                  }
-                : (model.reasoning ?? source.capabilities.reasoningForModel(model.id));
-            entries.set(publicId, {
-              publicId,
-              nativeId: model.id,
-              provider,
-              capabilities: model.capabilities ?? source.capabilities.forModel(model.id),
-              ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
-              ...(model.providerPriority !== undefined
-                ? { providerPriority: model.providerPriority }
-                : {}),
-              ...(model.metadata !== undefined ? { metadata: model.metadata } : {}),
-              ...(reasoning !== undefined ? { reasoning } : {})
-            });
-          }
-        }
-        const backend = yield* gatewayTry(() => {
-          for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {
-            const entry = entries.get(target);
-            if (entry === undefined) {
-              if (discoveredIds.has(target)) {
-                throw new RouteKitFailure({
-                  message: `model alias "${alias}" targets "${target}", which is excluded by model policy`
-                });
+      const opened = yield* Effect.exit(
+        Effect.gen(function* () {
+          for (const provider of configuredProviderIds(config)) {
+            const injected = options.sources?.[provider];
+            const source = yield* gatewayTry(() => {
+              if (injected !== undefined) return injected;
+              if (provider === "bedrock") return new BedrockProviderSource();
+              if (isApiProvider(provider)) {
+                return (
+                  options.createApiSource?.(provider, env) ??
+                  new ApiProviderSource({ provider, env })
+                );
               }
               throw new RouteKitFailure({
-                message: `model alias "${alias}" targets "${target}", which no configured provider serves`
+                message: `provider "${provider}" requires enrolled subscription accounts`
               });
-            }
-            if (entries.has(alias)) {
-              throw new RouteKitFailure({
-                message: `model alias "${alias}" collides with a served model id`
-              });
-            }
-            entries.set(alias, { ...entry, publicId: alias });
-          }
-          if (
-            config.defaultModel !== undefined &&
-            !entries.has(config.defaultModel) &&
-            discoveredIds.has(config.defaultModel)
-          ) {
-            throw new RouteKitFailure({
-              message: `default model "${config.defaultModel}" is excluded by model policy`
             });
-          }
-          const first = entries.keys().next().value as string | undefined;
-          const defaultModel = config.defaultModel ?? first;
-          if (defaultModel === undefined) {
-            if (discoveredIds.size > 0) {
-              throw new RouteKitFailure({
-                message: "model policy excludes all discovered models"
+            if (source.sourceId !== provider) {
+              return yield* new RouteKitFailure({
+                message: `provider source mismatch: configured "${provider}", received "${source.sourceId}"`
               });
             }
-            if (configuredProviderIds(config).length > 0) {
-              throw new RouteKitFailure({
-                message: "configured providers discovered no models"
-              });
-            }
-          } else if (!entries.has(defaultModel)) {
-            throw new UnknownModelError(defaultModel);
-          }
-          return new RoutingBackend(defaultModel, new ModelCatalog(entries), sources);
-        });
-        yield* startup.releaseAll();
-        return backend;
-      }).pipe(
-        Effect.catch((error) =>
-          startup.dispose().pipe(
-            Effect.matchEffect({
-              onFailure: (cleanupError) => {
-                const unwrapped = routeKitError(cleanupError);
-                const cleanupErrors =
-                  unwrapped instanceof AggregateError ? unwrapped.errors : [unwrapped];
-                return Effect.fail(
-                  new AggregateError(
-                    [error instanceof Error ? error : routeKitError(error), ...cleanupErrors],
-                    "routing backend startup failed and provider cleanup was incomplete"
+            sources.push(source);
+            if (source.resource.kind === "owned") {
+              yield* Scope.addFinalizer(
+                scope,
+                Effect.exit(source.resource.close.pipe(Effect.provide(platform))).pipe(
+                  Effect.flatMap((closed) =>
+                    Exit.isFailure(closed)
+                      ? Effect.sync(() => {
+                          closeErrors.push(Cause.squash(closed.cause));
+                        })
+                      : Effect.void
                   )
-                );
-              },
-              onSuccess: () => Effect.fail(error instanceof Error ? error : routeKitError(error))
-            })
-          )
-        )
+                )
+              );
+            }
+            const discovered = yield* source.discovery.discoverModels(options.signal).pipe(
+              Effect.mapError(
+                (error) =>
+                  new RouteKitFailure({
+                    message: `provider "${provider}" discovery failed: ${
+                      error instanceof Error ? error.message : String(error)
+                    }`,
+                    cause: error
+                  })
+              )
+            );
+            if (discovered.length === 0) {
+              return yield* new RouteKitFailure({
+                message: `provider "${provider}" discovery returned no models`
+              });
+            }
+            for (const model of discovered) {
+              const publicId = namespaced(provider, model.id);
+              discoveredIds.add(publicId);
+              if (
+                !new RoutePolicy((modelId) =>
+                  modelPolicyAllowsModel(config.modelPolicy, modelId)
+                ).admit(publicId)
+              ) {
+                continue;
+              }
+              if (entries.has(publicId)) continue;
+              const override = config.reasoningCapabilities?.[publicId];
+              const reasoning =
+                override !== undefined
+                  ? {
+                      ...override,
+                      provenance: "config" as const
+                    }
+                  : (model.reasoning ?? source.capabilities.reasoningForModel(model.id));
+              entries.set(publicId, {
+                publicId,
+                nativeId: model.id,
+                provider,
+                capabilities: model.capabilities ?? source.capabilities.forModel(model.id),
+                ...(model.createdAt !== undefined ? { createdAt: model.createdAt } : {}),
+                ...(model.providerPriority !== undefined
+                  ? { providerPriority: model.providerPriority }
+                  : {}),
+                ...(model.metadata !== undefined ? { metadata: model.metadata } : {}),
+                ...(reasoning !== undefined ? { reasoning } : {})
+              });
+            }
+          }
+          const backend = yield* gatewayTry(() => {
+            for (const [alias, target] of Object.entries(config.modelAliases ?? {})) {
+              const entry = entries.get(target);
+              if (entry === undefined) {
+                if (discoveredIds.has(target)) {
+                  throw new RouteKitFailure({
+                    message: `model alias "${alias}" targets "${target}", which is excluded by model policy`
+                  });
+                }
+                throw new RouteKitFailure({
+                  message: `model alias "${alias}" targets "${target}", which no configured provider serves`
+                });
+              }
+              if (entries.has(alias)) {
+                throw new RouteKitFailure({
+                  message: `model alias "${alias}" collides with a served model id`
+                });
+              }
+              entries.set(alias, { ...entry, publicId: alias });
+            }
+            if (
+              config.defaultModel !== undefined &&
+              !entries.has(config.defaultModel) &&
+              discoveredIds.has(config.defaultModel)
+            ) {
+              throw new RouteKitFailure({
+                message: `default model "${config.defaultModel}" is excluded by model policy`
+              });
+            }
+            const first = entries.keys().next().value as string | undefined;
+            const defaultModel = config.defaultModel ?? first;
+            if (defaultModel === undefined) {
+              if (discoveredIds.size > 0) {
+                throw new RouteKitFailure({
+                  message: "model policy excludes all discovered models"
+                });
+              }
+              if (configuredProviderIds(config).length > 0) {
+                throw new RouteKitFailure({
+                  message: "configured providers discovered no models"
+                });
+              }
+            } else if (!entries.has(defaultModel)) {
+              throw new UnknownModelError(defaultModel);
+            }
+            return new RoutingBackend(
+              defaultModel,
+              new ModelCatalog(entries),
+              sources,
+              scope,
+              closeErrors
+            );
+          });
+          return backend;
+        })
       );
+      if (Exit.isSuccess(opened)) return opened.value;
+      yield* Scope.close(scope, opened);
+      const startupError = Cause.squash(opened.cause);
+      if (closeErrors.length > 0) {
+        return yield* Effect.fail(
+          new AggregateError(
+            [routeKitError(startupError), ...closeErrors],
+            "routing backend startup failed and provider cleanup was incomplete"
+          )
+        );
+      }
+      return yield* Effect.fail(routeKitError(startupError));
     });
   }
 
@@ -654,7 +673,15 @@ export class RoutingBackend implements Backend {
   }
 
   close() {
-    return this.providers.close();
+    return Scope.close(this.#scope, Exit.void).pipe(
+      Effect.andThen(
+        Effect.suspend(() =>
+          this.#closeErrors.length === 0
+            ? Effect.void
+            : Effect.fail(new AggregateError(this.#closeErrors, "provider cleanup failed"))
+        )
+      )
+    );
   }
 
   #requestedModel(body: unknown): string | undefined {
