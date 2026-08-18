@@ -1,0 +1,144 @@
+# Prepared manifest only. Do not submit or approve without explicit user approval.
+# Development data only; no locked-test tasks are referenced.
+schemaVersion: 1
+experimentId: luna-composition-canary-10-v1
+objective: Measure how closely Luna direct-classification prompts reproduce GPT-5.6 Sol continuous area-composition vectors and separate unknown probability using task-aware context.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: a1b28bef7be69874ed8c2ea6fdbab5abce3cd62e
+dataset:
+  id: composition-development-100-v1
+  hash: 14c9175c013f56f82a02ccd111e08a6b99be0cd438105d9006d55e443766bf2f
+  role: development
+matrix:
+  treatments:
+    - id: sol_reference
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: luna_current
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.01
+      estimatedInfrastructureCostUsd: 0
+    - id: luna_continuous
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.01
+      estimatedInfrastructureCostUsd: 0
+    - id: luna_anchored
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.01
+      estimatedInfrastructureCostUsd: 0
+    - id: luna_anchored_decomposition
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.01
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: grafana-grafana-pr-80511
+    inputArtifact: inputs/composition-development-100-v1/grafana-grafana-pr-80511/sha256/79/791dfe83477e98b3170ba2ca6099bf44c719922256cfb028933c1d86d2503eb6.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/composition-development-100-v1/kubernetes-kubernetes-pr-134516/sha256/9f/9f2329201f4515b47ca16f78f5a32b8ac08cf15873e1a21f5265d29d8612023f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: backstage-pr-22093
+    inputArtifact: inputs/composition-development-100-v1/backstage-pr-22093/sha256/1c/1c0e011448c1dd6831bc651c32e3eb7b63664d9b2e084b8aca561c427524407e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22561
+    inputArtifact: inputs/composition-development-100-v1/backstage-pr-22561/sha256/e2/e245abeaefc0de30c7ed4ab5bc9de845b3e321d475d0e1a49eaf3508416ba24d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22772
+    inputArtifact: inputs/composition-development-100-v1/backstage-pr-22772/sha256/53/538f83b3c841b73310e922f522566ea0c93bbc6ee126a3c74aa0e9301c074e90.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: synthetic-composite-01
+    inputArtifact: inputs/composition-development-100-v1/synthetic-composite-01/sha256/eb/ebefa0db0ba2f899bd99a0f1d168d661800e12a76ef5199b18b253ca5d0448ec.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-22561
+  - id: synthetic-composite-02
+    inputArtifact: inputs/composition-development-100-v1/synthetic-composite-02/sha256/37/37fc0c7e54b9308d27a02d480249d3604ce2cb57e36d052a9044a11055a21a79.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24133
+  - id: synthetic-composite-17
+    inputArtifact: inputs/composition-development-100-v1/synthetic-composite-17/sha256/a1/a17c8b511255f29ed122dd73d8889efe5b5290074da8df61c9f1cf4c973f214b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-133896
+        - kubernetes-kubernetes-pr-135100
+  - id: synthetic-composite-18
+    inputArtifact: inputs/composition-development-100-v1/synthetic-composite-18/sha256/c1/c1382bae42d1fe42127ed83ff78ef09d2a26751276fec1690542406a4094f123.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134516
+        - kubernetes-kubernetes-pr-135400
+  - id: synthetic-composite-31
+    inputArtifact: inputs/composition-development-100-v1/synthetic-composite-31/sha256/40/40f6ffed941cc295dc9e329abff2c3c5acf5954e878adac91feb334c062cd8fd.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-31255
+        - backstage-pr-33200
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 2
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_all_area_absolute_error
+  secondaryMetrics:
+    - composition_cosine_similarity
+    - composition_active_area_f1
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 1
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
