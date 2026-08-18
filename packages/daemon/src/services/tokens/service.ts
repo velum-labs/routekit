@@ -1,12 +1,16 @@
 import type { EffectRouteKitControlHandlers } from "@velum-labs/routekit-control/effect";
 import { ControlError } from "@velum-labs/routekit-runtime/control";
+import type { TokenStore } from "@velum-labs/routekit-runtime/tokens";
 import { encodeJoinCredential } from "@velum-labs/routekit-runtime/tokens";
-import { Effect } from "effect";
+import { Context, Effect } from "effect";
 import { controlTry } from "../../control-effect.js";
 import { daemonPublicRecordPath } from "../../daemon-state.js";
 import { DaemonEnv } from "../daemon-env/service.js";
 import { DataPlane } from "../data-plane/service.js";
-import { Tokens } from "../token-store/service.js";
+
+export class Tokens extends Context.Service<Tokens, TokenStore>()(
+  "@velum-labs/routekit-daemon/Tokens"
+) {}
 
 type TokenHandlers = Pick<
   EffectRouteKitControlHandlers,

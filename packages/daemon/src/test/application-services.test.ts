@@ -5,15 +5,14 @@ import {
   ROUTEKIT_CONTROL_METHODS,
   type RouteKitControlHandlers
 } from "@velum-labs/routekit-control";
-
+import { createDaemonControlMethodRegistry } from "../application-services.js";
 import { AccountEnrollService } from "../services/account-enroll/service.js";
 import { AccountMutationService } from "../services/account-mutation/service.js";
 import { AccountQueryService } from "../services/account-query/service.js";
-import { createDaemonControlMethodRegistry } from "../application-services.js";
 import { DaemonLifecycleService } from "../services/daemon-lifecycle/service.js";
 import { DoctorApplicationService } from "../services/doctor/service.js";
 import { EvalRoutingApplicationService } from "../services/eval-routing/service.js";
-import { EvalSessionApplicationService } from "../services/eval-session-application/service.js";
+import { EvalSessionApplicationService } from "../services/eval-session/service.js";
 import { LauncherApplicationService } from "../services/launcher/service.js";
 import { ProviderQueryService } from "../services/provider-query/service.js";
 import { RouterGenerationService } from "../services/router-generation/service.js";

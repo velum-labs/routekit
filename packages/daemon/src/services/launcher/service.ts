@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { dataTokenForPrincipal } from "../../daemon-state.js";
 import { ActiveGateway } from "../active-gateway/service.js";
 import { DataPlane } from "../data-plane/service.js";
-import { Tokens } from "../token-store/service.js";
+import { Tokens } from "../tokens/service.js";
 
 type LauncherHandlers = Pick<EffectRouteKitControlHandlers, "launcher.prepare">;
 

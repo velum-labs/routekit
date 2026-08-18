@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EvalSessionManager } from "../services/eval-session-manager/service.js";
+import { EvalSessionManager } from "../services/eval-session/service.js";
 
 const limits = {
   calls: 2,

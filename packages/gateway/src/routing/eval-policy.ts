@@ -20,13 +20,12 @@ import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
 import { Data, Effect } from "effect";
 
 import { parsePrincipalHeader, ROUTEKIT_PRINCIPAL_HEADER } from "../http/auth.js";
-import { CompositionalRoutingError, routeCompositionalRequest } from "./compositional.js";
 import {
   classifyRequestDimensions,
-  RequestDecomposer,
   type RequestDecomposerService,
   validateDecompositionResult
-} from "../services/request-classifier/service.js";
+} from "../routing/classifier.js";
+import { CompositionalRoutingError, routeCompositionalRequest } from "./compositional.js";
 
 export class RoutingPolicyReadError extends Data.TaggedError("RoutingPolicyReadError")<{
   readonly profileId: string;
@@ -184,10 +183,7 @@ export function evalRequestAttribution(
     const caseId = typeof value.caseId === "string" ? value.caseId.trim() : undefined;
     if (
       value.purpose !== "eval" ||
-      (role !== "author" &&
-        role !== "classifier" &&
-        role !== "candidate" &&
-        role !== "judge") ||
+      (role !== "author" && role !== "classifier" && role !== "candidate" && role !== "judge") ||
       runId.length === 0 ||
       runId.length > 128 ||
       (caseId !== undefined && (caseId.length === 0 || caseId.length > 256))
@@ -309,11 +305,10 @@ export function resolveCompositionalAutoRoutingModel(
       });
     }
 
-    const classified = yield* classifyRequestDimensions({
+    const classified = yield* classifyRequestDimensions(classifier, {
       request: requestText,
       dimensions: snapshot.dimensions
     }).pipe(
-      Effect.provideService(RequestDecomposer, RequestDecomposer.of(classifier)),
       Effect.mapError(
         (error) =>
           new AutoRoutingUnavailableError({

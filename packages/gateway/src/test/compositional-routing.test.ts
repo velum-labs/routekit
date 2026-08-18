@@ -19,7 +19,7 @@ import {
   resolveCompositionalAutoRoutingModel,
   resolveConfiguredAutoRoutingModel
 } from "../routing/eval-policy.js";
-import { makeFakeRequestDecomposer } from "../services/request-classifier/service.js";
+import { makeFakeRequestDecomposer } from "../routing/classifier.js";
 
 const dimensions = [
   "code-change",

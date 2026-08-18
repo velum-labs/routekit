@@ -257,7 +257,7 @@ export {
 export type {
   ObservedDecompositionResult,
   RequestDecomposerService
-} from "./services/request-classifier/service.js";
+} from "./routing/classifier.js";
 export {
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
   ClassificationError,
@@ -265,12 +265,10 @@ export {
   extractClassifiableRequestText,
   makeFakeRequestDecomposer,
   makeLanguageModelDimensionClassifier,
-  makeRequestDecomposerLayer,
   parseDecompositionResult,
-  RequestDecomposer,
   validateDecompositionInput,
   validateDecompositionResult
-} from "./services/request-classifier/service.js";
+} from "./routing/classifier.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./routing/router.js";
 export {
   isSubscriptionProvider,

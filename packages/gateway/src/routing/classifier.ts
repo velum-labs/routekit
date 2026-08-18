@@ -13,9 +13,9 @@ import {
   DecompositionResult as DecompositionResultSchema,
   isForbiddenEvalModel
 } from "@velum-labs/routekit-eval-contracts";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Data, Effect, Schema } from "effect";
 
-import { MODEL_CALL_ID_HEADER } from "../../observability/provenance.js";
+import { MODEL_CALL_ID_HEADER } from "../observability/provenance.js";
 
 export const CLASSIFIABLE_REQUEST_TEXT_LIMIT = 4_000;
 export { CLASSIFIER_BASIS_TEXT_LIMIT };
@@ -37,35 +37,18 @@ export type ObservedDecompositionResult = DecompositionResult & {
   readonly classifierCallId?: string;
 };
 
-export class RequestDecomposer extends Context.Service<
-  RequestDecomposer,
-  RequestDecomposerService
->()("@velum-labs/routekit-gateway/RequestDecomposer") {}
-
-export const makeRequestDecomposerLayer = (
-  service: RequestDecomposerService
-): Layer.Layer<RequestDecomposer> =>
-  Layer.succeed(RequestDecomposer, RequestDecomposer.of(service));
-
-const classifyRequestDimensionsEffect = Effect.fn("RequestDecomposer.classify")(function* (
+export function classifyRequestDimensions(
+  classifier: RequestDecomposerService,
   input: DecompositionInput
-): Effect.fn.Return<ObservedDecompositionResult, ClassificationError, RequestDecomposer> {
-  const classifier = yield* RequestDecomposer;
-  const classification = yield* Effect.try({
+): Effect.Effect<ObservedDecompositionResult, ClassificationError> {
+  return Effect.try({
     try: () => classifier.classify(input),
     catch: (cause) =>
       new ClassificationError({
         message: "dimension request classifier failed before returning an Effect",
         cause
       })
-  });
-  return yield* classification;
-});
-
-export function classifyRequestDimensions(
-  input: DecompositionInput
-): Effect.Effect<ObservedDecompositionResult, ClassificationError, RequestDecomposer> {
-  return classifyRequestDimensionsEffect(input);
+  }).pipe(Effect.flatten);
 }
 
 const validateDecompositionInputEffect = Effect.fn("RequestDecomposer.validateInput")(function* (

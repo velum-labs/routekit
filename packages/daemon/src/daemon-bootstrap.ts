@@ -96,7 +96,7 @@ import { makeCompositionalRoutingPolicyReader } from "./eval-routing-policy.js";
 import { DAEMON_HOST_PROTOCOL_VERSION } from "./host-protocol.js";
 import { LeaderboardRollupStore } from "./leaderboard.js";
 import { ActiveGateway, type ActiveGatewayValue } from "./services/active-gateway/service.js";
-import { EvalSessionManager } from "./services/eval-session-manager/service.js";
+import { EvalSessionManager } from "./services/eval-session/service.js";
 import type { RunningGatewayGeneration } from "./services/gateway-generation/service.js";
 import { Generations } from "./services/generations/service.js";
 import {

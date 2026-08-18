@@ -4,17 +4,15 @@ import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
 import {
-  RequestDecomposer,
   CLASSIFIABLE_REQUEST_TEXT_LIMIT,
   classifyRequestDimensions,
   extractClassifiableRequestText,
-  makeRequestDecomposerLayer,
   makeFakeRequestDecomposer,
   makeLanguageModelDimensionClassifier,
   parseDecompositionResult,
   validateDecompositionInput,
   validateDecompositionResult
-} from "../services/request-classifier/service.js";
+} from "../routing/classifier.js";
 
 const dimensions = [
   {
@@ -185,32 +183,28 @@ test("parseDecompositionResult rejects fences, prefixes, and trailing output", (
   }
 });
 
-test("dimension classifier protocol is provided as an Effect layer", async () => {
+test("dimension classifier protocol receives its adapter explicitly", async () => {
   const result = await runRouteKitEffect(
-    classifyRequestDimensions({
+    classifyRequestDimensions(makeFakeRequestDecomposer(areaResult), {
       request: "Fix routing evidence and an HTTP response translation bug",
       dimensions
-    }).pipe(
-      Effect.provide(makeRequestDecomposerLayer(makeFakeRequestDecomposer(areaResult)))
-    )
+    })
   );
   assert.deepEqual(result, areaResult);
 
   await assert.rejects(
     runRouteKitEffect(
-      classifyRequestDimensions({ request: "hello", dimensions }).pipe(
-        Effect.provide(
-          makeRequestDecomposerLayer({
-            classify: () => {
-              throw new Error("synchronous failure");
-            }
-          })
-        )
+      classifyRequestDimensions(
+        {
+          classify: () => {
+            throw new Error("synchronous failure");
+          }
+        },
+        { request: "hello", dimensions }
       )
     ),
     /dimension request classifier failed before returning an Effect/
   );
-  assert.equal(typeof RequestDecomposer, "function");
 });
 
 test("language-model dimension classifier sends only bounded dimension semantics and strict schema", async () => {

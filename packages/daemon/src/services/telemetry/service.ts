@@ -4,12 +4,36 @@ import {
   type TelemetryStatus,
   telemetryStatusMetadata
 } from "@velum-labs/routekit-telemetry-core";
-import { Effect } from "effect";
+import { Context, Effect } from "effect";
 import { controlTry, controlTryPromise } from "../../control-effect.js";
+import {
+  type DaemonTelemetry,
+  DEFAULT_TELEMETRY_HOST,
+  type GatewayTelemetryAggregator,
+  resolveTelemetryProjectKey
+} from "../../telemetry.js";
 import { DaemonEnv } from "../daemon-env/service.js";
 import { DaemonState } from "../daemon-state/service.js";
-import { Telemetry } from "../telemetry-context/service.js";
-import { DEFAULT_TELEMETRY_HOST, resolveTelemetryProjectKey } from "../../telemetry.js";
+
+export type TelemetryServiceValue = {
+  consent: {
+    resolve(env: NodeJS.ProcessEnv): {
+      enabled: boolean;
+      source: "do-not-track" | "env" | "config" | "default";
+      categories: Record<"usage" | "reliability" | "adoption", boolean>;
+    };
+    enable(): unknown;
+    disable(): unknown;
+    setCategory(category: "usage" | "reliability" | "adoption", enabled: boolean): unknown;
+    resetIdentity(env: NodeJS.ProcessEnv): unknown;
+  };
+  daemon?: DaemonTelemetry;
+  gateway?: GatewayTelemetryAggregator;
+};
+
+export class Telemetry extends Context.Service<Telemetry, TelemetryServiceValue>()(
+  "@velum-labs/routekit-daemon/Telemetry"
+) {}
 
 type TelemetryHandlers = Pick<
   EffectRouteKitControlHandlers,

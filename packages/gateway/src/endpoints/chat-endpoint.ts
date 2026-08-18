@@ -20,7 +20,7 @@ import {
   evalRequestAttribution,
   resolveConfiguredAutoRoutingModel
 } from "../routing/eval-policy.js";
-import { extractClassifiableRequestText } from "../services/request-classifier/service.js";
+import { extractClassifiableRequestText } from "../routing/classifier.js";
 import { deriveRoutingRequirements } from "../routing/requirements.js";
 import type {
   EndpointAuthenticator,
