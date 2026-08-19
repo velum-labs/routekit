@@ -3,7 +3,14 @@ import { test } from "node:test";
 import { ListFoundationModelsCommand, ListInferenceProfilesCommand } from "@aws-sdk/client-bedrock";
 import { ConverseCommand, ConverseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
-import { BedrockProviderSource, toBedrockConverseInput } from "../providers/bedrock-source.js";
+import { Effect } from "effect";
+import {
+  BEDROCK_OPENAI_ALLOWLIST,
+  BedrockProviderSource,
+  isBedrockOpenAiModel,
+  sanitizeBedrockMantleRequestBody,
+  toBedrockConverseInput
+} from "../providers/bedrock-source.js";
 
 test("Bedrock discovery includes active Anthropic foundations and paginated backed profiles", async () => {
   const commands: unknown[] = [];
@@ -133,6 +140,228 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
   });
   assert.deepEqual(discovered[3]?.reasoning, discovered[1]?.reasoning);
   assert.equal(commands.length, 3);
+});
+
+test("Bedrock OpenAI model ids stay on mantle and never match Anthropic Converse", () => {
+  assert.equal(isBedrockOpenAiModel("openai.gpt-5.4"), true);
+  assert.equal(isBedrockOpenAiModel("openai.gpt-5.6-sol"), true);
+  assert.equal(isBedrockOpenAiModel("us.openai.gpt-5.6-terra"), true);
+  assert.equal(isBedrockOpenAiModel("anthropic.claude-3"), false);
+  assert.equal(isBedrockOpenAiModel("us.anthropic.claude-3"), false);
+});
+
+test("Bedrock discovery unions OpenAI mantle models when a bearer token is present", async () => {
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: {
+      send: async (command: unknown) => {
+        if (command instanceof ListFoundationModelsCommand) {
+          return {
+            modelSummaries: [
+              {
+                modelId: "anthropic.claude-3",
+                providerName: "Anthropic",
+                modelLifecycle: { status: "ACTIVE" }
+              }
+            ]
+          };
+        }
+        return { inferenceProfileSummaries: [] };
+      }
+    } as never,
+    runtimeClient: { send: async () => ({}) } as never
+  });
+  const discovered = await runRouteKitEffect(source.discovery.discoverModels());
+  assert.deepEqual(
+    discovered.map((model) => model.id),
+    ["anthropic.claude-3", ...BEDROCK_OPENAI_ALLOWLIST]
+  );
+  const sol = discovered.find((model) => model.id === "openai.gpt-5.6-sol");
+  assert.equal(sol?.reasoning?.wireShape, "openai-responses");
+  assert.equal(sol?.reasoning?.defaultEffort, "medium");
+});
+
+test("Bedrock discovery keeps OpenAI models when Anthropic listing fails", async () => {
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: {
+      send: async () => {
+        throw new Error("not authorized");
+      }
+    } as never,
+    runtimeClient: { send: async () => ({}) } as never
+  });
+  const discovered = await runRouteKitEffect(source.discovery.discoverModels());
+  assert.deepEqual(
+    discovered.map((model) => model.id),
+    [...BEDROCK_OPENAI_ALLOWLIST]
+  );
+});
+
+test("Bedrock routes OpenAI models through mantle and leaves Anthropic on Converse", async () => {
+  const runtimeCalls: unknown[] = [];
+  const mantleCalls: Array<{ kind: string; model?: string }> = [];
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: { send: async () => ({}) } as never,
+    runtimeClient: {
+      send: async (value: unknown) => {
+        runtimeCalls.push(value);
+        return {
+          $metadata: { requestId: "req-1" },
+          output: { message: { role: "assistant", content: [{ text: "claude" }] } },
+          stopReason: "end_turn"
+        };
+      }
+    } as never,
+    mantleBackend: {
+      chat: (body: unknown) => {
+        const model =
+          typeof (body as { model?: unknown }).model === "string"
+            ? (body as { model: string }).model
+            : undefined;
+        mantleCalls.push({ kind: "chat", ...(model !== undefined ? { model } : {}) });
+        return Effect.succeed(Response.json({ id: "chat", model }));
+      },
+      responses: (body: unknown) => {
+        const model =
+          typeof (body as { model?: unknown }).model === "string"
+            ? (body as { model: string }).model
+            : undefined;
+        mantleCalls.push({ kind: "responses", ...(model !== undefined ? { model } : {}) });
+        return Effect.succeed(Response.json({ id: "resp", model }));
+      }
+    }
+  });
+
+  assert.equal(
+    source.responses.kind === "responses" && source.responses.supports("openai.gpt-5.4"),
+    true
+  );
+  assert.equal(
+    source.responses.kind === "responses" && source.responses.supports("anthropic.claude-3"),
+    false
+  );
+  assert.equal(
+    source.capabilities.reasoningForModel("openai.gpt-5.6-sol")?.wireShape,
+    "openai-responses"
+  );
+
+  const openaiChat = await runRouteKitEffect(
+    source.requests.chat({
+      model: "openai.gpt-5.4",
+      messages: [{ role: "user", content: "hi" }]
+    })
+  );
+  assert.deepEqual(await openaiChat.json(), { id: "chat", model: "openai.gpt-5.4" });
+
+  assert.equal(source.responses.kind, "responses");
+  if (source.responses.kind !== "responses") throw new Error("expected Responses support");
+  const openaiResponses = await runRouteKitEffect(
+    source.responses.execute({
+      model: "openai.gpt-5.6-terra",
+      input: "hi"
+    })
+  );
+  assert.deepEqual(await openaiResponses.json(), {
+    id: "resp",
+    model: "openai.gpt-5.6-terra"
+  });
+
+  const anthropic = await runRouteKitEffect(
+    source.requests.chat({
+      model: "anthropic.claude-3",
+      messages: [{ role: "user", content: "hi" }]
+    })
+  );
+  assert.equal(anthropic.status, 200);
+  assert.equal(runtimeCalls.length, 1);
+  assert.equal(runtimeCalls[0] instanceof ConverseCommand, true);
+  assert.deepEqual(mantleCalls, [
+    { kind: "chat", model: "openai.gpt-5.4" },
+    { kind: "responses", model: "openai.gpt-5.6-terra" }
+  ]);
+
+  const rejected = await runRouteKitEffect(
+    source.responses.execute({
+      model: "anthropic.claude-3",
+      input: "hi"
+    })
+  );
+  assert.equal(rejected.status, 501);
+});
+
+test("Bedrock mantle sanitizes Codex-only request fields before egress", async () => {
+  const forwarded: unknown[] = [];
+  const source = new BedrockProviderSource({
+    env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
+    controlClient: { send: async () => ({}) } as never,
+    runtimeClient: { send: async () => ({}) } as never,
+    mantleBackend: {
+      chat: () => Effect.succeed(Response.json({})),
+      responses: (body: unknown) => {
+        forwarded.push(body);
+        return Effect.succeed(Response.json({ id: "resp" }));
+      }
+    }
+  });
+  const body = {
+    model: "openai.gpt-5.6-sol",
+    tools: [{ type: "web_search", search_content_types: ["text", "image"] }],
+    input: [
+      {
+        type: "agent_message",
+        author: "/root",
+        recipient: "/root/worker",
+        content: [
+          { type: "input_text", text: "hi" },
+          { type: "encrypted_content", encrypted_content: " " }
+        ]
+      },
+      { type: "compaction", encrypted_content: "not-a-prefix" },
+      { type: "reasoning", encrypted_content: "rsn_ok", summary: [] }
+    ]
+  };
+  assert.deepEqual(sanitizeBedrockMantleRequestBody(body), {
+    model: "openai.gpt-5.6-sol",
+    tools: [{ type: "web_search" }],
+    input: [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hi" }]
+      },
+      { type: "reasoning", encrypted_content: "rsn_ok", summary: [] }
+    ]
+  });
+  assert.equal(source.responses.kind, "responses");
+  if (source.responses.kind !== "responses") throw new Error("expected Responses support");
+  const response = await runRouteKitEffect(source.responses.execute(body));
+  assert.equal(response.status, 200);
+  assert.deepEqual(forwarded, [sanitizeBedrockMantleRequestBody(body)]);
+});
+
+test("Bedrock OpenAI chat without a mantle key returns 400 and skips Converse", async () => {
+  const runtimeCalls: unknown[] = [];
+  const source = new BedrockProviderSource({
+    env: { AWS_REGION: "us-east-1" },
+    controlClient: { send: async () => ({}) } as never,
+    runtimeClient: {
+      send: async (value: unknown) => {
+        runtimeCalls.push(value);
+        return {};
+      }
+    } as never
+  });
+  const response = await runRouteKitEffect(
+    source.requests.chat({
+      model: "openai.gpt-5.5",
+      messages: [{ role: "user", content: "hi" }]
+    })
+  );
+  assert.equal(response.status, 400);
+  assert.match(await response.text(), /AWS_BEARER_TOKEN_BEDROCK/);
+  assert.equal(runtimeCalls.length, 0);
 });
 
 test("Bedrock request translation covers system, image, tools, results, and inference config", () => {

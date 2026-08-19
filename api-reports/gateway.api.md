@@ -2,7 +2,7 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `0df89caf201d1639376d164fd5afde2f69517a519e5ddf48c95099cc65e88654`
+Declaration SHA-256: `3c1617e3d8e8a2a6e921b2d19e9de24bde414af7c6a6cd7922bae57a9f751be2`
 
 ## Root declarations
 
@@ -15,7 +15,7 @@ export type { AnthropicRequest, ClaudeModelSelection, ClaudePickerModelRoute } f
 export type { AnthropicSseEvent, OpenAiChatResponse, OpenAiChatSseEvent, OpenAiResponsesEvent, ProviderRecord } from "./providers/protocol.js";
 export type { ApiProviderId, ApiProviderSourceOptions, DiscoveredModel, ProviderId, ProviderSource, ProviderSourceTransport, SubscriptionProviderId } from "./providers/source.js";
 export type { Backend, BackendLifecyclePort, BackendModelPort, BackendModelRoute, BackendPorts, BackendRequest, BackendRequestOptions, BackendResponseMode, BackendResponsesPort, ModelRoutedBackendOptions, RequestAttributionUpdate } from "./providers/backend.js";
-export type { BedrockControlClient, BedrockProviderSourceOptions, BedrockRuntime } from "./providers/bedrock-source.js";
+export type { BedrockControlClient, BedrockMantleBackend, BedrockProviderSourceOptions, BedrockRuntime } from "./providers/bedrock-source.js";
 export type { CallCostRecord, ModelPricing, ProviderCostMetadata, TokenUsage } from "./observability/cost.js";
 export type { CapacityLease, CapacityPoolMember, CapacityPoolOptions, CapacityPoolStrategy } from "./capacity-pool.js";
 export type { CatalogModelInfo, RoutingBackendOptions } from "./routing/router.js";
@@ -40,8 +40,8 @@ export { ANTHROPIC_MESSAGE_CONTENT, ANTHROPIC_REQUEST_METADATA, anthropicMessage
 export { API_PROVIDER_IDS, ApiProviderSource, decodeModelDiscovery, decodeReasoningCapabilities, PROVIDER_IDS, SUBSCRIPTION_PROVIDER_IDS } from "./providers/source.js";
 export { AnthropicBackend, CodexResponsesBackend, GoogleGenAiBackend } from "./providers/backends.js";
 export { AutoRoutingUnavailableError, compositionalRoutingAttribution, compositionalRoutingPolicyReaderFromSnapshot, EvalAutoRoutingForbiddenError, RoutingPolicyReadError, resolveCompositionalAutoRoutingModel, resolveConfiguredAutoRoutingModel } from "./routing/eval-policy.js";
+export { BEDROCK_OPENAI_ALLOWLIST, BedrockProviderSource, fromBedrockConverseOutput, isBedrockOpenAiModel, toBedrockConverseInput } from "./providers/bedrock-source.js";
 export { BackendExecutor, ModelCatalog, ModelResolver, ProviderLifecycle, RoutePlanner, RoutePolicy } from "./routing/core.js";
-export { BedrockProviderSource, fromBedrockConverseOutput, toBedrockConverseInput } from "./providers/bedrock-source.js";
 export { CLASSIFIABLE_REQUEST_TEXT_LIMIT, ClassificationError, classifyRequestDimensions, extractClassifiableRequestText, makeFakeRequestDecomposer, makeLanguageModelDimensionClassifier, parseDecompositionResult, validateDecompositionInput, validateDecompositionResult } from "./routing/classifier.js";
 export { CapacityPool } from "./capacity-pool.js";
 export { ChatStreamAssembler } from "./sse/chat-assembler.js";

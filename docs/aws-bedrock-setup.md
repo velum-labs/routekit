@@ -106,12 +106,23 @@ workload or federated identity is available.
 
 A supervised RouteKit daemon preserves AWS region/profile/config paths and the
 standard role, web-identity, container, metadata, and static credential-chain
-environment variables only when `bedrock` is configured. It deliberately does
+environment variables only when `bedrock` is configured. It also forwards
+`AWS_BEARER_TOKEN_BEDROCK` so OpenAI models on Bedrock can call the
+`bedrock-mantle` Responses API. It deliberately does
 not persist `AWS_CONTAINER_AUTHORIZATION_TOKEN`; use
 `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` for refreshable container auth. AWS
 inputs absent during service installation are explicitly removed at daemon
 startup so launchd or systemd manager-domain credentials cannot enter the SDK
 chain accidentally. RouteKit does not modify either manager environment.
+
+OpenAI frontier models on Bedrock (`bedrock/openai.gpt-5.4`,
+`bedrock/openai.gpt-5.5`, `bedrock/openai.gpt-5.6-sol`,
+`bedrock/openai.gpt-5.6-terra`, `bedrock/openai.gpt-5.6-luna`) use the regional
+Mantle endpoint `https://bedrock-mantle.<region>.api.aws/openai/v1` with
+`AWS_BEARER_TOKEN_BEDROCK`. Anthropic models stay on Converse and the AWS SDK
+credential chain. The bearer token is optional when you only use Anthropic
+models. Mantle availability is regional (for example Sol in `us-east-1` and
+`us-east-2`; Terra and Luna also in `us-west-2`).
 
 After changing AWS environment inputs, run
 `routekit daemon service install` to refresh the captured contract.

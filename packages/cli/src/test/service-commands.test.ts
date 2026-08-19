@@ -193,7 +193,8 @@ const awsEnvironmentNames = [
   "AWS_CONTAINER_CREDENTIALS_FULL_URI",
   "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
   "AWS_EC2_METADATA_DISABLED",
-  "AWS_STS_REGIONAL_ENDPOINTS"
+  "AWS_STS_REGIONAL_ENDPOINTS",
+  "AWS_BEARER_TOKEN_BEDROCK"
 ] as const;
 
 function bedrockConfig(): RouterConfig {
@@ -204,11 +205,13 @@ test("configured Bedrock services preserve present chain inputs and remove absen
   const source: NodeJS.ProcessEnv = {
     AWS_REGION: "us-east-1",
     AWS_PROFILE: "routekit",
+    AWS_BEARER_TOKEN_BEDROCK: "bedrock-api-key",
     AWS_CONTAINER_AUTHORIZATION_TOKEN: "do-not-persist"
   };
   const environment = serviceEnvironment(bedrockConfig(), source);
   assert.equal(environment.set.AWS_REGION, "us-east-1");
   assert.equal(environment.set.AWS_PROFILE, "routekit");
+  assert.equal(environment.set.AWS_BEARER_TOKEN_BEDROCK, "bedrock-api-key");
   assert.equal(environment.set.AWS_CONTAINER_AUTHORIZATION_TOKEN, undefined);
   assert.ok(environment.unset.includes("AWS_CONTAINER_AUTHORIZATION_TOKEN"));
   for (const name of awsEnvironmentNames) {
