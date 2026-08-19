@@ -173,12 +173,12 @@ export type {
   EndpointHealthResult,
   ModelEndpointConfig,
   UrlEndpointConfig
-} from "./services/endpoint-health/service.js";
+} from "./endpoint-health-service.js";
 export {
   endpointHealthProbe,
   probeEndpointHealth,
   providerAuthHeaders
-} from "./services/endpoint-health/service.js";
+} from "./endpoint-health-service.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
 export type {
@@ -195,7 +195,7 @@ export {
   resolveCompositionalAutoRoutingModel,
   resolveConfiguredAutoRoutingModel
 } from "./routing/eval-policy.js";
-export { invokeObservedModelCall } from "./services/model-call/service.js";
+export { invokeObservedModelCall } from "./model-call-service.js";
 export type { OpenAiBackendOptions } from "./providers/openai-backend.js";
 export { OpenAiBackend } from "./providers/openai-backend.js";
 export type {
@@ -300,8 +300,8 @@ export type {
   RelayLifecycle,
   RequestRelay,
   TokenCountRelay
-} from "./services/gateway/service.js";
-export { startGateway } from "./services/gateway/service.js";
+} from "./gateway-service.js";
+export { startGateway } from "./gateway-service.js";
 export { ChatStreamAssembler } from "./sse/chat-assembler.js";
 export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse/parse.js";
 export {
@@ -311,5 +311,5 @@ export {
   reasoningChunk,
   sseResponse
 } from "./sse/wire.js";
-export type { SwitchingGatewayProxy } from "./services/switching-proxy/service.js";
-export { startSwitchingGatewayProxy } from "./services/switching-proxy/service.js";
+export type { SwitchingGatewayProxy } from "./switching-proxy.js";
+export { startSwitchingGatewayProxy } from "./switching-proxy.js";

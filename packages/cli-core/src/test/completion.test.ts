@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { Command, Option } from "commander";
+import { Command, Flag } from "effect/unstable/cli";
 
 import {
   completionCandidates,
@@ -12,31 +12,31 @@ import {
   walkCompletionTree
 } from "../completion.js";
 
-function commandTree(): Command {
-  const program = new Command()
-    .option("--json")
-    .addOption(new Option("--internal-token <token>").hideHelp());
-  const sessions = program.command("sessions").alias("session").option("--local");
-  sessions.command("remove").alias("rm");
-  program.command("help");
-  program.command("__complete");
-  program.addCommand(new Command("internal"), { hidden: true });
-  return program;
+function commandTree(): Command.Command.Any {
+  const remove = Command.make("remove").pipe(Command.withAlias("rm"));
+  const sessions = Command.make("sessions", {
+    local: Flag.boolean("local")
+  }).pipe(Command.withAlias("session"), Command.withSubcommands([remove]));
+  const internal = Command.make("internal").pipe(Command.unlisted);
+  return Command.make("example", {
+    json: Flag.boolean("json"),
+    internalToken: Flag.string("internal-token").pipe(Flag.withHidden)
+  }).pipe(Command.withSubcommands([sessions, internal]));
 }
 
 test("completion helpers expose visible aliases and inherited long flags", () => {
   const program = commandTree();
-  const remove = program.commands[0]!.commands[0]!;
+  const state = walkCompletionTree(program, ["session", "rm", ""]);
 
   assert.deepEqual(visibleCommandNames(program), ["sessions", "session"]);
-  assert.deepEqual(visibleLongFlags(remove), ["--local", "--json"]);
+  assert.deepEqual(visibleLongFlags(state.ancestry).sort(), ["--json", "--local"]);
   assert.doesNotMatch(completionScript("bash", "example", program), /\binternal\b/);
 });
 
 test("completion tree walking resolves aliases to canonical paths", () => {
   const state = walkCompletionTree(commandTree(), ["session", "rm", "alpha", "be"]);
 
-  assert.equal(state.command.name(), "remove");
+  assert.equal(state.command.name, "remove");
   assert.deepEqual(state.path, ["sessions", "remove"]);
   assert.deepEqual(state.positional, ["alpha"]);
   assert.equal(state.argumentDepth, 1);

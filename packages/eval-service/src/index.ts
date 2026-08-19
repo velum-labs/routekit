@@ -11,16 +11,16 @@ export {
 export {
   EvalServiceComparisonError,
   EvalServiceConfigurationError,
+  EvalServiceEstimateError,
   EvalServicePolicyError,
   EvalServicePublicationError,
+  EvalServiceSpendLimitError,
   EvalServiceValidationError
 } from "./errors.js";
-export type { RouteKitEvalComparisonRunnerOptions } from "./production-runner.js";
+export type { RouteKitEvalServiceOptions } from "./production-runner.js";
 export {
-  EvalComparisonRunnerCredentialError,
-  EvalComparisonRunnerManifestError,
-  makeEvalComparisonRunner,
-  makeEvalComparisonRunnerLayer
+  EvalServiceCredentialError,
+  makeRouteKitEvalServiceLayer
 } from "./production-runner.js";
 export type {
   DimensionMatrixQualificationInput,
@@ -28,16 +28,10 @@ export type {
   DimensionMatrixSuite,
   EvalComparisonEstimate,
   EvalComparisonMode,
-  EvalComparisonRunnerShape,
   EvalRunConfiguration,
   EvalServiceConfiguration,
   EvalServiceError,
   EvalServiceShape,
   EvalSuiteInspection
 } from "./service.js";
-export {
-  EvalComparisonRunner,
-  EvalService,
-  makeEvalService,
-  makeEvalServiceLayer
-} from "./service.js";
+export { EvalService } from "./service.js";

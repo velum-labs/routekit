@@ -7,27 +7,22 @@ import {
   type ServiceRecordStore
 } from "@velum-labs/routekit-runtime/service";
 import { ControlError } from "@velum-labs/routekit-runtime/control";
-import { createTokenStore } from "@velum-labs/routekit-runtime/tokens";
 import type { AccountTransactionRecovery } from "./account-transaction.js";
 import { recoverAccountTransactions } from "./account-transaction.js";
-import type { CliproxySidecar } from "./cliproxy-sidecar.js";
+import type { HostedSidecarRequest } from "./cliproxy-sidecar.js";
 import type { RouteKitControlMethod, RouteKitControlParams } from "@velum-labs/routekit-control";
 import {
   canonicalConfigDocument,
-  dataTokenPath,
   parseConfigDocument
 } from "./daemon-maintenance.js";
 import { DaemonRuntimeState } from "./daemon-runtime-state.js";
-import { healthyControl, readDaemonRevisions, resolveDataToken } from "./daemon-state.js";
+import { healthyControl, readDaemonRevisions } from "./daemon-state.js";
 
 export type DaemonBootstrapPreflight = {
   env: NodeJS.ProcessEnv;
   home: string;
   configPath: string;
   drainGraceMs: number;
-  tokens: ReturnType<typeof createTokenStore>;
-  dataTokenCache: Map<string, string>;
-  dataAuth: { token: string; path: string };
   store: ServiceRecordStore;
   hosted: DaemonBootstrapOptions["hosted"];
   authority: LifecycleLock | undefined;
@@ -49,7 +44,7 @@ export type DaemonBootstrapHostedOptions = {
   hostPid: number;
   hostStartedAt: string;
   rolling: () => boolean;
-  sidecar: CliproxySidecar;
+  sidecarRequest<T>(input: HostedSidecarRequest): Promise<T>;
   initiallyPaused?: boolean;
   executeIdempotent?<T>(input: {
     method: RouteKitControlMethod;
@@ -76,10 +71,6 @@ export async function prepareDaemonBootstrap(
   const home = options.stateHome ?? routekitHome(env);
   const configPath = options.configPath ?? globalRouterConfigPath();
   const drainGraceMs = options.drainGraceMs ?? 30_000;
-  const tokens = createTokenStore(home);
-  const dataTokenCache = new Map<string, string>();
-  const dataAuth = resolveDataToken(home, options, tokens, dataTokenPath);
-  dataTokenCache.set("default", dataAuth.token);
   const store = createServiceRecordStore({ home, product: "routekit" });
   const hosted = options.hosted;
   const authority =
@@ -111,9 +102,6 @@ export async function prepareDaemonBootstrap(
     home,
     configPath,
     drainGraceMs,
-    tokens,
-    dataTokenCache,
-    dataAuth,
     store,
     hosted,
     authority,

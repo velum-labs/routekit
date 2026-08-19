@@ -8,7 +8,7 @@ import {
   formatOverviewReadinessSuffix,
   formatUsageReadinessSuffix
 } from "../account-status-format.js";
-import { renderDaemonOverviewLines } from "../commands/status.js";
+import { renderDaemonOverviewLines } from "../effect/commands/status.js";
 
 test("activity markers use serving and last-selected vocabulary", () => {
   const now = Date.UTC(2026, 0, 1);

@@ -9,15 +9,13 @@ export {
   completionScript,
   filterCompletionCandidates,
   isCompletionShell,
-  registerCompletion,
   visibleCommandNames,
   visibleLongFlags,
   walkCompletionTree
 } from "./completion.js";
 export type { CliRuntime, CommandContext, GlobalFlags } from "./context.js";
 export {
-  attachGlobalFlags,
-  contextFor,
+  contextForFlags,
   emitJson,
   immutableCliRuntime,
   processCliRuntime
@@ -30,6 +28,19 @@ export {
   levenshtein,
   warnPassthroughTypos
 } from "./flags.js";
+export type {
+  EffectCommandArgument,
+  EffectCommandOption
+} from "./effect-command.js";
+export {
+  commandArguments,
+  commandChildren,
+  commandNames,
+  commandOptions,
+  effectCommandPath,
+  flattenEffectCommands,
+  visibleCommandChildren
+} from "./effect-command.js";
 export {
   collect,
   parseIdValue,

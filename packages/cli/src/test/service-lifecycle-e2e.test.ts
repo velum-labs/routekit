@@ -322,7 +322,7 @@ test("public RouteKit lifecycle: start, idempotency, upgrade, drain-on-stop", as
     for (const retired of ["start", "status", "stop"]) {
       const result = await runCli(["daemon", retired, "--json"], cli);
       assert.notEqual(result.exitCode, 0);
-      assert.match(result.stderr, new RegExp(`unknown command ['\"]${retired}['\"]`, "i"));
+      assert.match(result.stderr, new RegExp(`unknown subcommand ['\"]${retired}['\"]`, "i"));
     }
   } finally {
     releaseSlowResponse();

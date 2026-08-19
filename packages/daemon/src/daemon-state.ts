@@ -2,11 +2,14 @@ import { chmodSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { WorkloadJwtVerifierOptions } from "@velum-labs/routekit-gateway";
 import type { ServiceRecord } from "@velum-labs/routekit-runtime/service";
-import type { TokenStore } from "@velum-labs/routekit-runtime/tokens";
 import { CONTROL_PROTOCOL_VERSION, ControlClient } from "@velum-labs/routekit-runtime/control";
 import { SERVICE_HOME_MODE } from "@velum-labs/routekit-runtime/service";
 import { writeFileAtomic } from "@velum-labs/routekit-runtime/filesystem";
-import { runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
+import {
+  runRouteKitEffect,
+  toRouteKitFailure
+} from "@velum-labs/routekit-runtime/effect";
+import { Effect } from "effect";
 
 const WORKLOAD_JWT_CONFIG_ENV = "ROUTEKIT_WORKLOAD_JWT_CONFIG";
 
@@ -22,21 +25,6 @@ export function workloadJwtOptions(
     throw new Error(`${WORKLOAD_JWT_CONFIG_ENV} must contain a JSON object`);
   }
   return parsed;
-}
-
-export function resolveDataToken(
-  home: string,
-  input: { authToken?: string; authTokenFile?: string },
-  tokens: TokenStore,
-  dataTokenPath: (home: string) => string
-): { token: string; path: string } {
-  const path = input.authTokenFile ?? dataTokenPath(home);
-  const ensured = tokens.ensureOwnerDataToken({
-    ...(input.authToken !== undefined ? { plaintext: input.authToken } : {}),
-    plaintextPath: path
-  });
-  if (ensured.token.length === 0) throw new Error("RouteKit data-plane token is empty");
-  return { token: ensured.token, path };
 }
 
 export type DaemonPublicRecord = {
@@ -68,30 +56,6 @@ export function writeDaemonPublicRecord(home: string, record: DaemonPublicRecord
 
 export function removeDaemonPublicRecord(home: string): void {
   rmSync(daemonPublicRecordPath(home), { force: true });
-}
-
-export function dataTokenForPrincipal(
-  tokens: TokenStore,
-  cache: Map<string, string>,
-  ownerToken: string,
-  principal: { id: string; label: string; role: string } | undefined
-): string {
-  if (principal === undefined || principal.role === "ephemeral" || principal.role === "owner") {
-    return ownerToken;
-  }
-  const label = `${principal.label}-data`;
-  const cached = cache.get(label);
-  if (cached !== undefined) return cached;
-  const existing = tokens.findByLabel(label, "data");
-  if (existing !== undefined) tokens.revoke(existing.id);
-  const issued = tokens.issue({
-    label,
-    plane: "data",
-    role: "admin",
-    createdBy: principal.label
-  });
-  cache.set(label, issued.token);
-  return issued.token;
 }
 
 export type RevisionState = { config: number; accounts: number; daemon: number };
@@ -139,6 +103,19 @@ export function writeSnapshot(
   const path = join(directory, `${name}.json`);
   writeFileAtomic(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   chmodSync(path, 0o600);
+}
+
+/** Filesystem adapter used by Effect control handlers. */
+export function writeSnapshotEffect(
+  home: string,
+  category: "catalog" | "health",
+  name: string,
+  value: unknown
+) {
+  return Effect.try({
+    try: () => writeSnapshot(home, category, name, value),
+    catch: toRouteKitFailure
+  });
 }
 
 export async function healthyControl(record: ServiceRecord): Promise<boolean> {

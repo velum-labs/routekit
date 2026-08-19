@@ -1,14 +1,14 @@
-export type { LifecycleLock } from "./services/authority/service.js";
+export type { LifecycleLock } from "./authority-service.js";
 export {
   acquireLifecycleLock,
   nextServiceGeneration
-} from "./services/authority/service.js";
+} from "./authority-service.js";
 export type {
   ServiceDaemonSpec,
   StartDaemonOptions,
   StartDaemonResult,
   StopDaemonResult
-} from "./services/daemon/service.js";
+} from "./daemon-service.js";
 export {
   readLogTail,
   rotateLogFile,
@@ -19,13 +19,13 @@ export {
   waitForProcessExitEffect,
   waitForServiceReady,
   waitForServiceReadyEffect
-} from "./services/daemon/service.js";
+} from "./daemon-service.js";
 export type {
   ServiceRecord,
   ServiceRecordInput,
   ServiceRecordStore,
   ServiceSupervisorKind
-} from "./services/daemon/records.js";
+} from "./daemon-records.js";
 export {
   createServiceRecordStore,
   processAlive,
@@ -33,14 +33,14 @@ export {
   SERVICE_HOME_MODE,
   SERVICE_SUPERVISOR_ENV,
   supervisorFromEnv
-} from "./services/daemon/records.js";
+} from "./daemon-records.js";
 export type {
   CommandRunner,
   DetectSupervisorOptions,
   ServiceUnitSpec,
   SupervisorController,
   SupervisorStatus
-} from "./services/supervisor/service.js";
+} from "./supervisor-service.js";
 export {
   detectSupervisor,
   launchdAgentPlist,
@@ -51,10 +51,10 @@ export {
   systemdServiceUnit,
   systemdUnitName,
   systemdUnitPath
-} from "./services/supervisor/service.js";
+} from "./supervisor-service.js";
 export type {
   UpgradeDaemonInput,
   UpgradeDaemonResult,
   UpgradeStrategy
-} from "./services/upgrade/service.js";
-export { planUpgrade, upgradeDetachedDaemon } from "./services/upgrade/service.js";
+} from "./upgrade-service.js";
+export { planUpgrade, upgradeDetachedDaemon } from "./upgrade-service.js";

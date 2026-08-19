@@ -1,10 +1,12 @@
-import type { Command } from "commander";
+import { commandNames, commandOptions, visibleCommandChildren } from "./effect-command.js";
+import type * as Command from "effect/unstable/cli/Command";
 
 export const COMPLETION_SHELLS = ["bash", "zsh", "fish"] as const;
 export type CompletionShell = (typeof COMPLETION_SHELLS)[number];
 type CommandNode = { names: string[]; subcommands: string[] };
 export type CompletionWalk = {
-  command: Command;
+  command: Command.Command.Any;
+  ancestry: ReadonlyArray<Command.Command.Any>;
   path: string[];
   positional: string[];
   argumentDepth: number;
@@ -20,34 +22,22 @@ export function isCompletionShell(value: string): value is CompletionShell {
   return (COMPLETION_SHELLS as readonly string[]).includes(value);
 }
 
-function visible(commands: readonly Command[]): Command[] {
-  return commands.filter(
-    (command) =>
-      command.name() !== "help" &&
-      !command.name().startsWith("__") &&
-      (command as Command & { _hidden?: boolean })._hidden !== true
-  );
+export function visibleCommandNames(command: Command.Command.Any): string[] {
+  return visibleCommandChildren(command).flatMap((entry) => [...commandNames(entry)]);
 }
 
-/** Visible canonical command names and aliases, in Commander registration order. */
-export function visibleCommandNames(command: Command): string[] {
-  return visible(command.commands).flatMap((entry) => [entry.name(), ...entry.aliases()]);
-}
-
-/** Long options on a command plus inherited global options. */
-export function visibleLongFlags(command: Command): string[] {
+export function visibleLongFlags(commands: readonly Command.Command.Any[]): string[] {
   const flags = new Set<string>();
-  let current: Command | null = command;
-  while (current !== null) {
-    for (const option of current.options) {
-      if (option.long !== undefined && !option.hidden) flags.add(option.long);
+  for (const command of commands) {
+    for (const option of commandOptions(command)) {
+      if (option.hidden) continue;
+      flags.add(`--${option.name}`);
+      for (const alias of option.aliases) flags.add(alias.length === 1 ? `-${alias}` : `--${alias}`);
     }
-    current = current.parent;
   }
   return [...flags];
 }
 
-/** De-duplicate, prefix-filter, and sort completion candidates. */
 export function filterCompletionCandidates(
   candidates: readonly string[],
   currentWord: string
@@ -57,40 +47,41 @@ export function filterCompletionCandidates(
     .sort((left, right) => left.localeCompare(right));
 }
 
-/** Resolve fully typed words against a Commander tree, including aliases. */
-export function walkCompletionTree(program: Command, words: readonly string[]): CompletionWalk {
+export function walkCompletionTree(
+  program: Command.Command.Any,
+  words: readonly string[]
+): CompletionWalk {
   const typed = [...words];
   const currentWord = typed.pop() ?? "";
   let command = program;
+  const ancestry: Command.Command.Any[] = [program];
   const path: string[] = [];
   const positional: string[] = [];
   let argumentDepth = 0;
   for (const word of typed) {
     if (word.startsWith("-")) continue;
-    const next = command.commands.find(
-      (entry) => entry.name() === word || entry.aliases().includes(word)
-    );
+    const next = visibleCommandChildren(command).find((entry) => commandNames(entry).includes(word));
     if (next !== undefined) {
       command = next;
-      path.push(next.name());
+      ancestry.push(next);
+      path.push(next.name);
       argumentDepth = 0;
     } else {
       positional.push(word);
       argumentDepth += 1;
     }
   }
-  return { command, path, positional, argumentDepth, currentWord };
+  return { command, ancestry, path, positional, argumentDepth, currentWord };
 }
 
-/** Filter static and caller-provided dynamic candidates for the current word. */
 export function completionCandidates(
-  program: Command,
+  program: Command.Command.Any,
   words: readonly string[],
   dynamicValues?: CompletionValueProvider
 ): string[] {
   const state = walkCompletionTree(program, words);
   const candidates = state.currentWord.startsWith("-")
-    ? visibleLongFlags(state.command)
+    ? visibleLongFlags(state.ancestry)
     : [
         ...visibleCommandNames(state.command),
         ...(dynamicValues?.(state.path, state.argumentDepth, state.positional) ?? [])
@@ -98,16 +89,15 @@ export function completionCandidates(
   return filterCompletionCandidates(candidates, state.currentWord);
 }
 
-function commandNodes(program: Command): CommandNode[] {
-  return visible(program.commands).map((command) => ({
-    names: [command.name(), ...command.aliases()],
+function commandNodes(program: Command.Command.Any): CommandNode[] {
+  return visibleCommandChildren(program).map((command) => ({
+    names: [...commandNames(command)],
     subcommands: visibleCommandNames(command)
   }));
 }
 
 const words = (values: readonly string[]): string => values.join(" ");
-const topLevelNames = (nodes: readonly CommandNode[]): string[] =>
-  nodes.flatMap((node) => node.names);
+const topLevelNames = (nodes: readonly CommandNode[]): string[] => nodes.flatMap((node) => node.names);
 
 function bashCompletion(binary: string, nodes: readonly CommandNode[]): string {
   const dynamic = `${binary} __complete -- "\${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null`;
@@ -183,7 +173,7 @@ function fishCompletion(binary: string, nodes: readonly CommandNode[]): string {
 export function completionScript(
   shell: CompletionShell,
   binary: string,
-  program: Command
+  program: Command.Command.Any
 ): string {
   const nodes = commandNodes(program);
   switch (shell) {
@@ -193,22 +183,5 @@ export function completionScript(
       return zshCompletion(binary, nodes);
     case "fish":
       return fishCompletion(binary, nodes);
-    default: {
-      const exhaustive: never = shell;
-      throw new Error(`unsupported shell ${String(exhaustive)}`);
-    }
   }
-}
-
-export function registerCompletion(program: Command, binary: string): void {
-  program
-    .command("completion")
-    .description("advanced: print a shell completion script")
-    .argument("<shell>", COMPLETION_SHELLS.join(" | "))
-    .action((shell: string) => {
-      if (!isCompletionShell(shell)) {
-        throw new Error(`unsupported shell "${shell}" (expected ${COMPLETION_SHELLS.join(" | ")})`);
-      }
-      process.stdout.write(completionScript(shell, binary, program));
-    });
 }

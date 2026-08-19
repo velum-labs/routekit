@@ -4,18 +4,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { immutableCliRuntime } from "@velum-labs/routekit-cli-core";
+import {
+  commandChildren,
+  commandOptions,
+  immutableCliRuntime
+} from "@velum-labs/routekit-cli-core";
 import { EVAL_POLICY } from "@velum-labs/routekit-eval-contracts";
 import { Effect } from "effect";
 
 import { buildProgram } from "../cli.js";
+import { child, runProgram } from "./effect-cli-test.js";
 import { evalSessionGatewayUrl } from "../effect/eval-authoring-target.js";
 import { policyShowCommand } from "../effect/eval-cli.js";
 
 const command = (name: string) => {
-  const found = buildProgram().commands.find((entry) => entry.name() === name);
-  assert.ok(found, `missing command ${name}`);
-  return found;
+  return child(buildProgram(), name);
 };
 
 const runtimeFor = (root: string, stdout: string[]) =>
@@ -33,9 +36,7 @@ const runtimeFor = (root: string, stdout: string[]) =>
 
 const runJson = async (root: string, args: readonly string[]): Promise<unknown> => {
   const stdout: string[] = [];
-  await buildProgram(runtimeFor(root, stdout))
-    .exitOverride()
-    .parseAsync(["node", "routekit", "--json", ...args]);
+  await runProgram(buildProgram(runtimeFor(root, stdout)), ["--json", ...args]);
   return JSON.parse(stdout.join("")) as unknown;
 };
 
@@ -54,7 +55,7 @@ test("eval authoring uses the selected remote data URL with the remote session c
 test("eval command tree exposes the compositional product workflow", () => {
   const evalCommand = command("eval");
   assert.deepEqual(
-    evalCommand.commands.map((entry) => entry.name()),
+    commandChildren(evalCommand).map((entry) => entry.name),
     [
       "setup",
       "status",
@@ -69,29 +70,25 @@ test("eval command tree exposes the compositional product workflow", () => {
     ]
   );
 
-  const propose = evalCommand.commands.find((entry) => entry.name() === "propose");
-  const approve = evalCommand.commands.find((entry) => entry.name() === "approve");
+  const propose = child(evalCommand, "propose");
+  const approve = child(evalCommand, "approve");
   assert.deepEqual(
-    propose?.commands.map((entry) => entry.name()),
+    commandChildren(propose).map((entry) => entry.name),
     ["dimensions", "evaluations"]
   );
   assert.deepEqual(
-    approve?.commands.map((entry) => entry.name()),
+    commandChildren(approve).map((entry) => entry.name),
     ["dimensions", "evaluations"]
   );
 
-  const help = evalCommand.helpInformation();
-  assert.doesNotMatch(help, /^\s+(prepare|show)\b/mu);
-  assert.doesNotMatch(help, /profile/u);
+  assert.equal(commandChildren(evalCommand).some((entry) => ["prepare", "show"].includes(entry.name)), false);
+  assert.doesNotMatch(evalCommand.description ?? "", /profile/u);
 });
 
 test("eval workflow defaults to repository state and configured RouteKit targets", () => {
   const evalCommand = command("eval");
-  const subcommand = (name: string) => {
-    const found = evalCommand.commands.find((entry) => entry.name() === name);
-    assert.ok(found, `missing eval ${name}`);
-    return found;
-  };
+  const subcommand = (name: string) => child(evalCommand, name);
+  const optionNames = (name: string) => commandOptions(subcommand(name)).map((option) => option.name);
 
   for (const name of [
     "setup",
@@ -103,22 +100,21 @@ test("eval workflow defaults to repository state and configured RouteKit targets
     "results",
     "publish"
   ]) {
-    assert.match(subcommand(name).helpInformation(), /--repository <path>/u);
+    assert.ok(optionNames(name).includes("repository"));
   }
-  assert.match(subcommand("answer").helpInformation(), /--answer-file <path>/u);
-  assert.match(subcommand("estimate").helpInformation(), /--scope <scope>/u);
-  assert.match(subcommand("run").helpInformation(), /--plan <id>/u);
-  assert.match(subcommand("run").helpInformation(), /--gateway-url <url>/u);
-  assert.match(subcommand("run").helpInformation(), /--token-file <path>/u);
-  assert.doesNotMatch(subcommand("run").helpInformation(), /--url <gateway>/u);
-  assert.doesNotMatch(subcommand("run").helpInformation(), /--token <token>/u);
+  assert.ok(optionNames("answer").includes("answer-file"));
+  assert.ok(optionNames("estimate").includes("scope"));
+  assert.ok(optionNames("run").includes("plan"));
+  assert.ok(optionNames("run").includes("gateway-url"));
+  assert.ok(optionNames("run").includes("token-file"));
+  assert.equal(optionNames("run").includes("url"), false);
+  assert.equal(optionNames("run").includes("token"), false);
 
   const propose = subcommand("propose");
   for (const name of ["dimensions", "evaluations"]) {
-    const authored = propose.commands.find((entry) => entry.name() === name);
-    assert.ok(authored);
-    assert.match(authored.helpInformation(), /configured RouteKit target/u);
-    assert.match(authored.helpInformation(), /--file <path>/u);
+    const authored = child(propose, name);
+    assert.match(authored.description ?? "", /configured RouteKit target/u);
+    assert.ok(commandOptions(authored).some((option) => option.name === "file"));
   }
 });
 

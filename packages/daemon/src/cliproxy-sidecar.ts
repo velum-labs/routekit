@@ -202,3 +202,43 @@ export function createCliproxySidecar(input: {
     })
   };
 }
+
+export type HostedSidecarRequest =
+  | { type: "host.sidecar"; operation: "reconcile"; wanted: boolean }
+  | { type: "host.sidecar"; operation: "refresh" }
+  | { type: "host.sidecar"; operation: "reachable"; timeoutMs?: number }
+  | { type: "host.sidecar"; operation: "status" };
+
+/** Build the worker-side sidecar adapter from the host IPC request boundary. */
+export function createHostedCliproxySidecar(
+  request: <T>(input: HostedSidecarRequest) => Promise<T>
+): CliproxySidecar {
+  let state = { managed: true, running: false };
+  const update = (input: HostedSidecarRequest) =>
+    Effect.tryPromise({
+      try: async () => {
+        state = await request<typeof state>(input);
+      },
+      catch: toRouteKitFailure
+    });
+  return {
+    reconcile: (wanted) => update({ type: "host.sidecar", operation: "reconcile", wanted }),
+    refresh: update({ type: "host.sidecar", operation: "refresh" }),
+    running: () => state.running,
+    managed: () => state.managed,
+    reachable: (timeoutMs) =>
+      Effect.tryPromise({
+        try: async () => {
+          const reachable = await request<boolean>({
+            type: "host.sidecar",
+            operation: "reachable",
+            ...(timeoutMs === undefined ? {} : { timeoutMs })
+          });
+          state = { ...state, running: reachable };
+          return reachable;
+        },
+        catch: toRouteKitFailure
+      }).pipe(Effect.orElseSucceed(() => false)),
+    close: Effect.void
+  };
+}

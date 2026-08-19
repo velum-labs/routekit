@@ -98,6 +98,18 @@ export default {
       }
     },
     {
+      name: "production-cli-does-not-import-commander",
+      comment: "The RouteKit CLI command tree is owned by effect/unstable/cli.",
+      severity: "error",
+      from: {
+        path: "^packages/(cli|cli-core)/src/",
+        pathNot: testSourcePattern
+      },
+      to: {
+        path: "node_modules/commander(/|$)"
+      }
+    },
+    {
       name: "no-cross-package-src-imports",
       comment:
         "Workspace packages must import each other through @velum-labs/routekit* package entry points, not relative paths into another package's src tree.",
@@ -211,10 +223,10 @@ export default {
     {
       name: "online-request-path-does-not-import-eval-engine",
       comment:
-        "Gateway, daemon, and account production paths cannot consume the offline eval engine; eval-service owns that composition.",
+        "Gateway, daemon, accounts, and CLI production paths cannot consume the offline eval engine; eval-service owns that composition.",
       severity: "error",
       from: {
-        path: "^packages/(gateway|daemon|accounts)/",
+        path: "^packages/(gateway|daemon|accounts|cli)/",
         pathNot: testSourcePattern
       },
       to: {

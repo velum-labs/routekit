@@ -65,7 +65,8 @@ a comparison then:
 3. starts a scoped `node --test` child for the discovered eval files;
 4. forwards candidate and judge calls to the request's OpenAI-compatible
    RouteKit gateway;
-5. reads the crash-tolerant result JSONL and JUnit output;
+5. streams Ori's existing crash-tolerant `EvalResultLine` events as they are
+   appended, then uses JUnit names to fill missing case identifiers;
 6. closes the child, request fibers, listener, and temporary files with the
    enclosing Effect scope.
 

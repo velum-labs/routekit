@@ -22,7 +22,7 @@ import { writeDaemonRevisions } from "./daemon-state.js";
 import {
   type RunningGatewayGeneration,
   startGatewayGenerationEffect
-} from "./services/gateway-generation/service.js";
+} from "./gateway-generation.js";
 
 export type DaemonGenerationStage = "prepare" | "validate" | "persist" | "commit" | "retire";
 
@@ -53,7 +53,7 @@ export type DaemonGenerationManagerOptions = {
   getRevisions(): RevisionState;
   setRevisions(revisions: RevisionState): void;
   getActiveRouter(): RunningGatewayGeneration | undefined;
-  setActiveRouter(router: RunningGatewayGeneration): void;
+  setActiveRouter(router: RunningGatewayGeneration): Effect.Effect<void>;
   getProxy(): SwitchingGatewayProxy | undefined;
   activeCredentialFingerprints(): Map<string, string>;
   /** Apply daemon-local configuration before the proxy publishes the candidate. */
@@ -211,7 +211,7 @@ export function createDaemonGenerationManager(
         // mutations are synchronous and are rolled back if the commit hook rejects.
         // swapTarget below is deliberately the final publication operation.
         yield* Effect.gen(function* () {
-          options.setActiveRouter(candidate!);
+          yield* options.setActiveRouter(candidate!);
           options.setCurrentConfig(nextConfig);
           options.setCurrentDocument(committedDocument);
           options.setRevisions(nextRevisions);
@@ -225,12 +225,14 @@ export function createDaemonGenerationManager(
             Effect.gen(function* () {
               const rollbackFailures: unknown[] = [];
               const viewFailure = yield* collectRollback(
-                tryPromise(() => {
-                  options.setActiveRouter(previousRouter);
-                  options.setCurrentConfig(previousConfig);
-                  options.setCurrentDocument(previousDocument);
-                  options.setRevisions(previousRevisions);
-                  options.applyConfig(previousConfig);
+                Effect.gen(function* () {
+                  yield* options.setActiveRouter(previousRouter);
+                  yield* tryPromise(() => {
+                    options.setCurrentConfig(previousConfig);
+                    options.setCurrentDocument(previousDocument);
+                    options.setRevisions(previousRevisions);
+                    options.applyConfig(previousConfig);
+                  });
                 })
               );
               if (viewFailure !== undefined) rollbackFailures.push(viewFailure);

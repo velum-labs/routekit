@@ -103,7 +103,8 @@ export function routekitDependencyViolations(manifests) {
 export function toolRegistryCompositionViolations(manifests) {
   const byName = new Map(manifests.map((entry) => [entry.manifest.name, entry]));
   const registry = byName.get("@velum-labs/routekit-tool-registry");
-  if (registry === undefined) return ["@velum-labs/routekit-tool-registry is missing from the workspace"];
+  if (registry === undefined)
+    return ["@velum-labs/routekit-tool-registry is missing from the workspace"];
 
   const violations = [];
   const registryDependencies = manifestDependencies(registry.manifest);
@@ -164,7 +165,9 @@ export function toolRegistryCliSourceViolations(consumerName, sources) {
       )
     )
   ) {
-    violations.push(`${consumerName} production sources must import @velum-labs/routekit-tool-registry`);
+    violations.push(
+      `${consumerName} production sources must import @velum-labs/routekit-tool-registry`
+    );
   }
   for (const { file, source } of sources) {
     violations.push(...toolRegistryConsumerSourceViolations(file, source));
@@ -196,12 +199,83 @@ export function polynomialTrailingSlashRegexViolations(file, source) {
 }
 
 export function runtimeRootImportViolations(file, source) {
-  if (file.startsWith("packages/eval-engine/")) return [];
   const rootImport =
     /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']@velum-labs\/routekit-runtime["']/;
   return rootImport.test(source)
     ? [`${file} must import a named @velum-labs/routekit-runtime subpath`]
     : [];
+}
+
+export function serviceTaxonomyViolations(file, source) {
+  const normalized = file.split(sep).join("/");
+  const marker = "/src/services/";
+  const markerIndex = normalized.indexOf(marker);
+  const violations = [];
+  if (markerIndex >= 0) {
+    const servicePath = normalized.slice(markerIndex + marker.length);
+    if (servicePath === "index.ts") {
+      violations.push(`${file} must not add a services/index.ts barrel`);
+    } else if (!/^[^/]+\/service\.ts$/u.test(servicePath)) {
+      violations.push(
+        `${file} must use exactly src/services/<service>/service.ts for Effect-owned services`
+      );
+    }
+  }
+  if (
+    /Context\.Service\s*<[\s\S]{0,120}?,\s*(?:Readonly\s*<\s*)?[$A-Z_a-z][$\w]*Store\b/u.test(
+      source
+    )
+  ) {
+    violations.push(`${file} must not expose a store as a Context.Service success type`);
+  }
+  return violations;
+}
+
+const LIFETIME_SERVICE_IDENTIFIERS = [
+  "EvalEngine",
+  "EvalExecutionPort",
+  "EvalComparisonRunner",
+  "Tokens",
+  "Telemetry"
+];
+
+export function effectRuntimeCompositionViolations(file, source) {
+  const violations = [];
+  for (const identifier of LIFETIME_SERVICE_IDENTIFIERS) {
+    const pattern = new RegExp(
+      `Layer\\.succeed\\s*\\([\\s\\S]{0,160}\\b${identifier}\\b|Layer\\.succeed\\s*\\(\\s*${identifier}\\b`,
+      "u"
+    );
+    if (pattern.test(source)) {
+      violations.push(`${file} must acquire ${identifier} with Layer.effect/acquireRelease`);
+    }
+  }
+  if (
+    /\bActiveGateway\b/u.test(source) &&
+    /\bset(?:Router|Proxy|DataUrl|Control)\s*(?:\(|:|=)/u.test(source)
+  ) {
+    violations.push(`${file} must publish ActiveGateway state through Ref/STM, not setX mutators`);
+  }
+  return violations;
+}
+
+const ORI_APPLICATION_PACKAGE =
+  /^packages\/(?:accounts|cli|daemon|eval-service|gateway)\/src\//u;
+
+export function oriApplicationBoundaryViolations(file, source) {
+  const normalized = file.split(sep).join("/");
+  if (!ORI_APPLICATION_PACKAGE.test(normalized)) return [];
+  const violations = [];
+  if (/\b(?:ori-eval-system|HOST\.md)\b/u.test(source)) {
+    violations.push(`${file} must not spawn or direct application code to a second Ori host`);
+  }
+  if (
+    normalized.startsWith("packages/eval-service/src/") &&
+    /(?:routekit-eval-engine|eval-engine)[^"']*\/src\/vendor(?:\/|["'])/u.test(source)
+  ) {
+    violations.push(`${file} must not import eval-engine vendor internals`);
+  }
+  return violations;
 }
 
 const RETIRED_ENG814_IDENTIFIERS = [
@@ -223,13 +297,31 @@ export function retiredEng814SourceViolations(file, source) {
   }
   const spendLimitOwner =
     file === "packages/eval-contracts/src/index.ts" ||
-    file === "packages/eval-service/src/production-runner.ts";
+    file === "packages/eval-service/src/service.ts";
   if (
     !file.startsWith("packages/eval-engine/") &&
     !spendLimitOwner &&
     /\bspendLimitUsd\b/u.test(source)
   ) {
     violations.push(`${file} contains unenforced spendLimitUsd`);
+  }
+  return violations;
+}
+
+const RETIRED_EVAL_RUNNER_WRAPPER_IDENTIFIERS = [
+  "EvalComparisonRunner",
+  "EvalComparisonRunnerShape",
+  "makeEvalComparisonRunner",
+  "makeEvalComparisonRunnerLayer",
+  "RouteKitEvalComparisonRunnerOptions"
+];
+
+export function retiredEvalRunnerWrapperSourceViolations(file, source) {
+  const violations = [];
+  for (const identifier of RETIRED_EVAL_RUNNER_WRAPPER_IDENTIFIERS) {
+    if (new RegExp(`\\b${identifier}\\b`, "u").test(source)) {
+      violations.push(`${file} contains retired eval-runner wrapper ${identifier}`);
+    }
   }
   return violations;
 }

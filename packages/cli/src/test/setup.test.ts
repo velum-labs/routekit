@@ -4,19 +4,19 @@ import type { ProviderSource } from "@velum-labs/routekit-gateway";
 import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 
-import { activationKey } from "../commands/accounts.js";
+import { activationKey } from "../services/account-login/service.js";
 import {
   CONFIG_INIT_PROVIDER_IDS,
   configInitIdempotencyKey,
   configInitRouterConfig
-} from "../commands/config.js";
+} from "../effect/commands/config.js";
 import {
   credentialDescription,
   preferredModelOptions,
   preflightSetupApiProvider,
   SETUP_API_PROVIDER_IDS,
   setupCandidateConfig
-} from "../commands/setup.js";
+} from "../services/setup/service.js";
 
 function source(
   sourceId: "openai" | "anthropic" | "openrouter" | "bedrock",

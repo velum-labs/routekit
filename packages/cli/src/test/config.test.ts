@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { stringify as stringifyYaml } from "yaml";
-import { configImportIdempotencyKey } from "../commands/config.js";
+import { configImportIdempotencyKey } from "../effect/commands/config.js";
 import { globalRouterConfigPath, loadRouterConfig, writeRouterConfig } from "../config.js";
 
 function config(

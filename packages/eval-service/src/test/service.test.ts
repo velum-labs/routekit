@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -10,9 +10,10 @@ import type {
   EvalComparisonResult,
   RoutingBasis
 } from "@velum-labs/routekit-eval-contracts";
+import { EvalEngine, type EvalEngineService } from "@velum-labs/routekit-eval-engine";
 import { Effect, Fiber, Layer } from "effect";
 
-import { EvalComparisonRunner, EvalService, makeEvalServiceLayer } from "../index.js";
+import { EvalService, makeEvalServiceLayer } from "../service.js";
 
 const roots: string[] = [];
 after(async () => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
@@ -39,8 +40,64 @@ const basis: RoutingBasis = {
 const suites = (root: string) =>
   dimensions.map((dimensionId) => ({
     dimensionId,
-    suitePath: path.join(root, `${dimensionId}.eval.ts`)
+    suitePath: path.join(root, dimensionId, `${dimensionId}.eval.ts`)
   }));
+
+const prepareSuites = async (
+  root: string,
+  caseIds: readonly string[] = ["case-1"]
+): Promise<void> => {
+  await Promise.all(
+    dimensions.map(async (dimensionId) => {
+      const directory = path.join(root, dimensionId);
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        path.join(directory, `${dimensionId}.eval.ts`),
+        'import { test } from "node:test"; test("case", () => {});\n'
+      );
+      await writeFile(
+        path.join(directory, "routekit.eval-manifest.json"),
+        `${JSON.stringify({
+          version: 1,
+          profileId: dimensionId,
+          candidateModels: ["openai/cheap", "anthropic/strong"],
+          judgeModel: "openai/judge",
+          caseCount: caseIds.length,
+          caseIds,
+          maxOutputTokens: 256,
+          expectedCallCount: caseIds.length * 4
+        })}\n`
+      );
+    })
+  );
+};
+
+const mockEngineLayer = (
+  runComparison: EvalEngineService["runComparison"],
+  onValidate?: (dimensionId: string) => void
+) =>
+  Layer.succeed(
+    EvalEngine,
+    EvalEngine.of({
+      discover: (target) =>
+        Effect.succeed({
+          searchRoot: target,
+          workingDirectory: path.dirname(target),
+          files: [target]
+        }),
+      validate: (target) => {
+        const dimensionId = path.basename(target, ".eval.ts");
+        onValidate?.(dimensionId);
+        return Effect.succeed({
+          searchRoot: target,
+          workingDirectory: path.dirname(target),
+          files: [target],
+          suiteDigest: `suite-${dimensionId}`
+        });
+      },
+      runComparison
+    })
+  );
 
 const resultFor = (request: EvalComparisonRequest): EvalComparisonResult => ({
   version: 1,
@@ -79,38 +136,21 @@ const qualification = (root: string) => ({
 test("dimension matrix qualification inspects every manifest before publishing one activation", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-dimension-matrix-"));
   roots.push(root);
+  await prepareSuites(root);
   const events: string[] = [];
   const snapshotRoot = path.join(root, "snapshots");
-  const runner = EvalComparisonRunner.layer({
-    validate: () => Effect.void,
-    inspect: (request) =>
-      Effect.sync(() => {
-        events.push(`inspect:${request.profileId}`);
-        return {
-          suiteDigest: `suite-${request.profileId}`,
-          manifest: {
-            version: 1,
-            profileId: request.profileId,
-            candidateModels: request.candidateModels,
-            judgeModel: request.judgeModel,
-            caseCount: 1,
-            caseIds: ["case-1"],
-            maxOutputTokens: 256,
-            expectedCallCount: request.candidateModels.length * 2
-          }
-        };
-      }),
-    estimate: () => Effect.succeed({ callCount: 0, pricingKnown: false }),
-    runComparison: (request) =>
+  const engine = mockEngineLayer(
+    (request) =>
       Effect.sync(() => {
         events.push(`run:${request.profileId}`);
         return resultFor(request);
-      })
-  });
+      }),
+    (dimensionId) => events.push(`inspect:${dimensionId}`)
+  );
   const layer = makeEvalServiceLayer({
     gatewayUrl: "http://127.0.0.1:8080/v1",
     snapshotRoot
-  }).pipe(Layer.provide(runner), Layer.provide(NodeServicesLayer));
+  }).pipe(Layer.provide(engine), Layer.provide(NodeServicesLayer));
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
@@ -133,30 +173,13 @@ test("dimension matrix qualification inspects every manifest before publishing o
 test("dimension matrix qualification never publishes incomplete comparison evidence", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-dimension-matrix-incomplete-"));
   roots.push(root);
+  await prepareSuites(root, ["case-1", "case-2"]);
   const snapshotRoot = path.join(root, "snapshots");
-  const runner = EvalComparisonRunner.layer({
-    validate: () => Effect.void,
-    inspect: (request) =>
-      Effect.succeed({
-        suiteDigest: `suite-${request.profileId}`,
-        manifest: {
-          version: 1,
-          profileId: request.profileId,
-          candidateModels: request.candidateModels,
-          judgeModel: request.judgeModel,
-          caseCount: 2,
-          caseIds: ["case-1", "case-2"],
-          maxOutputTokens: 256,
-          expectedCallCount: request.candidateModels.length * 4
-        }
-      }),
-    estimate: () => Effect.succeed({ callCount: 0, pricingKnown: false }),
-    runComparison: (request) => Effect.succeed(resultFor(request))
-  });
+  const engine = mockEngineLayer((request) => Effect.succeed(resultFor(request)));
   const layer = makeEvalServiceLayer({
     gatewayUrl: "http://127.0.0.1:8080/v1",
     snapshotRoot
-  }).pipe(Layer.provide(runner), Layer.provide(NodeServicesLayer));
+  }).pipe(Layer.provide(engine), Layer.provide(NodeServicesLayer));
 
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -174,34 +197,17 @@ test("dimension matrix qualification never publishes incomplete comparison evide
 test("interrupted qualification leaves no half-published activation for a daemon restart", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-dimension-matrix-interrupted-"));
   roots.push(root);
+  await prepareSuites(root);
   const snapshotRoot = path.join(root, "snapshots");
   let runs = 0;
-  const runner = EvalComparisonRunner.layer({
-    validate: () => Effect.void,
-    inspect: (request) =>
-      Effect.succeed({
-        suiteDigest: `suite-${request.profileId}`,
-        manifest: {
-          version: 1,
-          profileId: request.profileId,
-          candidateModels: request.candidateModels,
-          judgeModel: request.judgeModel,
-          caseCount: 1,
-          caseIds: ["case-1"],
-          maxOutputTokens: 256,
-          expectedCallCount: request.candidateModels.length * 2
-        }
-      }),
-    estimate: () => Effect.succeed({ callCount: 0, pricingKnown: false }),
-    runComparison: (request) => {
-      runs += 1;
-      return runs === 1 ? Effect.succeed(resultFor(request)) : Effect.never;
-    }
+  const engine = mockEngineLayer((request) => {
+    runs += 1;
+    return runs === 1 ? Effect.succeed(resultFor(request)) : Effect.never;
   });
   const layer = makeEvalServiceLayer({
     gatewayUrl: "http://127.0.0.1:8080/v1",
     snapshotRoot
-  }).pipe(Layer.provide(runner), Layer.provide(NodeServicesLayer));
+  }).pipe(Layer.provide(engine), Layer.provide(NodeServicesLayer));
 
   await Effect.runPromise(
     Effect.gen(function* () {

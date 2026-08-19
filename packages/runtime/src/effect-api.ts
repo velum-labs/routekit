@@ -42,6 +42,6 @@ export { executeWebRequest, fetchResponseFromClient } from "./network/http.js";
 export type { NodeHttpHandler } from "./network/node-http.js";
 export { createNodeHttpHandler, createNodeHttpHandlerEffect } from "./network/node-http.js";
 export { superviseSpawnEffect } from "./process/supervisor.js";
-export { startControlServerEffect } from "./services/control-server/service.js";
+export { startControlServerEffect } from "./control-server-service.js";
 export type { SingleFlight } from "./lifecycle/single-flight.js";
 export { makeSingleFlight } from "./lifecycle/single-flight.js";

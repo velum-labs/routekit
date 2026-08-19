@@ -11,7 +11,7 @@ import { ControlError } from "@velum-labs/routekit-runtime/control";
 import { Context, Effect, Layer } from "effect";
 
 import { ActiveGateway } from "../active-gateway/service.js";
-import { DaemonEnv } from "../daemon-env/service.js";
+import { DaemonEnv } from "../../daemon-env-context.js";
 
 type SessionState = {
   readonly id: string;

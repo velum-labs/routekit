@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
-import { trimTrailingSlashes } from "@velum-labs/routekit-runtime";
+import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { Context, Data, Effect, Layer, Scope } from "effect";
 import {
   HttpBody,

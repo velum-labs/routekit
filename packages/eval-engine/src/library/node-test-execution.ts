@@ -1,9 +1,13 @@
+import { readFileSync, watch } from "node:fs";
+import { basename, dirname } from "node:path";
+
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import { Effect, Fiber, Stream } from "effect";
+import { Cause, Effect, Fiber, Option, Queue, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
   makeEvalJunitPath,
-  readEvalTests
+  readEvalTests,
+  type EvalTestRow
 } from "../vendor/framework/cli/src/commands/eval/junit.ts";
 import {
   acquireEvalSdk,
@@ -12,8 +16,9 @@ import {
 import {
   makeEvalResultsPath,
   ROUTEKIT_EVAL_RESULTS_FILE_ENV,
-  readEvalResults
+  type EvalResultLine
 } from "../vendor/framework/cli/src/commands/eval/results.ts";
+import { decodeLine } from "../vendor/framework/cli/src/commands/eval/results-lines.ts";
 import {
   applyEvalSdkEnv,
   ROUTEKIT_EVAL_COMPARISON_ID_ENV,
@@ -22,7 +27,6 @@ import {
 import {
   type EvalEngineDiscovery,
   EvalEngineExecutionError,
-  type EvalExecutionOutput,
   type EvalExecutionPortService
 } from "./eval-engine.ts";
 
@@ -96,7 +100,7 @@ const testFilesWithConcurrency = (
 ): readonly string[] =>
   concurrency === undefined ? files : [`--test-concurrency=${String(concurrency)}`, ...files];
 
-const executeNodeTests = Effect.fn("RouteKitEval.executeNodeTests")(function* (input: {
+const executeNodeTests = (input: {
   readonly bridgeOrigin: string;
   readonly childEnvironment: Readonly<Record<string, string | undefined>>;
   readonly comparisonId: string;
@@ -104,65 +108,185 @@ const executeNodeTests = Effect.fn("RouteKitEval.executeNodeTests")(function* (i
   readonly discovery: EvalEngineDiscovery;
   readonly execPath: string;
   readonly timeoutMs: number;
-}) {
-  const resultsPath = yield* makeEvalResultsPath();
-  const junitPath = yield* makeEvalJunitPath();
-  const sdk = yield* acquireEvalSdk(input.discovery.workingDirectory);
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const command = ChildProcess.make(
-    input.execPath,
-    [
-      ...evalNodeTestArgs({
-        files: testFilesWithConcurrency(input.discovery.files, input.concurrency),
-        junitPath,
-        specDestination: "stdout",
-        testNameFilter: undefined,
-        timeout: input.timeoutMs
-      })
-    ],
-    {
-      cwd: input.discovery.workingDirectory,
-      env: applyEvalSdkEnv(
+}) =>
+  Stream.callback<EvalResultLine, EvalEngineExecutionError, any>((queue) =>
+    Effect.gen(function* () {
+      const resultsPath = yield* makeEvalResultsPath();
+      const junitPath = yield* makeEvalJunitPath();
+      const sdk = yield* acquireEvalSdk(input.discovery.workingDirectory);
+      const resultEvents = yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          let offset = 0;
+          let pending = Buffer.alloc(0);
+          let emitted = 0;
+          let observed = 0;
+          let closed = false;
+          const awaitingCaseName: EvalResultLine[] = [];
+          const emit = (event: EvalResultLine): void => {
+            observed += 1;
+            if (
+              ("requestedModel" in event || "model" in event) &&
+              event.caseId === undefined &&
+              event.role !== "judge"
+            ) {
+              awaitingCaseName.push(event);
+              return;
+            }
+            emitted += 1;
+            Queue.offerUnsafe(queue, event);
+          };
+          const publish = (final = false): void => {
+            let contents: Buffer;
+            try {
+              contents = readFileSync(resultsPath);
+            } catch (cause) {
+              const code = (cause as NodeJS.ErrnoException).code;
+              if (code === "ENOENT") return;
+              Queue.failCauseUnsafe(
+                queue,
+                Cause.fail(
+                  executionError("RouteKit Eval could not read Ori's result event channel.", cause)
+                )
+              );
+              return;
+            }
+            if (contents.length < offset) {
+              offset = 0;
+              pending = Buffer.alloc(0);
+            }
+            if (contents.length > offset) {
+              pending = Buffer.concat([pending, contents.subarray(offset)]);
+              offset = contents.length;
+            }
+            let newline = pending.indexOf(0x0a);
+            while (newline >= 0) {
+              const line = pending.subarray(0, newline).toString("utf8");
+              pending = pending.subarray(newline + 1);
+              const decoded = decodeLine(line);
+              if (Option.isSome(decoded)) {
+                emit(decoded.value);
+              }
+              newline = pending.indexOf(0x0a);
+            }
+            if (final && pending.length > 0) {
+              const decoded = decodeLine(pending.toString("utf8"));
+              pending = Buffer.alloc(0);
+              if (Option.isSome(decoded)) {
+                emit(decoded.value);
+              }
+            }
+          };
+          const watcher = watch(dirname(resultsPath), { persistent: false }, (_event, file) => {
+            if (file === null || basename(file.toString()) === basename(resultsPath)) publish();
+          });
+          watcher.on("error", (cause) => {
+            Queue.failCauseUnsafe(
+              queue,
+              Cause.fail(
+                executionError("RouteKit Eval could not watch Ori's result event channel.", cause)
+              )
+            );
+          });
+          return {
+            close: () => {
+              if (closed) return;
+              closed = true;
+              watcher.close();
+            },
+            count: () => observed,
+            flushCaseNames: (tests: readonly EvalTestRow[]) => {
+              const caseByRun = new Map<string, string>();
+              let testIndex = 0;
+              for (const event of awaitingCaseName) {
+                const runKey = "runKey" in event ? event.runKey : undefined;
+                let caseId = runKey === undefined ? undefined : caseByRun.get(runKey);
+                if (caseId === undefined) {
+                  caseId = tests[testIndex]?.name;
+                  testIndex += 1;
+                  if (runKey !== undefined && caseId !== undefined) caseByRun.set(runKey, caseId);
+                }
+                emitted += 1;
+                Queue.offerUnsafe(
+                  queue,
+                  caseId === undefined ? event : { ...event, caseId }
+                );
+              }
+              awaitingCaseName.length = 0;
+            },
+            publish
+          };
+        }),
+        (events) => Effect.sync(events.close)
+      );
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const command = ChildProcess.make(
+        input.execPath,
+        [
+          ...evalNodeTestArgs({
+            files: testFilesWithConcurrency(input.discovery.files, input.concurrency),
+            junitPath,
+            specDestination: "stdout",
+            testNameFilter: undefined,
+            timeout: input.timeoutMs
+          })
+        ],
         {
-          ...input.childEnvironment,
-          [ROUTEKIT_EVAL_COMPARISON_ID_ENV]: input.comparisonId,
-          [ROUTEKIT_EVAL_RESULTS_FILE_ENV]: resultsPath,
-          [ROUTEKIT_EVAL_RUNTIME_ORIGIN_ENV]: input.bridgeOrigin
-        },
-        sdk
-      ),
-      extendEnv: false,
-      forceKillAfter: 5_000,
-      stderr: "pipe",
-      stdin: "ignore",
-      stdout: "pipe"
-    }
-  );
-  const handle = yield* spawner.spawn(command);
-  const stdout = yield* Stream.runDrain(handle.stdout).pipe(
-    Effect.ignore,
-    Effect.forkScoped({ startImmediately: true })
-  );
-  const stderr = yield* Stream.runDrain(handle.stderr).pipe(
-    Effect.ignore,
-    Effect.forkScoped({ startImmediately: true })
-  );
-  const exitCode = Number(yield* handle.exitCode);
-  yield* Fiber.join(stdout);
-  yield* Fiber.join(stderr);
+          cwd: input.discovery.workingDirectory,
+          env: applyEvalSdkEnv(
+            {
+              ...input.childEnvironment,
+              [ROUTEKIT_EVAL_COMPARISON_ID_ENV]: input.comparisonId,
+              [ROUTEKIT_EVAL_RESULTS_FILE_ENV]: resultsPath,
+              [ROUTEKIT_EVAL_RUNTIME_ORIGIN_ENV]: input.bridgeOrigin
+            },
+            sdk
+          ),
+          extendEnv: false,
+          forceKillAfter: 5_000,
+          stderr: "pipe",
+          stdin: "ignore",
+          stdout: "pipe"
+        }
+      );
+      const handle = yield* spawner.spawn(command);
+      const stdout = yield* Stream.runDrain(handle.stdout).pipe(
+        Effect.ignore,
+        Effect.forkScoped({ startImmediately: true })
+      );
+      const stderr = yield* Stream.runDrain(handle.stderr).pipe(
+        Effect.ignore,
+        Effect.forkScoped({ startImmediately: true })
+      );
+      const exitCode = Number(yield* handle.exitCode);
+      yield* Fiber.join(stdout);
+      yield* Fiber.join(stderr);
+      resultEvents.publish(true);
+      resultEvents.flushCaseNames(yield* readEvalTests(junitPath));
+      resultEvents.close();
 
-  // Read both channels even after a failed test process. Completed rows before
-  // a later assertion failure or interruption are still valid evidence.
-  const results = yield* readEvalResults(resultsPath);
-  const tests = yield* readEvalTests(junitPath);
-  if (exitCode !== 0 && results.length === 0 && tests.length === 0) {
-    return yield* executionError(
-      `RouteKit Eval node:test child exited with code ${String(exitCode)} before producing evidence.`,
-      new Error(`node:test exit code ${String(exitCode)}`)
-    );
-  }
-  return { results, tests } satisfies EvalExecutionOutput;
-});
+      if (exitCode !== 0 && resultEvents.count() === 0) {
+        return yield* executionError(
+          `RouteKit Eval node:test child exited with code ${String(exitCode)} before producing evidence.`,
+          new Error(`node:test exit code ${String(exitCode)}`)
+        );
+      }
+      Queue.endUnsafe(queue);
+    }).pipe(
+      Effect.catch((cause) =>
+        Effect.sync(() => {
+          Queue.failCauseUnsafe(
+            queue,
+            Cause.fail(executionError("RouteKit Eval could not execute node:test.", cause))
+          );
+        })
+      ),
+      Effect.forkScoped({ startImmediately: true })
+    )
+  ).pipe(Stream.scoped, Stream.provide(NodeServicesLayer)) as Stream.Stream<
+    EvalResultLine,
+    EvalEngineExecutionError,
+    never
+  >;
 
 /**
  * Construct the concrete `node:test` execution port used by RouteKit Eval.
@@ -175,23 +299,21 @@ export const makeNodeTestExecutionPort = (
   options: NodeTestExecutionOptions
 ): EvalExecutionPortService => ({
   execute: ({ comparisonId, discovery, request }) =>
-    Effect.gen(function* () {
-      const bridgeOrigin = yield* validateBridgeOrigin(options.bridgeOrigin);
-      const childEnvironment = yield* validateChildEnvironment(options.childEnvironment ?? {});
-      return yield* executeNodeTests({
-        bridgeOrigin,
-        childEnvironment,
-        comparisonId,
-        concurrency: request.concurrency,
-        discovery,
-        execPath: options.execPath ?? globalThis.process.execPath,
-        timeoutMs: request.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS
-      });
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(NodeServicesLayer),
-      Effect.mapError((cause) =>
-        executionError("RouteKit Eval could not execute node:test.", cause)
-      )
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const bridgeOrigin = yield* validateBridgeOrigin(options.bridgeOrigin);
+        const childEnvironment = yield* validateChildEnvironment(options.childEnvironment ?? {});
+        return executeNodeTests({
+          bridgeOrigin,
+          childEnvironment,
+          comparisonId,
+          concurrency: request.concurrency,
+          discovery,
+          execPath: options.execPath ?? globalThis.process.execPath,
+          timeoutMs: request.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS
+        });
+      })
+    ).pipe(
+      Stream.mapError((cause) => executionError("RouteKit Eval could not execute node:test.", cause))
     )
 });

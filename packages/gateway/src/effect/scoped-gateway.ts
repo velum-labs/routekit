@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { type GatewayOptions, startGatewayEffect } from "../services/gateway/service.js";
+import { type GatewayOptions, startGatewayEffect } from "../gateway-service.js";
 
 /**
  * Own a gateway listener for the current Effect scope.

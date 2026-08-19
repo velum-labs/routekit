@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Effect } from "effect";
 
 import {
   type AutoRoutingDecision,
@@ -124,15 +125,17 @@ function route(
   objective: RoutingObjectivePolicy,
   overrides: Partial<Parameters<typeof routeCompositionalRequest>[0]> = {}
 ) {
-  return routeCompositionalRequest({
-    snapshot: snapshot(),
-    decomposition: decomposition(),
-    requirements,
-    objective,
-    availableModels,
-    maximumUnknownWeight: 0.25,
-    ...overrides
-  });
+  return Effect.runSync(
+    routeCompositionalRequest({
+      snapshot: snapshot(),
+      decomposition: decomposition(),
+      requirements,
+      objective,
+      availableModels,
+      maximumUnknownWeight: 0.25,
+      ...overrides
+    })
+  );
 }
 
 test("routes a mixed-dimension request by deterministic matrix composition", () => {

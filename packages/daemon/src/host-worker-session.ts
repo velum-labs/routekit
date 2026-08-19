@@ -2,7 +2,7 @@ import type { Worker } from "node:cluster";
 import cluster from "node:cluster";
 
 import { RouteKitFailure, toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import { Deferred, Effect, Exit } from "effect";
 
 import {
   DAEMON_HOST_PROTOCOL_VERSION,
@@ -33,11 +33,7 @@ type WorkerChannel = RequestReplyChannel<
   Extract<HostWorkerMessage, { type: "worker.response" }>
 >;
 
-type ReadyWaiter = {
-  resolve(ready: WorkerReady): void;
-  reject(error: Error): void;
-  timer: NodeJS.Timeout;
-};
+type ReadyWaiter = Deferred.Deferred<WorkerReady, Error>;
 
 export type HostWorkerSpawnEnv = {
   env: NodeJS.ProcessEnv;
@@ -90,18 +86,34 @@ export class HostWorkerSession {
     return await this.#channel.request<T>(input);
   }
 
+  requestEffect<T>(input: WorkerRequestInput): Effect.Effect<T, Error> {
+    return Effect.tryPromise({
+      try: () => this.request<T>(input),
+      catch: toRouteKitFailure
+    });
+  }
+
   shutdown(): Effect.Effect<void, Error> {
     return shutdownWorker(this.worker, this.#channel);
   }
 
-  retire(): void {
-    void this.request({ type: "worker.retire", graceMs: this.#drainGraceMs }).catch(() => {
-      this.worker.process.kill("SIGTERM");
+  retire(): Effect.Effect<void> {
+    const self = this;
+    const worker = this.worker;
+    return Effect.gen(function* () {
+      yield* self.requestEffect({
+        type: "worker.retire",
+        graceMs: self.#drainGraceMs
+      }).pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            if (!worker.isDead()) worker.process.kill("SIGTERM");
+          })
+        )
+      );
+      yield* Effect.sleep(`${self.#drainGraceMs + RETIRE_FORCE_EXTRA_MS} millis`);
+      if (!worker.isDead()) worker.process.kill("SIGKILL");
     });
-    const forced = setTimeout(() => {
-      if (!this.worker.isDead()) this.worker.process.kill("SIGKILL");
-    }, this.#drainGraceMs + RETIRE_FORCE_EXTRA_MS);
-    forced.unref();
   }
 }
 
@@ -176,33 +188,44 @@ export class HostWorkerCoordinator {
       });
       const channel = createChannel(worker);
       self.#channels.set(worker.id, channel);
-      const ready = yield* Effect.tryPromise({
-        try: () =>
-          new Promise<WorkerReady>((resolve, reject) => {
-            const timer = setTimeout(() => {
-              self.#readyWaiters.delete(worker.id);
-              reject(
-                new RouteKitFailure({
-                  message: `daemon worker ${worker.process.pid ?? worker.id} did not become ready`
-                })
-              );
-            }, WORKER_READY_TIMEOUT_MS);
-            timer.unref();
-            self.#readyWaiters.set(worker.id, { resolve, reject, timer });
-            worker.once("exit", (code, signal) => {
-              const waiter = self.#readyWaiters.get(worker.id);
-              if (waiter === undefined) return;
-              self.#readyWaiters.delete(worker.id);
-              clearTimeout(waiter.timer);
-              reject(
-                new RouteKitFailure({
-                  message: `daemon worker exited before readiness (${signal ?? `code ${code ?? "unknown"}`})`
-                })
-              );
-            });
-          }),
-        catch: toRouteKitFailure
+      const readyWaiter = Deferred.makeUnsafe<WorkerReady, Error>();
+      self.#readyWaiters.set(worker.id, readyWaiter);
+      worker.once("exit", (code, signal) => {
+        const waiter = self.#readyWaiters.get(worker.id);
+        if (waiter === undefined) return;
+        self.#readyWaiters.delete(worker.id);
+        Deferred.doneUnsafe(
+          waiter,
+          Exit.fail(
+            new RouteKitFailure({
+              message: `daemon worker exited before readiness (${signal ?? `code ${code ?? "unknown"}`})`
+            })
+          )
+        );
       });
+      const ready = yield* Deferred.await(readyWaiter).pipe(
+        Effect.timeoutOrElse({
+          duration: `${WORKER_READY_TIMEOUT_MS} millis`,
+          orElse: () =>
+            Effect.fail(
+              new RouteKitFailure({
+                message: `daemon worker ${worker.process.pid ?? worker.id} did not become ready`
+              })
+            )
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            self.#readyWaiters.delete(worker.id);
+          })
+        ),
+        Effect.tapError(() =>
+          Effect.sync(() => {
+            channel.close(new Error("daemon worker failed during readiness"));
+            self.#channels.delete(worker.id);
+            if (!worker.isDead()) worker.process.kill("SIGTERM");
+          })
+        )
+      );
       if (ready.protocolVersion !== DAEMON_HOST_PROTOCOL_VERSION) {
         yield* shutdownWorker(worker, channel);
         self.#channels.delete(worker.id);
@@ -233,8 +256,7 @@ export class HostWorkerCoordinator {
       const waiter = this.#readyWaiters.get(worker.id);
       if (waiter === undefined) return true;
       this.#readyWaiters.delete(worker.id);
-      clearTimeout(waiter.timer);
-      waiter.resolve(message);
+      Deferred.doneUnsafe(waiter, Exit.succeed(message));
       return true;
     }
     if (message.type === "worker.response") {

@@ -23,25 +23,21 @@ export class CliSession {
   targetSelection: TargetSelection = { local: false };
   telemetryTarget: ResolvedTelemetryTarget | undefined;
   readonly remotes: RemoteStores;
-  #effectRuntime: RouteKitManagedRuntime | undefined;
+  readonly effectRuntime: RouteKitManagedRuntime;
+  readonly #ownsEffectRuntime: boolean;
 
   constructor(
     readonly runtime: CliRuntime,
-    remotes: RemoteStores = createRemoteStores()
+    remotes: RemoteStores = createRemoteStores(),
+    effectRuntime?: RouteKitManagedRuntime
   ) {
     this.remotes = remotes;
-  }
-
-  /** Process-lifetime Effect runtime for this CLI invocation. */
-  get effectRuntime(): RouteKitManagedRuntime {
-    this.#effectRuntime ??= makeRouteKitRuntime();
-    return this.#effectRuntime;
+    this.effectRuntime = effectRuntime ?? makeRouteKitRuntime();
+    this.#ownsEffectRuntime = effectRuntime === undefined;
   }
 
   async dispose(): Promise<void> {
-    if (this.#effectRuntime === undefined) return;
-    await this.#effectRuntime.dispose();
-    this.#effectRuntime = undefined;
+    if (this.#ownsEffectRuntime) await this.effectRuntime.dispose();
   }
 }
 
@@ -80,4 +76,9 @@ export function cliTryPromise<A>(run: () => Promise<A>): Effect.Effect<A, RouteK
     try: run,
     catch: (cause) => toRouteKitFailure(cause)
   });
+}
+
+/** Construct a typed CLI failure for direct `yield*` from command programs. */
+export function cliFailure(message: string): RouteKitFailure {
+  return new RouteKitFailure({ message });
 }

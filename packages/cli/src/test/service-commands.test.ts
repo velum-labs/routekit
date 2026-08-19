@@ -8,8 +8,8 @@ import { parseRouterConfig, type RouterConfig } from "@velum-labs/routekit-confi
 import { SERVICE_UNSET_ENV } from "@velum-labs/routekit-runtime/environment";
 
 import { daemonServeArgs } from "../client.js";
-import { drainGraceMs } from "../commands/serve-options.js";
-import { argsWithPort } from "../commands/upgrade.js";
+import { drainGraceMs } from "../effect/serve-options.js";
+import { argsWithPort } from "../effect/commands/upgrade.js";
 import {
   daemonUnitSpec,
   missingServiceCredentialVariables,

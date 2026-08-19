@@ -8,10 +8,10 @@ export type {
   RelayLifecycle,
   RequestRelay,
   TokenCountRelay
-} from "./services/gateway/service.js";
-export { startGateway } from "./services/gateway/service.js";
+} from "./gateway-service.js";
+export { startGateway } from "./gateway-service.js";
 export type {
   SwitchingGatewayProxy,
   SwitchingGatewayProxyOptions
-} from "./services/switching-proxy/service.js";
-export { startSwitchingGatewayProxy } from "./services/switching-proxy/service.js";
+} from "./switching-proxy.js";
+export { startSwitchingGatewayProxy } from "./switching-proxy.js";

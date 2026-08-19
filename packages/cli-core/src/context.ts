@@ -11,7 +11,6 @@ import type {
 } from "@velum-labs/routekit-cli-ui";
 
 import { createPresenter, PlainPresenter, stripAnsi } from "@velum-labs/routekit-cli-ui";
-import type { Command } from "commander";
 
 export type GlobalFlags = {
   json: boolean;
@@ -110,19 +109,14 @@ class QuietPresenter extends PlainPresenter {
   }
 }
 
-type RawGlobalOpts = { json?: boolean; yes?: boolean; quiet?: boolean; input?: boolean };
-
-export function contextFor(
-  command: Command,
+export function contextForFlags(
+  flags: GlobalFlags,
   runtime: CliRuntime = processCliRuntime
 ): CommandContext {
-  const opts = command.optsWithGlobals<RawGlobalOpts>();
-  const json = opts.json === true;
-  const quiet = opts.quiet === true;
-  const noInput = opts.input === false;
+  const { json, noInput, quiet, yes } = flags;
   return {
     json,
-    yes: opts.yes === true,
+    yes,
     quiet,
     noInput,
     presenter:
@@ -131,12 +125,4 @@ export function contextFor(
         : createPresenter(noInput ? { interactive: false } : undefined),
     emit: (payload) => emitJson(payload, runtime)
   };
-}
-
-export function attachGlobalFlags(program: Command): Command {
-  return program
-    .option("--json", "emit a machine-readable JSON result on stdout (implies non-interactive)")
-    .option("--no-input", "never prompt; prompts resolve to their defaults")
-    .option("--yes", "accept confirmations without asking")
-    .option("--quiet", "suppress informational output (warnings and errors still print)");
 }

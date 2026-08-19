@@ -24,9 +24,14 @@ function helpHasCommand(output, command) {
   return new RegExp(`^  ${command}(?:[ <\\[]|$)`, "m").test(output);
 }
 
+function hasUnknownSubcommand(result, command) {
+  const output = `${result.stdout}\n${result.stderr}`;
+  return new RegExp(`Unknown subcommand ["']${command}["']`, "i").test(output);
+}
+
 const routeHelp = runCli(ROUTE_CLI, ["--help"]);
 if (routeHelp.status !== 0) fail(`\`routekit --help\` exited ${routeHelp.status}`);
-if (!routeHelp.stdout.startsWith("Usage: routekit ")) {
+if (!/^USAGE\r?\n  routekit(?:\s|$)/m.test(routeHelp.stdout)) {
   fail("RouteKit help does not identify the routekit executable");
 }
 for (const command of [
@@ -62,7 +67,7 @@ for (const notOffered of ["cursor", "opencode", "google", "gemini", "grok", "kim
   }
 }
 const gatewayProbe = runCli(ROUTE_CLI, ["gateway", "serve"]);
-if (gatewayProbe.status === 0 || !gatewayProbe.stderr.includes("unknown command")) {
+if (gatewayProbe.status === 0 || !hasUnknownSubcommand(gatewayProbe, "gateway")) {
   fail("`routekit gateway serve` unexpectedly still exists");
 }
 const daemonHelp = runCli(ROUTE_CLI, ["daemon", "--help"]);
@@ -77,10 +82,7 @@ for (const topLevelOnly of ["start", "status", "stop"]) {
     fail(`RouteKit daemon help duplicates top-level command "${topLevelOnly}"`);
   }
   const retiredNestedProbe = runCli(ROUTE_CLI, ["daemon", topLevelOnly]);
-  if (
-    retiredNestedProbe.status === 0 ||
-    !retiredNestedProbe.stderr.includes(`unknown command '${topLevelOnly}'`)
-  ) {
+  if (retiredNestedProbe.status === 0 || !hasUnknownSubcommand(retiredNestedProbe, topLevelOnly)) {
     fail(`\`routekit daemon ${topLevelOnly}\` unexpectedly still exists`);
   }
 }

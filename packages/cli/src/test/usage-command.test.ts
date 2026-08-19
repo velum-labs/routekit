@@ -5,9 +5,10 @@ import type {
   SubscriptionMemberStatus,
   SubscriptionUsageResponse
 } from "@velum-labs/routekit-accounts";
-import { CliError } from "@velum-labs/routekit-cli-core";
+import { CliError, commandOptions } from "@velum-labs/routekit-cli-core";
 import { buildProgram } from "../cli.js";
-import { chooseCodexMember, chooseResetCreditId, soonestResetCredit } from "../commands/usage.js";
+import { child, runProgram } from "./effect-cli-test.js";
+import { chooseCodexMember, chooseResetCreditId, soonestResetCredit } from "../effect/commands/usage.js";
 
 function member(label: string, resetCredits?: ResetCreditSnapshot): SubscriptionMemberStatus {
   return {
@@ -139,21 +140,17 @@ test("chooseResetCreditId supports explicit, automated, and count-only paths", a
 });
 
 test("usage redeem help documents selection flags", () => {
-  const usageCommand = buildProgram().commands.find((command) => command.name() === "usage");
-  const redeem = usageCommand?.commands.find((command) => command.name() === "redeem");
-  assert.ok(redeem);
-  assert.match(redeem.description(), /banked Codex rate-limit reset/i);
-  const help = redeem.helpInformation();
-  assert.match(help, /--label/);
-  assert.match(help, /--credit-id/);
-  assert.match(help, /--provider/);
+  const redeem = child(child(buildProgram(), "usage"), "redeem");
+  assert.match(redeem.description ?? "", /banked Codex rate-limit reset/i);
+  const flags = commandOptions(redeem).map((option) => option.name);
+  assert.ok(flags.includes("label"));
+  assert.ok(flags.includes("credit-id"));
+  assert.ok(flags.includes("provider"));
 });
 
 test("usage redeem requires --yes outside interactive mode before daemon work", async () => {
   await assert.rejects(
-    buildProgram().parseAsync([
-      "node",
-      "routekit",
+    runProgram(buildProgram(), [
       "--json",
       "usage",
       "redeem",

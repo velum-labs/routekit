@@ -7,14 +7,10 @@ import type {
   RouteKitControlResults
 } from "@velum-labs/routekit-control";
 import { ControlError } from "@velum-labs/routekit-runtime/control";
-import { toRouteKitFailure } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
-import type { CliproxySidecar } from "./cliproxy-sidecar.js";
-import {
-  bootstrapRouteKitDaemon,
-  type RouteKitDaemonOptions,
-  type RunningRouteKitDaemon
-} from "./daemon-bootstrap.js";
+import { Deferred, Effect, Layer, ManagedRuntime, Queue, Ref } from "effect";
+
+import { daemonLive } from "./effect/daemon-live.js";
+import type { RouteKitDaemonOptions } from "./daemon-options.js";
 import type { HostIdempotencyBegin } from "./host-idempotency.js";
 import {
   DAEMON_HOST_PROTOCOL_VERSION,
@@ -33,24 +29,29 @@ import {
   type WorkerToHostRequest
 } from "./host-protocol.js";
 import { RequestReplyChannel } from "./ipc-request-channel.js";
+import { DaemonRuntime, type DaemonRuntimeValue } from "./services/daemon-runtime/service.js";
+import { WorkerIpc, type WorkerIpcValue } from "./services/worker-ipc/service.js";
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
-  if (value === undefined || value.length === 0)
+  if (value === undefined || value.length === 0) {
     throw new Error(`missing hosted worker environment ${name}`);
+  }
   return value;
 }
 
 function positiveInteger(value: string, name: string): number {
   const parsed = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new Error(`invalid hosted worker ${name}`);
+  }
   return parsed;
 }
 
 function send(message: HostWorkerMessage): void {
-  if (typeof process.send !== "function")
+  if (typeof process.send !== "function") {
     throw new Error("hosted daemon worker has no IPC channel");
+  }
   process.send(message);
 }
 
@@ -71,10 +72,10 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
     requiredEnv(env, ROUTEKIT_DAEMON_CONTROL_PORT_ENV),
     "control port"
   );
-  let dataUrl = requiredEnv(env, ROUTEKIT_DAEMON_DATA_URL_ENV);
-  let rolling = env[ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV] === "1";
-  let sidecarState = { managed: true, running: false };
-  let running: RunningRouteKitDaemon | undefined;
+  const hostState = Ref.makeUnsafe({
+    dataUrl: requiredEnv(env, ROUTEKIT_DAEMON_DATA_URL_ENV),
+    rolling: env[ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV] === "1"
+  });
 
   const hostRequests = new RequestReplyChannel<
     WorkerHostRequestInput,
@@ -100,42 +101,6 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
 
   const requestHost = async <T>(request: WorkerHostRequestInput): Promise<T> =>
     await hostRequests.request<T>(request);
-
-  const sidecar: CliproxySidecar = {
-    reconcile: (wanted) =>
-      Effect.tryPromise({
-        try: async () => {
-          sidecarState = await requestHost({
-            type: "host.sidecar",
-            operation: "reconcile",
-            wanted
-          });
-        },
-        catch: toRouteKitFailure
-      }),
-    refresh: Effect.tryPromise({
-      try: async () => {
-        sidecarState = await requestHost({ type: "host.sidecar", operation: "refresh" });
-      },
-      catch: toRouteKitFailure
-    }),
-    running: () => sidecarState.running,
-    managed: () => sidecarState.managed,
-    reachable: (timeoutMs) =>
-      Effect.tryPromise({
-        try: async () => {
-          const reachable = await requestHost<boolean>({
-            type: "host.sidecar",
-            operation: "reachable",
-            timeoutMs
-          });
-          sidecarState = { ...sidecarState, running: reachable };
-          return reachable;
-        },
-        catch: toRouteKitFailure
-      }).pipe(Effect.orElseSucceed(() => false)),
-    close: Effect.void
-  };
 
   const onRollRequested = async (
     params: RouteKitControlParams["daemon.roll"]
@@ -173,103 +138,136 @@ export async function runRouteKitDaemonWorker(options: RouteKitDaemonOptions): P
     }
   };
 
-  process.on("message", (message: HostWorkerMessage) => {
-    if (message.type === "host.response") {
-      hostRequests.accept(message);
-      return;
-    }
-    if (!message.type.startsWith("worker.")) return;
-    const request = message as WorkerRequest;
-    void (async () => {
-      try {
-        let result: unknown;
-        switch (request.type) {
-          case "worker.pause":
-            result = await running?.pauseMutations();
-            break;
-          case "worker.resume":
-            running?.resumeMutations();
-            rolling = false;
-            break;
-          case "worker.hostState":
-            dataUrl = request.dataUrl;
-            rolling = request.rolling;
-            break;
-          case "worker.retire":
-            await running?.retire(request.graceMs);
-            result = { retired: true };
-            break;
-          case "worker.shutdown":
-            await running?.close();
-            result = { closed: true };
-            break;
-        }
-        send({
-          type: "worker.response",
-          requestId: request.requestId,
-          ok: true,
-          result
-        } satisfies WorkerResponse);
-        if (request.type === "worker.retire" || request.type === "worker.shutdown") {
-          setImmediate(() => process.exit(0));
-        }
-      } catch (error) {
-        send({
-          type: "worker.response",
-          requestId: request.requestId,
-          ok: false,
-          error: error instanceof Error ? error.message : String(error)
-        } satisfies WorkerResponse);
-      }
-    })();
-  });
-  process.once("disconnect", () => {
-    hostRequests.close(new Error("daemon host disconnected"));
-    void running?.close().finally(() => process.exit(1));
-  });
+  const daemonOptions: RouteKitDaemonOptions = {
+    ...options,
+    port: dataPort,
+    controlPort,
+    hosted: {
+      generation,
+      controlToken,
+      dataUrl: () => Ref.getUnsafe(hostState).dataUrl,
+      hostPid,
+      hostStartedAt,
+      rolling: () => Ref.getUnsafe(hostState).rolling,
+      sidecarRequest: requestHost,
+      initiallyPaused: env[ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV] === "1",
+      executeIdempotent
+    },
+    onRollRequested,
+    onShutdownRequested: (reason) => send({ type: "host.shutdown", reason })
+  };
+  const ipc = WorkerIpc.layer((message) => hostRequests.accept(message));
+  const application = Layer.unwrap(
+    Effect.map(WorkerIpc, () => daemonLive(daemonOptions))
+  ).pipe(Layer.provideMerge(ipc));
+  const runtime = ManagedRuntime.make(application);
 
+  const runWorker = (daemon: DaemonRuntimeValue, workerIpc: WorkerIpcValue) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const snapshot = yield* daemon.snapshot;
+        send({
+          type: "worker.ready",
+          protocolVersion: DAEMON_HOST_PROTOCOL_VERSION,
+          workerPid: process.pid,
+          ...(daemon.record.processIdentity === undefined
+            ? {}
+            : { workerProcessIdentity: daemon.record.processIdentity }),
+          workerStartedAt: daemon.record.startedAt,
+          packageVersion: options.packageVersion,
+          generation,
+          configRevision: snapshot.configRevision,
+          accountRevision: snapshot.accountRevision,
+          configHash: snapshot.configHash,
+          controlUrl: daemon.controlUrl,
+          controlPort: daemon.record.port,
+          dataUrl: daemon.dataUrl,
+          dataPort: daemon.record.dataPort ?? 0,
+          ...(process.argv[1] === undefined ? {} : { binPath: process.argv[1] })
+        });
+
+        const handleRequest = Effect.fn("DaemonWorker.handleRequest")(function* (
+          request: WorkerRequest
+        ) {
+          const result = yield* Effect.gen(function* () {
+            switch (request.type) {
+              case "worker.pause":
+                return yield* daemon.pauseMutations;
+              case "worker.resume":
+                yield* daemon.resumeMutations;
+                yield* Ref.update(hostState, (state) => ({ ...state, rolling: false }));
+                return undefined;
+              case "worker.hostState":
+                yield* Ref.set(hostState, {
+                  dataUrl: request.dataUrl,
+                  rolling: request.rolling
+                });
+                return undefined;
+              case "worker.retire":
+                yield* daemon.prepareRetire(request.graceMs);
+                return { retired: true };
+              case "worker.shutdown":
+                yield* daemon.prepareClose;
+                return { closed: true };
+            }
+          });
+          send({
+            type: "worker.response",
+            requestId: request.requestId,
+            ok: true,
+            result
+          } satisfies WorkerResponse);
+          if (request.type === "worker.retire" || request.type === "worker.shutdown") {
+            yield* Deferred.succeed(workerIpc.finished, undefined);
+          }
+        });
+
+        yield* Effect.forever(
+          Queue.take(workerIpc.events).pipe(
+            Effect.flatMap((event) =>
+              event.type === "disconnect"
+                ? Effect.gen(function* () {
+                    const error = new ControlError({
+                      code: "unavailable",
+                      message: "daemon host disconnected"
+                    });
+                    hostRequests.close(error);
+                    yield* daemon.prepareClose.pipe(Effect.ignore);
+                    yield* Deferred.fail(workerIpc.finished, error);
+                  })
+                : handleRequest(event.request).pipe(
+                    Effect.catch((error) =>
+                      Effect.sync(() =>
+                        send({
+                          type: "worker.response",
+                          requestId: event.request.requestId,
+                          ok: false,
+                          error: error instanceof Error ? error.message : String(error)
+                        } satisfies WorkerResponse)
+                      )
+                    )
+                  )
+            )
+          )
+        ).pipe(Effect.forkScoped);
+
+        yield* Deferred.await(workerIpc.finished);
+      })
+    );
+
+  let exitCode = 0;
   try {
-    running = await bootstrapRouteKitDaemon({
-      ...options,
-      port: dataPort,
-      controlPort,
-      hosted: {
-        generation,
-        controlToken,
-        dataUrl: () => dataUrl,
-        hostPid,
-        hostStartedAt,
-        rolling: () => rolling,
-        sidecar,
-        initiallyPaused: env[ROUTEKIT_DAEMON_INITIAL_PAUSED_ENV] === "1",
-        executeIdempotent
-      },
-      onRollRequested,
-      onShutdownRequested: (reason) => send({ type: "host.shutdown", reason })
-    });
+    const [daemon, workerIpc] = await runtime.runPromise(
+      Effect.all([DaemonRuntime, WorkerIpc])
+    );
+    await runtime.runPromise(runWorker(daemon, workerIpc));
   } catch (error) {
+    exitCode = 1;
     if (process.connected) process.disconnect();
     throw error;
+  } finally {
+    hostRequests.close(new Error("daemon worker stopped"));
+    await runtime.dispose();
   }
-  const snapshot = running.snapshot();
-  send({
-    type: "worker.ready",
-    protocolVersion: DAEMON_HOST_PROTOCOL_VERSION,
-    workerPid: process.pid,
-    ...(running.record.processIdentity !== undefined
-      ? { workerProcessIdentity: running.record.processIdentity }
-      : {}),
-    workerStartedAt: running.record.startedAt,
-    packageVersion: options.packageVersion,
-    generation,
-    configRevision: snapshot.configRevision,
-    accountRevision: snapshot.accountRevision,
-    configHash: snapshot.configHash,
-    controlUrl: running.controlUrl,
-    controlPort: running.record.port,
-    dataUrl: running.dataUrl,
-    dataPort: running.record.dataPort ?? 0,
-    ...(process.argv[1] !== undefined ? { binPath: process.argv[1] } : {})
-  });
-  return await new Promise<never>(() => undefined);
+  process.exit(exitCode);
 }

@@ -333,32 +333,29 @@ export function resolveCompositionalAutoRoutingModel(
       )
     );
 
-    const decision = yield* Effect.try({
-      try: () =>
-        routeCompositionalRequest({
-          snapshot,
-          decomposition: {
-            version: COMPOSITIONAL_ROUTING_VERSION,
-            basisDigest: snapshot.basisDigest,
-            weights: validated.weights,
-            unknownWeight: validated.unknownWeight
-          },
-          requirements: options.requirements,
-          objective: snapshot.objective,
-          availableModels: options.availableModels,
-          maximumUnknownWeight: snapshot.maximumUnknownWeight,
-          ...(snapshot.constraints === undefined ? {} : { constraints: snapshot.constraints })
-        }),
-      catch: (cause) =>
-        new AutoRoutingUnavailableError({
-          profileId: undefined,
-          message:
-            cause instanceof CompositionalRoutingError
-              ? cause.message
-              : "compositional automatic model routing failed",
-          cause
-        })
-    });
+    const decision = yield* routeCompositionalRequest({
+      snapshot,
+      decomposition: {
+        version: COMPOSITIONAL_ROUTING_VERSION,
+        basisDigest: snapshot.basisDigest,
+        weights: validated.weights,
+        unknownWeight: validated.unknownWeight
+      },
+      requirements: options.requirements,
+      objective: snapshot.objective,
+      availableModels: options.availableModels,
+      maximumUnknownWeight: snapshot.maximumUnknownWeight,
+      ...(snapshot.constraints === undefined ? {} : { constraints: snapshot.constraints })
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new AutoRoutingUnavailableError({
+            profileId: undefined,
+            message: cause.message,
+            cause
+          })
+      )
+    );
     options.onDecision?.(decision, validated.classifierCallId);
     return decision.selectedModel;
   });

@@ -5,9 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { Effect, Exit, Fiber } from "effect";
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
+import { Effect, Exit, Fiber, Stream } from "effect";
 
 import { makeNodeTestExecutionPort } from "../../src/library/node-test-execution.ts";
+import { makeRouteKitEvalExecutionPort } from "../../src/library/routekit-execution.ts";
+import { joinOutcomes } from "../../src/vendor/framework/cli/src/commands/eval/results-lines.ts";
 
 const makeDiscovery = async (source?: string) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-node-test-"));
@@ -77,6 +80,14 @@ const startRuntimeBridge = async (answer: string) => {
   };
 };
 
+const runExecution = <A, E>(stream: Stream.Stream<A, E>) =>
+  Stream.runCollect(stream).pipe(
+    Effect.map((events) => ({
+      events,
+      results: joinOutcomes(events as Parameters<typeof joinOutcomes>[0])
+    }))
+  );
+
 const exists = async (target: string): Promise<boolean> => {
   try {
     await access(target);
@@ -114,7 +125,7 @@ test("node:test execution rejects credentials before spawning a child", async ()
         discovery: suite,
         request: request(suite.searchRoot)
       })
-      .pipe(Effect.exit)
+      .pipe(Stream.runDrain, Effect.exit)
   );
 
   assert.equal(Exit.isFailure(exit), true);
@@ -138,7 +149,7 @@ test("node:test execution rejects credential-bearing bridge URLs", async () => {
         discovery: suite,
         request: request(suite.searchRoot)
       })
-      .pipe(Effect.exit)
+      .pipe(Stream.runDrain, Effect.exit)
   );
 
   assert.equal(Exit.isFailure(exit), true);
@@ -168,16 +179,16 @@ test("concurrent executions isolate bridges, comparison ids, results, and SDK li
     const [alphaOutput, betaOutput] = await Effect.runPromise(
       Effect.all(
         [
-          makeNodeTestExecutionPort({ bridgeOrigin: alpha.origin }).execute({
+          runExecution(makeNodeTestExecutionPort({ bridgeOrigin: alpha.origin }).execute({
             comparisonId: "comparison-alpha",
             discovery: alphaSuite,
             request: request(alphaSuite.searchRoot)
-          }),
-          makeNodeTestExecutionPort({ bridgeOrigin: beta.origin }).execute({
+          })),
+          runExecution(makeNodeTestExecutionPort({ bridgeOrigin: beta.origin }).execute({
             comparisonId: "comparison-beta",
             discovery: betaSuite,
             request: request(betaSuite.searchRoot)
-          })
+          }))
         ],
         { concurrency: "unbounded" }
       )
@@ -205,14 +216,8 @@ test("concurrent executions isolate bridges, comparison ids, results, and SDK li
       })),
       [{ model: "openai/candidate", outcome: "passed" }]
     );
-    assert.deepEqual(
-      alphaOutput.tests.map(({ status }) => status),
-      ["pass"]
-    );
-    assert.deepEqual(
-      betaOutput.tests.map(({ status }) => status),
-      ["pass"]
-    );
+    assert.equal(alphaOutput.events.length >= 2, true);
+    assert.equal(betaOutput.events.length >= 2, true);
     assert.equal(
       await exists(path.join(alphaSuite.workingDirectory, "node_modules", "routekit")),
       false
@@ -251,26 +256,29 @@ test("interrupting execution terminates the hanging child and cleans scoped arti
       'import { test } from "node:test";',
       `writeFileSync(${JSON.stringify(marker)}, JSON.stringify({`,
       "  pid: process.pid,",
-      "  resultsPath: process.env.ROUTEKIT_EVAL_RESULTS_FILE",
+      "  resultsPath: process.env.ROUTEKIT_EVAL_RESULTS_FILE,",
+      "  runtimeOrigin: process.env.ROUTEKIT_EVAL_RUNTIME_ORIGIN,",
       "}));",
       'test("hangs", async () => {',
       "  await new Promise(() => {});",
       "});"
     ].join("\n")
   );
-  const port = makeNodeTestExecutionPort({
-    bridgeOrigin: "http://127.0.0.1:12345",
-    execPath: wrapper
-  });
   const fiber = Effect.runFork(
-    port.execute({
-      comparisonId: "comparison-hanging",
-      discovery: suite,
-      request: {
-        ...request(suite.searchRoot),
-        timeoutMs: 60_000
-      }
-    })
+    Effect.gen(function* () {
+      const port = yield* makeRouteKitEvalExecutionPort({
+        bearerCredential: "parent-only-test-token",
+        execPath: wrapper
+      });
+      return yield* Stream.runDrain(port.execute({
+        comparisonId: "comparison-hanging",
+        discovery: suite,
+        request: {
+          ...request(suite.searchRoot),
+          timeoutMs: 60_000
+        }
+      }));
+    }).pipe(Effect.provide(NodeHttpClient.layerUndici))
   );
 
   try {
@@ -278,6 +286,7 @@ test("interrupting execution terminates the hanging child and cleans scoped arti
     const child = JSON.parse(await readFile(marker, "utf8")) as {
       readonly pid: number;
       readonly resultsPath: string;
+      readonly runtimeOrigin: string;
     };
     const pid = child.pid;
     assert.equal(Number.isInteger(pid) && pid > 0, true);
@@ -297,16 +306,15 @@ test("interrupting execution terminates the hanging child and cleans scoped arti
     assert.equal(await exists(path.dirname(child.resultsPath)), true);
     assert.equal(await exists(path.dirname(junitPath ?? "")), true);
     assert.equal(await exists(sdkDirectory), true);
+    const liveBridge = await fetch(`${child.runtimeOrigin}/not-a-route`);
+    assert.equal(liveBridge.status >= 400, true);
 
     await Effect.runPromise(Fiber.interrupt(fiber));
-    await waitUntil(async () => {
-      try {
-        process.kill(pid, 0);
-        return false;
-      } catch (cause) {
-        return (cause as NodeJS.ErrnoException).code === "ESRCH";
-      }
-    });
+    assert.throws(
+      () => process.kill(pid, 0),
+      (cause: unknown) => (cause as NodeJS.ErrnoException).code === "ESRCH"
+    );
+    await assert.rejects(fetch(`${child.runtimeOrigin}/not-a-route`));
 
     assert.equal(await exists(sdkLink), false);
     assert.equal(await exists(sdkDirectory), false);

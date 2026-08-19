@@ -2,12 +2,12 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `e95fa45277be13159dd14764bb8ab746c7c7dfd5c6741ec6a56af5a2dac2eb16`
+Declaration SHA-256: `0df89caf201d1639376d164fd5afde2f69517a519e5ddf48c95099cc65e88654`
 
 ## Root declarations
 
 ```ts
-export type { AccountEndpointConfig, EndpointHealthProbe, EndpointHealthProbePlan, EndpointHealthResult, ModelEndpointConfig, UrlEndpointConfig } from "./services/endpoint-health/service.js";
+export type { AccountEndpointConfig, EndpointHealthProbe, EndpointHealthProbePlan, EndpointHealthResult, ModelEndpointConfig, UrlEndpointConfig } from "./endpoint-health-service.js";
 export type { AcpAgentOptions, AcpRunner, AcpRunnerInput, AcpRunnerResult } from "./acp/agent.js";
 export type { AcpRegistry, AcpRegistryAgent, InstallAcpAdaptersOptions, InstalledAcpAdapter } from "./acp/registry.js";
 export type { AnthropicNativeContentBlock, AnthropicRequestMetadata, RouteKitMessageEnvelope, RouteKitReasoningEnvelope } from "./adapters/openai-chat-wire.js";
@@ -24,7 +24,7 @@ export type { CompositionalRoutingObservation, CompositionalRoutingPolicyReader,
 export type { DialectName, DroppedFieldSpan } from "./adapters/dropped.js";
 export type { EndpointPipeline } from "./endpoint-pipeline.js";
 export type { EvalSessionAdmission, GatewayPrincipal, WorkloadJwtPrincipalPolicy, WorkloadJwtVerifierOptions } from "./http/auth.js";
-export type { Gateway, GatewayOptions, ModelCatalogRelay, ProviderRelayDialect, ProviderRelayPorts, RelayLifecycle, RequestRelay, TokenCountRelay } from "./services/gateway/service.js";
+export type { Gateway, GatewayOptions, ModelCatalogRelay, ProviderRelayDialect, ProviderRelayPorts, RelayLifecycle, RequestRelay, TokenCountRelay } from "./gateway-service.js";
 export type { GatewayDialect, ModelCallRecord, ModelGatewayCallContext, ModelGatewayCallResult, ProvenanceSink } from "./observability/provenance.js";
 export type { ModelCatalogEntry, RoutePlan } from "./routing/core.js";
 export type { ObservedDecompositionResult, RequestDecomposerService } from "./routing/classifier.js";
@@ -32,7 +32,7 @@ export type { OpenAiBackendOptions } from "./providers/openai-backend.js";
 export type { OpenRouterModelMetadata, OpenRouterModelMetadataClientOptions, ResolvedCodexStartupSelection } from "./providers/codex-model-selection.js";
 export type { ProviderBackendOptions, ProviderTransport } from "./providers/backends.js";
 export type { ResponsesRequest, ResponsesToolKind, ResponsesToolRegistry } from "./adapters/responses.js";
-export type { SwitchingGatewayProxy } from "./services/switching-proxy/service.js";
+export type { SwitchingGatewayProxy } from "./switching-proxy.js";
 export type { WebSearchDialect, WebSearchExecutor } from "./adapters/web-search.js";
 export { ACP_PROTOCOL_VERSION, runAcpAgent } from "./acp/agent.js";
 export { ACP_REGISTRY_URL, fetchAcpRegistry, installAcpAdapters } from "./acp/registry.js";
@@ -60,12 +60,12 @@ export { decodeAnthropicSseEvent, decodeAnthropicWebSearchResult, decodeOpenAiCh
 export { decodeBufferedSse, SseDecoder, SseParseError } from "./sse/parse.js";
 export { deriveRoutingRequirements, routingModelAvailability } from "./routing/requirements.js";
 export { effectiveModel, isStream, withDefaultModel } from "./adapters/chat.js";
-export { endpointHealthProbe, probeEndpointHealth, providerAuthHeaders } from "./services/endpoint-health/service.js";
+export { endpointHealthProbe, probeEndpointHealth, providerAuthHeaders } from "./endpoint-health-service.js";
 export { errorEvent, finishChunk, noticeChunk, reasoningChunk, sseResponse } from "./sse/wire.js";
-export { invokeObservedModelCall } from "./services/model-call/service.js";
+export { invokeObservedModelCall } from "./model-call-service.js";
 export { isCursorChatBody, translateCursorRequest } from "./adapters/cursor.js";
 export { isSubscriptionProvider, modelPolicyAllowsModel, modelPolicyRuleMatches, NoModelAvailableError, RoutingBackend, UnknownModelError } from "./routing/router.js";
 export { runEndpointPipeline } from "./endpoint-pipeline.js";
-export { startGateway } from "./services/gateway/service.js";
-export { startSwitchingGatewayProxy } from "./services/switching-proxy/service.js";
+export { startGateway } from "./gateway-service.js";
+export { startSwitchingGatewayProxy } from "./switching-proxy.js";
 ```

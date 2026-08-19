@@ -336,6 +336,11 @@ export class CallAttributionStore implements ProvenanceSink {
     return this.#entries.size;
   }
 
+  clear(): void {
+    this.#entries.clear();
+    this.#evicted = false;
+  }
+
   #prune(now: number): void {
     for (const [callId, entry] of this.#entries) {
       if (now - entry.insertedAt <= this.#ttlMs) break;

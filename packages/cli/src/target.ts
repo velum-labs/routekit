@@ -1,4 +1,3 @@
-import type { Command } from "commander";
 import { activeCliSession, type CliSession, type TargetSelection } from "./cli-session.js";
 import type { RouteKitRemote } from "./remotes.js";
 
@@ -8,17 +7,6 @@ export type RouteKitTarget =
 
 export function setTargetSelection(next: TargetSelection, session: CliSession): void {
   session.targetSelection = next.local ? { local: true } : next;
-}
-
-export function setTargetSelectionFromCommand(command: Command, session: CliSession): void {
-  const options = command.optsWithGlobals<{ local?: boolean; remote?: string }>();
-  setTargetSelection(
-    {
-      local: options.local === true,
-      ...(options.remote !== undefined ? { remote: options.remote } : {})
-    },
-    session
-  );
 }
 
 export function selectedRemoteMetadata(): RouteKitRemote | undefined {

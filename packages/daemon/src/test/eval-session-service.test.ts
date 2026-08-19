@@ -109,3 +109,35 @@ test("eval sessions close when their Effect-owned daemon scope is disposed", asy
 
   assert.equal(sessions.resolve(opened.bearerCredential), undefined);
 });
+
+test("a restarted eval-session layer cannot authenticate an old bearer", async () => {
+  let firstSequence = 30;
+  const firstRuntime = ManagedRuntime.make(
+    EvalSessions.layer({
+      now: () => 0,
+      random: (bytes) => Buffer.alloc(bytes, ++firstSequence)
+    })
+  );
+  const first = await firstRuntime.runPromise(EvalSessions);
+  const opened = first.open({
+    purpose: "qualification",
+    operationId: "restart-old-bearer",
+    allowedModels: ["openai/gpt-5.6-luna"],
+    limits,
+    expiresInSeconds: 120,
+    gatewayUrl: "http://127.0.0.1:8080",
+    targetIdentity: "routekit-generation:1"
+  });
+  await firstRuntime.dispose();
+
+  let secondSequence = 60;
+  const secondRuntime = ManagedRuntime.make(
+    EvalSessions.layer({
+      now: () => 0,
+      random: (bytes) => Buffer.alloc(bytes, ++secondSequence)
+    })
+  );
+  const second = await secondRuntime.runPromise(EvalSessions);
+  assert.equal(second.resolve(opened.bearerCredential), undefined);
+  await secondRuntime.dispose();
+});

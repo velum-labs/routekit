@@ -2,16 +2,16 @@
 
 > Intentional public surface snapshot. This is a review guard, not a stability promise.
 
-Declaration SHA-256: `171b559e1bc680ed51f3bee2f4559eb2b4e623fad3c37279cc347f8c35562020`
+Declaration SHA-256: `4f8da3076edf9c4ab5041b300594088fb914f3043b0f09c3c85b5390866f3755`
 
 ## Root declarations
 
 ```ts
 export type { CompileDimensionEvidenceMatrixInput, CompiledDimensionEvidenceMatrix, DimensionComparisonEvidenceInput } from "./dimension-evidence.js";
-export type { DimensionMatrixQualificationInput, DimensionMatrixQualificationResult, DimensionMatrixSuite, EvalComparisonEstimate, EvalComparisonMode, EvalComparisonRunnerShape, EvalRunConfiguration, EvalServiceConfiguration, EvalServiceError, EvalServiceShape, EvalSuiteInspection } from "./service.js";
-export type { RouteKitEvalComparisonRunnerOptions } from "./production-runner.js";
-export { EvalComparisonRunner, EvalService, makeEvalService, makeEvalServiceLayer } from "./service.js";
-export { EvalComparisonRunnerCredentialError, EvalComparisonRunnerManifestError, makeEvalComparisonRunner, makeEvalComparisonRunnerLayer } from "./production-runner.js";
-export { EvalServiceComparisonError, EvalServiceConfigurationError, EvalServicePolicyError, EvalServicePublicationError, EvalServiceValidationError } from "./errors.js";
+export type { DimensionMatrixQualificationInput, DimensionMatrixQualificationResult, DimensionMatrixSuite, EvalComparisonEstimate, EvalComparisonMode, EvalRunConfiguration, EvalServiceConfiguration, EvalServiceError, EvalServiceShape, EvalSuiteInspection } from "./service.js";
+export type { RouteKitEvalServiceOptions } from "./production-runner.js";
+export { EvalService } from "./service.js";
+export { EvalServiceComparisonError, EvalServiceConfigurationError, EvalServiceEstimateError, EvalServicePolicyError, EvalServicePublicationError, EvalServiceSpendLimitError, EvalServiceValidationError } from "./errors.js";
+export { EvalServiceCredentialError, makeRouteKitEvalServiceLayer } from "./production-runner.js";
 export { compileDimensionEvidenceMatrix, DimensionEvidenceCompilationError, wilsonLowerBound95 } from "./dimension-evidence.js";
 ```
