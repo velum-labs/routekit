@@ -1,5 +1,17 @@
 # @velum-labs/routekit-gateway
 
+## 1.0.1
+
+### Patch Changes
+
+- e8b810e: Translate legacy `max_tokens` to `max_completion_tokens` for GPT-5-family Chat Completions requests.
+  - @velum-labs/routekit-config-core@1.0.1
+  - @velum-labs/routekit-contracts@1.0.1
+  - @velum-labs/routekit-eval-contracts@1.0.1
+  - @velum-labs/routekit-eval-core@1.0.1
+  - @velum-labs/routekit-registry@1.0.1
+  - @velum-labs/routekit-runtime@1.0.1
+
 ## 1.0.0
 
 ### Major Changes
