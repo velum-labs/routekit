@@ -1,0 +1,64 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-construction-retry-3-v1
+objective: Retry three registry-generation responses that exhausted the original completion-token limit.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 1bcb63f8197396eadb275ed049d38b687f3e634d
+dataset:
+  id: onboarding-optimization-construction-retry-3-v1
+  hash: 1de30745165918ecb35f633abbb382bc6202fcff926854a0fb7a938848fbcbab
+  role: construction
+matrix:
+  treatments:
+    - id: registry_retry
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation_retry
+        timeoutSeconds: 360
+      estimatedProviderCostUsd: 0.6
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: retry-generate-kubernetes-kubernetes-hybrid_paths_40_diverse_10areas
+    inputArtifact: inputs/onboarding-optimization-construction-retry-3-v1/retry-generate-kubernetes-kubernetes-hybrid_paths_40_diverse_10areas/sha256/56/56fb774e1ecc947deb053defac1d90dfa82ba59405ba048648df3bd0f551afa4.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      originalTaskId: generate-kubernetes-kubernetes
+      originalTreatmentId: hybrid_paths_40_diverse_10areas
+      retryReason: original response reached max_completion_tokens before valid JSON closed
+      originalCompletionLimit: 8192
+      retryCompletionLimit: 16384
+  - id: retry-generate-grafana-grafana-hybrid_paths_40_diverse_rules
+    inputArtifact: inputs/onboarding-optimization-construction-retry-3-v1/retry-generate-grafana-grafana-hybrid_paths_40_diverse_rules/sha256/4d/4def0281ce19fc9d9a801d19e3e5d0acb7d5b662374e24c6d3b34f987d6fb010.json
+    metadata:
+      repositoryId: grafana/grafana
+      originalTaskId: generate-grafana-grafana
+      originalTreatmentId: hybrid_paths_40_diverse_rules
+      retryReason: original response reached max_completion_tokens before valid JSON closed
+      originalCompletionLimit: 8192
+      retryCompletionLimit: 16384
+  - id: retry-generate-grafana-grafana-hybrid_paths_40_diverse_b
+    inputArtifact: inputs/onboarding-optimization-construction-retry-3-v1/retry-generate-grafana-grafana-hybrid_paths_40_diverse_b/sha256/28/281d4ea54df165380e90d86bbaa945940922b850e4db1b166c67ae55544ce9eb.json
+    metadata:
+      repositoryId: grafana/grafana
+      originalTaskId: generate-grafana-grafana
+      originalTreatmentId: hybrid_paths_40_diverse_b
+      retryReason: original response reached max_completion_tokens before valid JSON closed
+      originalCompletionLimit: 8192
+      retryCompletionLimit: 16384
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 3
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 2.07
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
