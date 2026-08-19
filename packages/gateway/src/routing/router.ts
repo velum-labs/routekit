@@ -473,6 +473,7 @@ export class RoutingBackend implements Backend {
             error: {
               type: "invalid_request_error",
               code: "unsupported_reasoning_control",
+              param: requestedSelection.mode === "effort" ? "reasoning.effort" : "reasoning",
               message: selection
             }
           },
@@ -591,6 +592,7 @@ export class RoutingBackend implements Backend {
             error: {
               type: "invalid_request_error",
               code: "unsupported_reasoning_control",
+              param: requestedSelection.mode === "effort" ? "reasoning.effort" : "reasoning",
               message: selection
             }
           },
