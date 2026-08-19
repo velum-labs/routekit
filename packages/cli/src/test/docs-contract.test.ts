@@ -385,7 +385,7 @@ test("usage reset workflow is documented across public references", { skip: !has
     for (const snippet of ["routekit usage", "usage --watch", "usage redeem", "--credit-id"]) {
       assert.ok(source.includes(snippet), `${path} is missing ${snippet}`);
     }
-    assert.doesNotMatch(source, /--watch <seconds>/);
+    assert.doesNotMatch(source, /--watch </);
     assert.match(source, /soonest-expiring/i);
     assert.match(source, /provider choose|provider-selected/i);
   }
