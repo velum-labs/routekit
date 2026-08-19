@@ -1,0 +1,69 @@
+schemaVersion: 1
+experimentId: onboarding-generalization-registries-3-v2
+objective: Generate rule-guided and unconstrained eight-area registries from older coding tasks only, with a fourteen-day embargo before evaluation.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 6577a935c6a7440cac1d869cb61f0b79018a1528
+dataset:
+  id: onboarding-generalization-registries-3-v1
+  hash: 2c5f81ea9ceef41345926a7410d7feb7ac331baee970e94e486a104eb5e120f9
+  role: construction
+matrix:
+  treatments:
+    - id: auto_unconstrained_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: auto_rules_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: generate-backstage-backstage
+    inputArtifact: inputs/onboarding-generalization-registries-3-v1/generate-backstage-backstage/sha256/4a/4a0e62de9376fbd4c52c1d7815872ebe4755f993117600a2a5c84d3b08411901.json
+    metadata:
+      repositoryId: backstage/backstage
+      historicalTasks: 40
+      latestGenerationMergedAt: 2026-07-14T00:19:31Z
+      earliestEvaluationMergedAt: 2026-08-05T07:25:19Z
+      observedGapDays: 22.296
+  - id: generate-grafana-grafana
+    inputArtifact: inputs/onboarding-generalization-registries-3-v1/generate-grafana-grafana/sha256/94/9459ccb0842be7957bbab50fab2cad9f3e403a9294f71b70472962414a73c6f5.json
+    metadata:
+      repositoryId: grafana/grafana
+      historicalTasks: 40
+      latestGenerationMergedAt: 2026-08-03T21:17:12Z
+      earliestEvaluationMergedAt: 2026-08-18T14:32:53Z
+      observedGapDays: 14.719
+  - id: generate-kubernetes-kubernetes
+    inputArtifact: inputs/onboarding-generalization-registries-3-v1/generate-kubernetes-kubernetes/sha256/e4/e40a883bea9bca8342b0d8ea7ab5b293469a578588819000666078663adf1b37.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      historicalTasks: 40
+      latestGenerationMergedAt: 2026-07-08T23:56:28Z
+      earliestEvaluationMergedAt: 2026-07-23T16:03:52Z
+      observedGapDays: 14.672
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 2
+budget:
+  providerMaximumUsd: 3.45
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
