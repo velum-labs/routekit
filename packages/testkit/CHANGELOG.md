@@ -1,5 +1,54 @@
 # @velum-labs/routekit-testkit
 
+## 1.0.0
+
+### Major Changes
+
+- 79fe1c7: Remove retired compatibility surfaces and introduce explicit resource ownership,
+  transactional router generations and remote enrollment, and cancellation-safe
+  harness sessions. Move router configuration ownership into config-core, add
+  validated provider boundary codecs and streaming, decompose routing and HTTP
+  endpoints into explicit ports, make daemon/CLI application services declarative,
+  and enforce intentional package APIs in CI.
+
+### Minor Changes
+
+- 0e67bb3: Introduce the sole compositional eval-routing protocol, repository-scoped review artifacts and immutable plans, bounded eval sessions, atomic routing activation, and the public `routekit eval` workflow.
+
+### Patch Changes
+
+- Updated dependencies [ce85644]
+- Updated dependencies [cf49bbd]
+- Updated dependencies [909aec9]
+- Updated dependencies [17e297a]
+- Updated dependencies [79fe1c7]
+- Updated dependencies [d7678cf]
+- Updated dependencies [0e67bb3]
+- Updated dependencies [dffa147]
+- Updated dependencies [653530c]
+- Updated dependencies [6e6d1f4]
+- Updated dependencies [7a3a4aa]
+- Updated dependencies [abd64a0]
+- Updated dependencies [abe8938]
+- Updated dependencies [661a99e]
+- Updated dependencies [2d7c9de]
+- Updated dependencies [fed39e1]
+- Updated dependencies [d235d33]
+- Updated dependencies [3e3effd]
+- Updated dependencies [a16adf1]
+- Updated dependencies [59c83e0]
+- Updated dependencies [c8c6a06]
+  - @velum-labs/routekit-daemon@1.0.0
+  - @velum-labs/routekit-gateway@1.0.0
+  - @velum-labs/routekit-config@1.0.0
+  - @velum-labs/routekit-registry@1.0.0
+  - @velum-labs/routekit-runtime@1.0.0
+  - @velum-labs/routekit-eval-contracts@1.0.0
+  - @velum-labs/routekit-eval-core@1.0.0
+  - @velum-labs/routekit-eval-service@1.0.0
+  - @velum-labs/routekit-eval-setup@1.0.0
+  - @velum-labs/routekit-eval-store@1.0.0
+
 ## 0.18.2
 
 ### Patch Changes

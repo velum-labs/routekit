@@ -1,5 +1,27 @@
 # @velum-labs/routekit-config-core
 
+## 1.0.0
+
+### Major Changes
+
+- 79fe1c7: Remove retired compatibility surfaces and introduce explicit resource ownership,
+  transactional router generations and remote enrollment, and cancellation-safe
+  harness sessions. Move router configuration ownership into config-core, add
+  validated provider boundary codecs and streaming, decompose routing and HTTP
+  endpoints into explicit ports, make daemon/CLI application services declarative,
+  and enforce intentional package APIs in CI.
+- abe8938: Make control clients depend on an explicit control transport, including a
+  native SSH relay transport instead of adapting SSH through a synthetic
+  `fetch`. Keep configuration-core limited to schemas and policy by removing its
+  Node filesystem/runtime dependency.
+
+### Patch Changes
+
+- dffa147: Move configuredProviderIds onto config-core so the gateway catalog and the config package cannot disagree about which providers are enabled or in what order.
+- Updated dependencies [79fe1c7]
+- Updated dependencies [3e3effd]
+  - @velum-labs/routekit-contracts@1.0.0
+
 ## 0.18.2
 
 ### Patch Changes
