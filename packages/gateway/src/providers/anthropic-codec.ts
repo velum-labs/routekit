@@ -27,11 +27,7 @@ import {
   normalizedOpenAiUsage,
   textContent
 } from "./backend-core.js";
-import {
-  isProviderRecord,
-  ProviderProtocolError,
-  type ProviderRecord
-} from "./protocol.js";
+import { isProviderRecord, ProviderProtocolError, type ProviderRecord } from "./protocol.js";
 
 const BLANK_TURN_PLACEHOLDER = "(continue)";
 
@@ -157,6 +153,22 @@ function anthropicToolChoice(
     : undefined;
 }
 
+function anthropicStructuredOutputFormat(
+  responseFormat: ChatBody["response_format"]
+): Record<string, unknown> | undefined {
+  if (
+    responseFormat?.type !== "json_schema" ||
+    typeof responseFormat.json_schema?.schema !== "object" ||
+    responseFormat.json_schema.schema === null
+  ) {
+    return undefined;
+  }
+  return {
+    type: "json_schema",
+    schema: responseFormat.json_schema.schema
+  };
+}
+
 export function anthropicMessages(body: ChatBody, model: string): Record<string, unknown> {
   const system = (body.messages ?? [])
     .filter((message) => message.role === "system")
@@ -223,6 +235,22 @@ export function anthropicMessages(body: ChatBody, model: string): Record<string,
           : undefined;
   const translatedOutput = selection.mode === "effort" ? { effort: selection.effort } : undefined;
   const thinking = metadata?.thinking ?? translatedThinking;
+  const structuredOutputFormat = anthropicStructuredOutputFormat(body.response_format);
+  const outputConfig =
+    metadata?.output_config != null
+      ? {
+          ...metadata.output_config,
+          ...(structuredOutputFormat !== undefined &&
+          !Object.hasOwn(metadata.output_config, "format")
+            ? { format: structuredOutputFormat }
+            : {})
+        }
+      : translatedOutput !== undefined || structuredOutputFormat !== undefined
+        ? {
+            ...translatedOutput,
+            ...(structuredOutputFormat !== undefined ? { format: structuredOutputFormat } : {})
+          }
+        : undefined;
   const toolChoice = anthropicToolChoice(body.tool_choice, body.parallel_tool_calls);
   return {
     model,
@@ -234,11 +262,7 @@ export function anthropicMessages(body: ChatBody, model: string): Record<string,
     ...(body.top_p !== undefined ? { top_p: body.top_p } : {}),
     ...(body.top_k !== undefined ? { top_k: body.top_k } : {}),
     ...(thinking !== undefined ? { thinking } : {}),
-    ...(metadata?.output_config != null
-      ? { output_config: metadata.output_config }
-      : translatedOutput !== undefined
-        ? { output_config: translatedOutput }
-        : {}),
+    ...(outputConfig !== undefined ? { output_config: outputConfig } : {}),
     ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
     ...(body.tools !== undefined
       ? {
