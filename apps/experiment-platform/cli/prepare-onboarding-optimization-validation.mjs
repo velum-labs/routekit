@@ -32,6 +32,7 @@ const previousRegistryAuditFile = path.join(
   ".routekit-experiment-assets/onboarding-generalization-20260819/evaluation/registry-audit.json"
 );
 const constructionExperimentId = "onboarding-optimization-public-registries-3x13-v1";
+const constructionRetryExperimentId = "onboarding-optimization-construction-retry-3-v1";
 const baseUrl = (
   process.env.EXPERIMENT_PLATFORM_URL ?? "https://routekit-experiments-development.vercel.app"
 ).replace(/\/$/u, "");
@@ -96,18 +97,33 @@ async function outputsByTask(snapshot, ignoreInvalid = false) {
   return new Map(entries);
 }
 
-const [sourceBytes, registryAuditBytes, construction, neutral, neutralRetry] = await Promise.all([
-  readFile(previousSourceFile),
-  readFile(previousRegistryAuditFile),
-  completedExperiment(constructionExperimentId),
-  completedExperiment("onboarding-generalization-neutral-120-v1", true),
-  completedExperiment("onboarding-generalization-neutral-retry-1-v1")
-]);
-const [constructionOutputs, neutralOutputs, neutralRetryOutputs] = await Promise.all([
-  outputsByTask(construction),
-  outputsByTask(neutral, true),
-  outputsByTask(neutralRetry)
-]);
+const [sourceBytes, registryAuditBytes, construction, constructionRetry, neutral, neutralRetry] =
+  await Promise.all([
+    readFile(previousSourceFile),
+    readFile(previousRegistryAuditFile),
+    completedExperiment(constructionExperimentId),
+    completedExperiment(constructionRetryExperimentId),
+    completedExperiment("onboarding-generalization-neutral-120-v1", true),
+    completedExperiment("onboarding-generalization-neutral-retry-1-v1")
+  ]);
+const [constructionOutputs, constructionRetryOutputs, neutralOutputs, neutralRetryOutputs] =
+  await Promise.all([
+    outputsByTask(construction, true),
+    outputsByTask(constructionRetry),
+    outputsByTask(neutral, true),
+    outputsByTask(neutralRetry)
+  ]);
+const constructionRetryMetadata = new Map(
+  constructionRetry.experiment.manifest.tasks.map((task) => [task.id, task.metadata])
+);
+for (const record of constructionRetry.jobs) {
+  const metadata = constructionRetryMetadata.get(record.job.taskId);
+  const output = constructionRetryOutputs.get(`${record.job.taskId}:${record.job.treatmentId}`);
+  if (!metadata?.originalTaskId || !metadata.originalTreatmentId || !output) {
+    throw new Error(`invalid construction retry metadata for ${record.job.id}`);
+  }
+  constructionOutputs.set(`${metadata.originalTaskId}:${metadata.originalTreatmentId}`, output);
+}
 const source = JSON.parse(sourceBytes);
 const previousRegistryAudit = JSON.parse(registryAuditBytes);
 
