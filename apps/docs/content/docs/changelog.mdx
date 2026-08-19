@@ -17,6 +17,31 @@ routekit self-update
 routekit daemon upgrade
 ```
 
+## 1.0.3
+
+### Patch Changes
+
+- 1a117e9: Forward Responses JSON schemas to Anthropic structured outputs and include bounded author output, parse diagnostics, and model call IDs when eval authoring returns invalid JSON.
+- Updated dependencies [1a117e9]
+  - @velum-labs/routekit-gateway@1.0.3
+  - @velum-labs/routekit-accounts@1.0.3
+  - @velum-labs/routekit-daemon@1.0.3
+  - @velum-labs/routekit-cli-core@1.0.3
+  - @velum-labs/routekit-cli-ui@1.0.3
+  - @velum-labs/routekit-config@1.0.3
+  - @velum-labs/routekit-contracts@1.0.3
+  - @velum-labs/routekit-control@1.0.3
+  - @velum-labs/routekit-eval-contracts@1.0.3
+  - @velum-labs/routekit-eval-core@1.0.3
+  - @velum-labs/routekit-eval-service@1.0.3
+  - @velum-labs/routekit-eval-setup@1.0.3
+  - @velum-labs/routekit-eval-store@1.0.3
+  - @velum-labs/routekit-registry@1.0.3
+  - @velum-labs/routekit-runtime@1.0.3
+  - @velum-labs/routekit-telemetry-core@1.0.3
+  - @velum-labs/routekit-tool-registry@1.0.3
+  - @velum-labs/routekit-tools@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes
@@ -198,38 +223,6 @@ routekit daemon upgrade
   - @velum-labs/routekit-cli-ui@0.18.2
   - @velum-labs/routekit-contracts@0.18.2
   - @velum-labs/routekit-registry@0.18.2
-
-## 0.18.1
-
-### Patch Changes
-
-- 7bbc138: Isolate supervised daemons from launchd and systemd provider variables. Direct
-  provider credentials and resolved base URLs are captured explicitly, while
-  native-client overrides and absent AWS credential-chain inputs are deleted
-  before provider configuration loads. Existing supervised services can refresh
-  the contract with `routekit daemon service install`.
-- 26b0287: Make persistent Codex and Claude installs store dedicated gateway credentials in
-  the OS Keychain or a private RouteKit secret file. Codex and Claude now retrieve
-  their credentials on demand through native credential helpers, so terminal,
-  IDE, and GUI launches work without copying tokens into shell startup files.
-  Native install records now carry an install-contract version and RouteKit
-  provenance so legacy records can be migrated safely as integrations evolve.
-- Updated dependencies [eb319e5]
-- Updated dependencies [88235cb]
-  - @velum-labs/routekit-gateway@0.18.1
-  - @velum-labs/routekit-accounts@0.18.1
-  - @velum-labs/routekit-config@0.18.1
-  - @velum-labs/routekit-daemon@0.18.1
-  - @velum-labs/routekit-router@0.18.1
-  - @velum-labs/routekit-cli-core@0.18.1
-  - @velum-labs/routekit-cli-ui@0.18.1
-  - @velum-labs/routekit-contracts@0.18.1
-  - @velum-labs/routekit-control@0.18.1
-  - @velum-labs/routekit-registry@0.18.1
-  - @velum-labs/routekit-runtime@0.18.1
-  - @velum-labs/routekit-telemetry-core@0.18.1
-  - @velum-labs/routekit-tool-registry@0.18.1
-  - @velum-labs/routekit-tools@0.18.1
 
 ## Support scope
 
