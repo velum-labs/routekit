@@ -27,6 +27,11 @@ import {
   writeNativeCredential
 } from "../../adapters/native-credentials.js";
 import {
+  assertNativeEvalSkillInstallable,
+  installNativeEvalSkill,
+  uninstallNativeEvalSkill
+} from "../../adapters/native-eval-skill.js";
+import {
   deleteNativeIntegration,
   getNativeIntegration,
   markNativeIntegrationTokenRevoked,
@@ -238,6 +243,7 @@ export class InstallNativeIntegration {
         input.tool === "codex"
           ? codexIntegrationConfigPath(input.options.codexHome)
           : claudeIntegrationConfigPath(input.options.claudeConfigDir);
+      yield* cliTry(() => assertNativeEvalSkillInstallable(configPath));
       const prepared =
         target.kind === "remote"
           ? {
@@ -303,6 +309,7 @@ export class InstallNativeIntegration {
                     : {})
                 })
               );
+        yield* cliTry(() => installNativeEvalSkill(result.configPath));
         if (!noToken) {
           yield* rememberCredential({
             tool: input.tool,
@@ -382,6 +389,7 @@ export class UninstallNativeIntegration {
                 ...(input.home !== undefined ? { claudeConfigDir: input.home } : {})
               })
             );
+      yield* cliTry(() => uninstallNativeEvalSkill(result.configPath));
       yield* cliTryPromise(() => deleteNativeIntegration(input.tool, configPath));
       yield* cliTryPromise(() => deleteNativeCredential(input.tool, configPath));
       return result;

@@ -332,6 +332,9 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     codexCatalog.models.map((model) => model.slug),
     ["openai/mock-model", "openai/mock-secondary"]
   );
+  const codexSkillPath = join(codexHome, "skills", "setup-eval-routing", "SKILL.md");
+  assert.equal(existsSync(codexSkillPath), true);
+  assert.match(readFileSync(codexSkillPath, "utf8"), /name: setup-eval-routing/);
 
   const daemon = JSON.parse((await run(["status", "--json"], project, env)).stdout) as {
     daemon?: { dataUrl?: string };
@@ -457,6 +460,9 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     "anthropic.routekit.openai/mock-secondary"
   ]);
   assert.equal(parsedClaudeSettings.enforceAvailableModels, true);
+  const claudeSkillPath = join(claudeConfig, "skills", "setup-eval-routing", "SKILL.md");
+  assert.equal(existsSync(claudeSkillPath), true);
+  assert.match(readFileSync(claudeSkillPath, "utf8"), /name: setup-eval-routing/);
   const claudePicker = await fetch(`${dataUrl}/v1/models`, {
     headers: {
       authorization: `Bearer ${claudeToken}`,
@@ -621,6 +627,8 @@ test("native installs issue scoped tokens without persisting plaintext and revok
   await run(["claude", "uninstall", "--claude-config-dir", claudeConfig, "--json"], project, env);
   await assertCredentialRemoved(codexCredentialLocation);
   await assertCredentialRemoved(claudeCredentialLocation);
+  assert.equal(existsSync(codexSkillPath), false);
+  assert.equal(existsSync(claudeSkillPath), false);
   assert.equal(existsSync(statePath), true);
   assert.deepEqual(JSON.parse(readFileSync(statePath, "utf8")), { version: 1, integrations: [] });
   const tokens = JSON.parse((await run(["token", "list", "--json"], project, env)).stdout) as {
