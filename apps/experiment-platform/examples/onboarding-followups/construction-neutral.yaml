@@ -1,0 +1,705 @@
+schemaVersion: 1
+experimentId: onboarding-neutral-responsibilities-100-v1
+objective: Create one taxonomy-neutral Sol responsibility decomposition for every development task before comparing Area Registries.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 4090fff27b49f937aaebedd6c02221f7cc187601
+dataset:
+  id: onboarding-neutral-responsibilities-100-v1
+  hash: db3ec0752eb1e4d3361c23a2530c7265ab48b2625a178851b04084bc21e5c6cf
+  role: construction
+matrix:
+  treatments:
+    - id: neutral_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: neutral_reference
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: grafana-grafana-pr-80511
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/grafana-grafana-pr-80511/sha256/6f/6f74d0034fad2af9e9e1510d4ada41f95efe4a232b6d3cfa276a929c9c292009.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-134516/sha256/88/88b2cd88fd93ee2abe6e7e7fa9dd3ee0d2048cf6fbdadea8ce753d806a4ca9c2.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-101285
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/grafana-grafana-pr-101285/sha256/17/171c2c77bdfef21fc0d26e0c2e6166991cb41406d46386df4f9cc3eb44101078.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134769
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-134769/sha256/aa/aa4affdf0411091065ce7c3e6e5ec28e6ee0da392bd043d5552bcdb5cbfde275.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-136502
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-136502/sha256/52/527d9f92e0e9372c3fb3b0c6f4adb2e0296a830767b0e9563c3d22dd64b9d0df.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-138367
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-138367/sha256/b2/b21e85028cbc25e6fd6d6df2a38cbcbb95a018ba915995b58a543f9922fafca2.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-105422
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/grafana-grafana-pr-105422/sha256/af/af558e178f2c5040cdc29ab4b43aadf51f3d92cc3f7946193daa080a8eed62ec.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-132061
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-132061/sha256/36/36d08ba186e0730ef0f46d005b37b17a1b47a5bc446b40c01ab9334e85650453.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-116038
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/grafana-grafana-pr-116038/sha256/6f/6f80915f0819c640bda8b1ddab10f354a3567f62c6285d0cc7a61fa9d47e87ba.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-133896
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-133896/sha256/4b/4bfac559e8683a8c37f15f453c96a564991396cd869e0096ef7862b573652f5d.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-118686
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/grafana-grafana-pr-118686/sha256/13/130af18a7c16bbf00d63d6ed0e0e2b81ad0516ae47e55d10fc961bab561e8986.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-119124
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/grafana-grafana-pr-119124/sha256/d6/d633367d5c97b64ec7321f883de9e23e4a053259af29561c2e328a167bec634d.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-138408
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-138408/sha256/98/9829d5583865ac0c72ba252efcd460f39d9a13e8227c9aa740319d4011c15520.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-140033
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-140033/sha256/80/80721368f081f2add94a5f1320348176785283f3d9506fc281f96f162d0e9a6a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134936
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-134936/sha256/a1/a19176e0c282e97330c069f30f33afbcf2f7c79e82bfdc48748d71f80afe21a2.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-128725
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/grafana-grafana-pr-128725/sha256/41/4188cfeb0b892a57b89475811f932ba2c20dd2a82fd017b0f8e0d5560b151991.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135100
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-135100/sha256/11/118eb226567e67d941e448eb12e3dfbd2c3b6639d9d60e6cfd2d41858bc42244.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135400
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-135400/sha256/97/9710af34e6be8f26cda18926d0dbe17ab1cadef371c2c31123cb422f799fe14b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135807
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-135807/sha256/a3/a30bf405a3b24ebe4a3745536658cd719106012f4605c812c281c08f6d324b65.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-136633
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-136633/sha256/55/559c698f24b61ccf9837791307975eb9d808553ee75aaa76331dd2fb9f0e2fcb.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139261
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-139261/sha256/8e/8e3c4e12a8b78ca60ccdc9356dcc165059e8ec1b6ba39f201c58489658eba7cc.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139667
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-139667/sha256/9a/9a2eb0275dd95df9b60ee07aa2ec56bde25b1d9608c0bec74a58c78ac527eed5.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139842
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-139842/sha256/3b/3b4e5ec79ad07d660cf7cd96ab8927ff23a492b4e1245e8efb79aadcc6e2acf4.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139714
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/kubernetes-kubernetes-pr-139714/sha256/47/47d1e2cf56327612c830713ff774655f4da43213993ea0165f138b7eb8c857e0.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: backstage-pr-22093
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-22093/sha256/a6/a636913586d3210a2057dda3539903df21b8f67c715ae07ef8836985a4e9dd7d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22561
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-22561/sha256/22/22b73d5a36575174ee9439c766bc9e5045d9ea5cffdd070da5834625eb5829eb.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22772
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-22772/sha256/f5/f5e78adaaf5148879fa00c4c4823d1840e35e866b144228e18836f0860c7035c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23802
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-23802/sha256/e2/e25d6018e4b00cae08beebcbc6ea703d57e8e3a4ab227088555fbcf2d4a85148.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23901
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-23901/sha256/11/113e8bc856e8e9485be701bfcbc02d69045fd2de04c6409d5227a5506f8a5f1d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24316
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-24316/sha256/1a/1a6265f0d770e42f00d61ff0f7b0f29aaec4815865a8d3d9b4d097f500675ba8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24368
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-24368/sha256/ae/aeb0079de949be0681b15797ead6d64c0138003c0520350468fbce607f4d5237.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24479
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-24479/sha256/1d/1d1ea9e30998bebf2c012f970f27195e6383aade03c6d5704769527eb04a46b3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24133
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-24133/sha256/0b/0b3ed368e2f5a27af88bff06c4dec76d70b3661947f69a4120dad214f0c719e7.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24870
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-24870/sha256/a3/a3861a0e8aa5c323617fee6c310c2f73c0cc591a5f575f8bfaaf4d4fcce136c1.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25470
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-25470/sha256/34/345c4efe8cbf5a510d488eb4fad8f04646f2b02e929d2d6fb3e1ab62884911e7.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25601
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-25601/sha256/70/7006c986c65ae1d16e0c755fb200ca91aab395a1100d687c257d83644e8033f2.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25010
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-25010/sha256/c3/c38cb93cc88793e0a196acf07cf6466ac1bd0378360e59105299c97b4b3a52f8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25548
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-25548/sha256/0d/0d658a1a7e89e388b5e10cf16f01f8357cb6d34467794e979181c5ec4de6934d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25593
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-25593/sha256/6e/6e4ed2c8dec9dd9097441c2918e434f1cce72e6f1e3ee3c71c1cc4e30527a5ed.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26223
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-26223/sha256/6c/6cd259f87b4f3ff7d35883bc4e2b66d7dad8b993887c01ac0a37853c10d48eb1.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26406
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-26406/sha256/2e/2eac8d8ee0c7b2796754ff4aa1a26bfc44f50c908819cefcd53c7e03fa875985.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26536
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-26536/sha256/80/804f764f6b48a79d9ef10e29e135a31d59035af2c75df2e4237a718a50777593.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26935
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-26935/sha256/a2/a220454df0eb839e56c808343329b761b6712db742a7cef88f66b5bec265da2c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-27407
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-27407/sha256/35/35e559a8365ac827110c6cdd29ac57306d50b58eec5b15d03c0d4499c8df9cba.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28711
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-28711/sha256/a0/a091fd6c4530cd020bf21da34eb61832287dbcece6369015937de77147cd7c11.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28769
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-28769/sha256/b7/b7bec3cb0328a1b11c474b56f29a8358c25a5f7397b71878b4e0c43bd74a81af.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28911
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-28911/sha256/41/41b4de7c520e092404b794c2e1b67e0958212c13f344a8efc1fa9bc1ec570a80.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28964
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-28964/sha256/47/47108fc04404d3bef0e54edc605b78a3dd6a08e03a575d777f3075829766f34e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28997
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-28997/sha256/4f/4f5b1e548db0ca1136ddf94b433c94fad7fc82db462416ba3a0186ac0595bc0d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28792
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-28792/sha256/0a/0a270710de8beba4ff5eeee08891a13415f84a215c2d970c1728c670c145f72b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30311
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-30311/sha256/71/715b3633dd170de88804a26c843746cdf34b504c01db013a5482fcf6bc941c72.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30743
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-30743/sha256/57/579b92724afb7fa66084a875c18b6c6bad42ea1e52e87c513448527ff0f64b9e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30678
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-30678/sha256/73/7326c2675d4437b637d20c1de81c69ea91b52a4bd26736943fd0261f2d86c34a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30988
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-30988/sha256/54/541f75e72536be7c81304b24089f4d5d7ce97348395db9724e047f0717020969.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-31255
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-31255/sha256/06/0641ab2d6a98c073fe0f8c8c17db4fac4d7e9a1e8161c9b297a6226da941eca2.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-32179
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-32179/sha256/0b/0bd79ddabaa2879cd2be1a8de07cb73d1a170dfa402c8064de3bd2f68b896122.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-33200
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-33200/sha256/86/86ecdf2b32918073e640b765b3fddcc63c236ee31dcd90ed952ff170d29677d4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-34608
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/backstage-pr-34608/sha256/93/93d50eed7e70d97a549220e7112c6bc526e88a1386ae061d1e8b277bce39b285.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: synthetic-composite-01
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-01/sha256/99/99bbfa2e7cc5da32b83ee5f4cc7641a9a6f33e2f88e253c7d0a3fcd796dea6ba.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-22561
+  - id: synthetic-composite-02
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-02/sha256/3b/3bc5c2443700a80aa9baa9cfe0cb41a3a953fd12dcbd9aa9ed33d11a0689fba1.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24133
+  - id: synthetic-composite-03
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-03/sha256/ff/ff6b0eaf8160f5a9e3747e2babbe947ce9223cbfe9a7a026edca2ecbdeaf563d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-24479
+  - id: synthetic-composite-04
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-04/sha256/67/67cd490bc71bc0044c1472f04ef1a22d6265772614e8d4c3e71fbff3cf4a755f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-25010
+  - id: synthetic-composite-05
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-05/sha256/b0/b08c2c7715757851142290fcfd9acb0b69d869c03f5c8cb7d3964acba33992e6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25548
+        - backstage-pr-25593
+  - id: synthetic-composite-06
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-06/sha256/06/0699e2dda93059098a91ec21b98d1c4ba755a590941ec91411f698835a857211.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25601
+        - backstage-pr-26223
+  - id: synthetic-composite-07
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-07/sha256/50/50bc3550ddef58413407832481c2f83ca9056d28822e6ad1fe6cd70e4e5b71c5.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26406
+        - backstage-pr-26536
+  - id: synthetic-composite-08
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-08/sha256/31/31a8a3d6a194c1d3949735316c1bb32772c1438799ffba483bca712ce7e2167e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26935
+        - backstage-pr-27407
+  - id: synthetic-composite-09
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-09/sha256/1a/1a76b55b6aca9cc79748c4e057ae958f75a0ede1e38745f2f8c11fa25d749dce.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28711
+        - backstage-pr-28769
+  - id: synthetic-composite-10
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-10/sha256/09/093e206678ce3fef2e8622282b191613d15eac2991c56c65f2d938fc848bea0a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28911
+        - backstage-pr-28964
+  - id: synthetic-composite-11
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-11/sha256/92/9212824687093e6c78cc316e0870148002539a458531864ac694195648c84a5f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28997
+        - backstage-pr-30311
+  - id: synthetic-composite-12
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-12/sha256/36/36a156148f0002483b498c99fbab18b66ad570ac2035a695415fc66656fd5552.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-30988
+        - backstage-pr-32179
+  - id: synthetic-composite-13
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-13/sha256/75/756f287fad2d2e1db50f1737bfd9421f7f020dc25c99ff11e1018939a0090840.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-101285
+        - grafana-grafana-pr-105422
+  - id: synthetic-composite-14
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-14/sha256/27/27f7330d8a4af7ac748ecde79e7f069ef4144cc984f09bd423e20338f33e9c55.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-116038
+        - grafana-grafana-pr-118686
+  - id: synthetic-composite-15
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-15/sha256/f0/f0ede777e4f849b58e600e65903f2ad2dc343baf339d0c9a55fddd8ecbd827f6.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-80511
+        - grafana-grafana-pr-119124
+  - id: synthetic-composite-16
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-16/sha256/0b/0bca2bb2469d1735167035e6673b2d046f0f1bc00c62e94b930c31ffb0269195.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-132061
+        - kubernetes-kubernetes-pr-134936
+  - id: synthetic-composite-17
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-17/sha256/cc/cc7490c6caf05b5b5b1daa20ffea376e4a4d7fc325db12401161bb007a515db2.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-133896
+        - kubernetes-kubernetes-pr-135100
+  - id: synthetic-composite-18
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-18/sha256/0a/0a097e93596ef20549dd47dd16e1a4e4ffcb5ce3c5303a804c9c8e33588a905a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134516
+        - kubernetes-kubernetes-pr-135400
+  - id: synthetic-composite-19
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-19/sha256/2a/2a52fa18c93a4bfe5dcaaab990b0c0a913e7278041cbbe363eeadc2e32dbff1c.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134769
+        - kubernetes-kubernetes-pr-135807
+  - id: synthetic-composite-20
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-20/sha256/e6/e669e72a14a3c18d8cd865dfcfe6f03cfa5447fddff1bba9dd91ad1d2e91eb3c.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-136502
+        - kubernetes-kubernetes-pr-136633
+  - id: synthetic-composite-21
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-21/sha256/98/9820034a6c12f89ff1a0d9acab172c595b360e610923ef57f7702390d9c62538.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-138367
+        - kubernetes-kubernetes-pr-139261
+  - id: synthetic-composite-22
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-22/sha256/14/14bad1d12adf579bfa19675e92ca27014afca78db041ea0f97fd18983e6ee50c.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-138408
+        - kubernetes-kubernetes-pr-139667
+  - id: synthetic-composite-23
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-23/sha256/1c/1c669c51af540f24bfa17b3b878c662e402e45001188b1a6f54337a44d2ac1c0.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-140033
+        - kubernetes-kubernetes-pr-139714
+  - id: synthetic-composite-24
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-24/sha256/4d/4d1a2b42f812367ab80e4dd92fe08463a3b8c4d01184264e877fc5dfc7ec3fde.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-23802
+  - id: synthetic-composite-25
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-25/sha256/40/40782c13b09fae6946166eb7dbb3a9fd8c7f209e5f103508c759aeb6a67285de.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22561
+        - backstage-pr-23901
+  - id: synthetic-composite-26
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-26/sha256/03/03c13500f9c65c84d7f234478e187bf270be67b5bd48417c7ea306c827b76104.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24316
+  - id: synthetic-composite-27
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-27/sha256/34/34a0e7cc8cb76ef0d5db06a7d65110693d10351484ec8a36d976d6f825b70499.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24133
+        - backstage-pr-25470
+  - id: synthetic-composite-28
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-28/sha256/92/92ce9dffa6ead461586878b664dcf8b2b9d179275af7bf8f0ef1a762fae94180.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-28792
+  - id: synthetic-composite-29
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-29/sha256/ff/ffc6ada59790f673fad1bad08adc72499a43923073b0876cb6c47bb32428b7f0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24479
+        - backstage-pr-30678
+  - id: synthetic-composite-30
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-30/sha256/b2/b2ac41c5cdd358df66c7dc056ec9d93129e291050a34297788837dc5d372a315.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-30743
+  - id: synthetic-composite-31
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-31/sha256/57/5740d6c13917903a441fa316a3338fde9fd45920ad8a76def6583bc66eb9336a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-31255
+        - backstage-pr-33200
+  - id: synthetic-composite-32
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-32/sha256/5d/5df17be470e7b9dae0b920239d15c7c457553b09e68920fb785d23e895a48a36.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23802
+        - backstage-pr-34608
+  - id: synthetic-composite-33
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-33/sha256/5c/5c6f1a018876bd4a43811693ae62fa0d63ec298fedba91df06342528a49ef6b4.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135100
+        - kubernetes-kubernetes-pr-139842
+  - id: synthetic-composite-34
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-34/sha256/d8/d89be6898fe98d1c4546e7b872e5209831858bfc7da3813dd85dcec3fc874016.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-24316
+  - id: synthetic-composite-35
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-35/sha256/c8/c8e54e54c50f6421c67bfc47ed49a8b8bae6ba836d5a030f52d73ee6ffa9d452.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-25470
+        - backstage-pr-28792
+  - id: synthetic-composite-36
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-36/sha256/25/2540ac71699e8455942386f865d0cf5447bd93310f0b2dd0f4c56293cf3ea7d9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30678
+        - backstage-pr-31255
+  - id: synthetic-composite-37
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-37/sha256/4c/4c10ba13513848c435adacfb0b6cfcd0c039ef2e10e5f5a5dc0309c7df95522f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30743
+        - backstage-pr-33200
+  - id: synthetic-composite-38
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-38/sha256/9a/9ac112ee5cd2b828e1eaabc7ed234a6471eea67ce94629db507b10e7f9a74e77.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135400
+        - kubernetes-kubernetes-pr-135807
+  - id: synthetic-composite-39
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-39/sha256/d4/d41adc91ecda70adf35a478e570d53e3050faa74ee0870a5b5c6efd08a94fbce.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-136633
+        - kubernetes-kubernetes-pr-139261
+  - id: synthetic-composite-40
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-40/sha256/06/060bcf25f6f4d00c06448db5471f80031648411ead6c09abd83a712888f98c79.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-139667
+        - kubernetes-kubernetes-pr-139714
+  - id: synthetic-composite-41
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-41/sha256/65/6528347817ea5379ad6a0220081dbc11cd72dd9dab11fbd41da2cde40240d264.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-34608
+  - id: synthetic-composite-42
+    inputArtifact: inputs/onboarding-neutral-responsibilities-100-v1/synthetic-composite-42/sha256/5c/5c23c04949c09087bba52c10be2d3eeb93daeb7cf7d40fa2687349dc1358a52e.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135400
+        - kubernetes-kubernetes-pr-139842
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 5.25
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false

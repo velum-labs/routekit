@@ -1,0 +1,60 @@
+schemaVersion: 1
+experimentId: onboarding-registry-generation-3-v1
+objective: Generate unconstrained and rule-guided Sol Area Registries from taxonomy-neutral profiles and historical coding tasks.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 4090fff27b49f937aaebedd6c02221f7cc187601
+dataset:
+  id: onboarding-registry-generation-3-v1
+  hash: 22b43cfd461d96937a6bf3207feb633b2dd2bff866df11d790853cbd49a2e438
+  role: construction
+matrix:
+  treatments:
+    - id: auto_unconstrained_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: auto_rules_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: generate-backstage-backstage
+    inputArtifact: inputs/onboarding-registry-generation-3-v1/generate-backstage-backstage/sha256/a9/a9047492ab5734f169820b6565a90ccd00112faba1976a2e8f7964f18e0a1c48.json
+    metadata:
+      repositoryId: backstage/backstage
+      historicalTasks: 34
+  - id: generate-grafana-grafana
+    inputArtifact: inputs/onboarding-registry-generation-3-v1/generate-grafana-grafana/sha256/58/588318cb9e6956180cf77075b69ca4b2c229553c7a37c353f47048b3757cc583.json
+    metadata:
+      repositoryId: grafana/grafana
+      historicalTasks: 7
+  - id: generate-kubernetes-kubernetes
+    inputArtifact: inputs/onboarding-registry-generation-3-v1/generate-kubernetes-kubernetes/sha256/54/54031cb5b8004bbd1c2538997fd3bf09f9469b99f2fa925a9034db32e17644ee.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      historicalTasks: 17
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 2
+budget:
+  providerMaximumUsd: 0.32
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
