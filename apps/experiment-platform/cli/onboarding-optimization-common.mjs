@@ -184,6 +184,7 @@ export async function freezeDataset({
       2
     )}/${manifestResult.digest}.json`,
     datasetManifestSize: manifestResult.bytes.length,
+    metadata,
     tasks
   };
   const inventoryFile = path.join(directory, datasetId, "input-inventory.json");
@@ -220,6 +221,77 @@ export function normalizeCards(cards) {
     );
   }
   return normalized;
+}
+
+const structuralStopwords = new Set([
+  "and",
+  "area",
+  "for",
+  "from",
+  "into",
+  "repository",
+  "the",
+  "this",
+  "with",
+  "work"
+]);
+
+function semanticTokens(card) {
+  return new Set(
+    [card.name, card.description, ...(card.inclusions ?? [])]
+      .join(" ")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/u)
+      .filter((token) => token.length >= 4 && !structuralStopwords.has(token))
+  );
+}
+
+function setJaccard(left, right) {
+  const intersection = [...left].filter((value) => right.has(value)).length;
+  const union = new Set([...left, ...right]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+export function structuralAudit(cards) {
+  const catchAllAreas = cards
+    .filter((card) =>
+      /(?:^|\b)(?:other|miscellaneous|general repository|all repository|everything else)(?:\b|$)/iu.test(
+        `${card.area_id} ${card.name} ${card.description}`
+      )
+    )
+    .map((card) => card.area_id);
+  const aliasPairs = [];
+  const parentChildPairs = [];
+  for (let leftIndex = 0; leftIndex < cards.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < cards.length; rightIndex += 1) {
+      const left = cards[leftIndex];
+      const right = cards[rightIndex];
+      const overlap = setJaccard(semanticTokens(left), semanticTokens(right));
+      if (overlap >= 0.58) {
+        aliasPairs.push({
+          areas: [left.area_id, right.area_id],
+          semanticJaccard: Number(overlap.toFixed(6))
+        });
+      }
+      const leftName = left.name.toLowerCase();
+      const rightName = right.name.toLowerCase();
+      if (
+        left.area_id.startsWith(`${right.area_id}-`) ||
+        right.area_id.startsWith(`${left.area_id}-`) ||
+        (leftName.length >= 8 && rightName.includes(leftName)) ||
+        (rightName.length >= 8 && leftName.includes(rightName))
+      ) {
+        parentChildPairs.push([left.area_id, right.area_id]);
+      }
+    }
+  }
+  return {
+    areas: cards.length,
+    catchAllAreas,
+    aliasPairs,
+    parentChildPairs,
+    valid: catchAllAreas.length === 0 && aliasPairs.length === 0 && parentChildPairs.length === 0
+  };
 }
 
 export function responseObject(payload) {
