@@ -1,63 +1,99 @@
 #!/usr/bin/env node
 /** Executable entrypoint for the independent RouteKit router CLI. */
-import { CliError, emitJson, renderCliError } from "@velum-labs/routekit-cli-core";
+import {
+  CliError,
+  commandNames,
+  emitJson,
+  processCliRuntime,
+  renderCliError,
+  visibleCommandChildren
+} from "@velum-labs/routekit-cli-core";
 import { configureBrand, uiStream } from "@velum-labs/routekit-cli-ui";
+import { makeRouteKitRuntime, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { registerCleanup, runCleanups } from "@velum-labs/routekit-runtime/lifecycle";
-import { CommanderError } from "commander";
+import { Effect } from "effect";
+import {
+  CliConfig,
+  CliError as EffectCliError,
+  Command,
+  Flag,
+  GlobalFlag
+} from "effect/unstable/cli";
 
-import { buildProgram, routekitVersion } from "./cli.js";
-import { runWithCliSession } from "./cli-session.js";
+import { CliSession, runWithCliSession } from "./cli-session.js";
+import { CommandTelemetry } from "./command-telemetry.js";
+import { buildEffectProgram } from "./effect/program.js";
 import { notifyIfUpdateAvailable } from "./update-notifier.js";
+import { routekitVersion } from "./state.js";
+import { assertLocalTarget, setTargetSelection } from "./target.js";
 
 configureBrand({
   name: "routekit",
   tagline: "model routes for coding tools"
 });
 
-const GLOBAL_VALUE_OPTIONS = new Set(["--remote"]);
-const GLOBAL_BOOLEAN_OPTIONS = new Set(["--json", "--no-input", "--yes", "--quiet", "--local"]);
-
-/**
- * Keep global output/target flags ergonomic after a subcommand
- * (`routekit start --json`) while preserving everything after `--` for the
- * launched coding tool.
- */
-function normalizeGlobalOptions(argv: readonly string[]): string[] {
-  const prefix = argv.slice(0, 2);
-  const args = argv.slice(2);
-  const separator = args.indexOf("--");
-  const routekitArgs = separator === -1 ? args : args.slice(0, separator);
-  const passthrough = separator === -1 ? [] : args.slice(separator);
-  const globals: string[] = [];
-  const command: string[] = [];
-  for (let index = 0; index < routekitArgs.length; index += 1) {
-    const arg = routekitArgs[index]!;
-    if (GLOBAL_BOOLEAN_OPTIONS.has(arg)) {
-      globals.push(arg);
-      continue;
-    }
-    if (GLOBAL_VALUE_OPTIONS.has(arg)) {
-      const value = routekitArgs[index + 1];
-      globals.push(arg);
-      if (value !== undefined) {
-        globals.push(value);
-        index += 1;
-      }
-      continue;
-    }
-    command.push(arg);
-  }
-  return [...prefix, ...globals, ...command, ...passthrough];
-}
+const LOCAL_ONLY_COMMANDS = new Set(["start", "stop", "setup", "config init"]);
 
 function hasJsonFlag(argv: readonly string[]): boolean {
   const separator = argv.indexOf("--");
   return (separator === -1 ? argv : argv.slice(0, separator)).includes("--json");
 }
 
+function targetSelection(argv: readonly string[]): { local: boolean; remote?: string } {
+  const separator = argv.indexOf("--");
+  const args = separator === -1 ? argv : argv.slice(0, separator);
+  let local = false;
+  let remote: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (value === "--local") local = true;
+    if (value === "--remote") {
+      remote = args[index + 1];
+      index += 1;
+    } else if (value?.startsWith("--remote=")) {
+      remote = value.slice("--remote=".length);
+    }
+  }
+  return { local, ...(remote !== undefined ? { remote } : {}) };
+}
+
+const GLOBAL_VALUE_FLAGS = new Set(["--remote"]);
+function selectedCommandPath(program: Command.Command.Any, argv: readonly string[]): string {
+  const separator = argv.indexOf("--");
+  const args = separator === -1 ? argv : argv.slice(0, separator);
+  const words: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index]!;
+    if (GLOBAL_VALUE_FLAGS.has(value)) {
+      index += 1;
+      continue;
+    }
+    if (value.startsWith("-")) continue;
+    words.push(value);
+  }
+  const path: string[] = [];
+  let current = program;
+  for (const word of words) {
+    const next = visibleCommandChildren(current).find((child) => commandNames(child).includes(word));
+    if (next === undefined) break;
+    path.push(next.name);
+    current = next;
+  }
+  return path.join(" ");
+}
+
+function shouldNotify(argv: readonly string[]): boolean {
+  return (
+    !argv.some((arg) => ["--json", "--quiet", "--help", "-h"].includes(arg)) &&
+    !argv.some((arg) => ["completion", "__complete", "__self-inspect"].includes(arg)) &&
+    !(argv[0] === "token" && argv[1] === "shell") &&
+    !(argv[0] === "credential" && argv[1] === "get")
+  );
+}
+
 function renderError(error: unknown, json: boolean): number {
+  if (EffectCliError.isCliError(error)) return 1;
   if (error instanceof CliError) return renderCliError(error, { json });
-  if (error instanceof CommanderError) return error.exitCode;
   const message = error instanceof Error ? error.message : String(error);
   if (json) emitJson({ error: { code: "error", message } });
   else uiStream().write(`error: ${message}\n`);
@@ -65,36 +101,48 @@ function renderError(error: unknown, json: boolean): number {
 }
 
 async function main(): Promise<void> {
-  const program = buildProgram();
-  await runWithCliSession(program.session, async () => {
-    const json = hasJsonFlag(process.argv.slice(2));
-    program.exitOverride();
+  const effectRuntime = makeRouteKitRuntime();
+  const session = new CliSession(processCliRuntime, undefined, effectRuntime);
+  const commandTelemetry = new CommandTelemetry(session, processCliRuntime);
+  const program = buildEffectProgram(session, processCliRuntime);
+  const argv = process.argv.slice(2);
+  const json = hasJsonFlag(argv);
+  const path = selectedCommandPath(program, argv);
+  await runWithCliSession(session, async () => {
+    setTargetSelection(targetSelection(argv), session);
+    const actionOnly = argv.some((arg) => ["--help", "-h", "--version", "-v"].includes(arg));
+    if (!actionOnly && (LOCAL_ONLY_COMMANDS.has(path) || path.startsWith("daemon "))) {
+      assertLocalTarget(path);
+    }
+    commandTelemetry.begin(path);
     const unregisterCancelledTelemetry = registerCleanup(async () => {
-      await program.commandTelemetry.finish("cancelled");
+      await commandTelemetry.finish("cancelled");
     });
     try {
-      if (process.argv.length <= 2) program.outputHelp();
-      else {
-        await program.parseAsync(normalizeGlobalOptions(process.argv));
-        const args = process.argv.slice(2);
-        if (
-          process.exitCode === undefined &&
-          !args.some((arg) => ["--json", "--quiet", "--help", "-h"].includes(arg)) &&
-          !args.some((arg) => ["completion", "__complete", "__self-inspect"].includes(arg)) &&
-          !(args[0] === "token" && args[1] === "shell") &&
-          !(args[0] === "credential" && args[1] === "get")
-        ) {
-          await notifyIfUpdateAvailable(routekitVersion());
-        }
-      }
+      const versionFlag = GlobalFlag.action({
+        flag: Flag.boolean("version").pipe(
+          Flag.withAlias("v"),
+          Flag.withDescription("print the RouteKit CLI version")
+        ),
+        run: () =>
+          Effect.sync(() => {
+            processCliRuntime.stdout.write(`@velum-labs/routekit ${routekitVersion()}\n`);
+          })
+      });
+      const builtIns = [GlobalFlag.Help, versionFlag, GlobalFlag.LogLevel];
+      const run = Command.runWith(program, { version: routekitVersion(), renderErrors: true })(argv).pipe(
+        Effect.provideService(CliConfig.CliConfig, CliConfig.make({ builtIns }))
+      );
+      await runRouteKitEffect(run, effectRuntime);
+      await commandTelemetry.finish("success");
+      if (process.exitCode === undefined && shouldNotify(argv)) await notifyIfUpdateAvailable(routekitVersion());
     } catch (error) {
-      const exitKind = error instanceof CommanderError ? "usage_error" : "command_error";
-      await program.commandTelemetry.finish(exitKind);
+      await commandTelemetry.finish(EffectCliError.isCliError(error) ? "usage_error" : "command_error");
       process.exitCode = renderError(error, json);
     } finally {
       unregisterCancelledTelemetry();
       await runCleanups();
-      await program.session.dispose();
+      await effectRuntime.dispose();
     }
   });
 }

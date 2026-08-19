@@ -2,8 +2,7 @@ import {
   type CliRuntime,
   contextForFlags,
   immutableCliRuntime,
-  processCliRuntime,
-  readPackageVersion
+  processCliRuntime
 } from "@velum-labs/routekit-cli-core";
 import { configuredProviderIds } from "@velum-labs/routekit-config";
 import { resolveAccountConnector } from "@velum-labs/routekit-registry";
@@ -19,7 +18,7 @@ import {
   LAUNCH_ACCOUNT_KIND_CHOICES,
   LAUNCH_PROVIDER_IDS
 } from "../launch-support.js";
-import { readStateSnapshot } from "../state.js";
+import { readStateSnapshot, routekitVersion } from "../state.js";
 import { makeAccountsCommand } from "./commands/accounts.js";
 import { makeCallsCommand } from "./commands/calls.js";
 import { makeConfigCommand } from "./commands/config.js";
@@ -50,10 +49,6 @@ import {
   isCompletionShell
 } from "./completion.js";
 import { routekitRoot } from "./root-command.js";
-
-export function routekitVersion(): string {
-  return readPackageVersion(import.meta.url);
-}
 
 function providerIds(): string[] {
   try {
