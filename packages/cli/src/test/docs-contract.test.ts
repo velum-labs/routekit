@@ -385,9 +385,22 @@ test("usage reset workflow is documented across public references", { skip: !has
     for (const snippet of ["routekit usage", "usage --watch", "usage redeem", "--credit-id"]) {
       assert.ok(source.includes(snippet), `${path} is missing ${snippet}`);
     }
+    assert.doesNotMatch(source, /--watch <seconds>/);
     assert.match(source, /soonest-expiring/i);
     assert.match(source, /provider choose|provider-selected/i);
   }
+});
+
+test("agent launch syntax keeps model and passthrough arguments optional", {
+  skip: !hasAppsDocs
+}, () => {
+  const guide = readFileSync(
+    join(root, "apps/docs/content/docs/getting-started/agent-guide.mdx"),
+    "utf8"
+  );
+  assert.match(guide, /routekit codex \[provider\/model\] -- \[native arguments\]/);
+  assert.match(guide, /routekit claude \[provider\/model\] -- \[native arguments\]/);
+  assert.doesNotMatch(guide, /routekit (?:codex|claude) <provider\/model>/);
 });
 
 test("the public user guide is a focused task hub", { skip: !hasAppsDocs }, () => {

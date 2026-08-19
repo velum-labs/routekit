@@ -1,5 +1,6 @@
 const OPTIONAL_WATCH_COMMANDS = new Set(["status", "usage"]);
 
+// Effect 4 can make a flag optional, but not the value of a present flag.
 export function normalizeOptionalFlagValues(
   argv: readonly string[],
   commandPath: string

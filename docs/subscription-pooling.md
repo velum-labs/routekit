@@ -131,7 +131,7 @@ config beyond the supported router document.
 The singleton daemon owns subscription backends and exposes them through its
 authenticated model gateway. There is no separate accounts-proxy lifecycle.
 
-`routekit usage` and `routekit usage --watch <seconds>` inspect the normal
+`routekit usage` and `routekit usage --watch [seconds]` inspect the normal
 daemon's live pools.
 
 ## Account status
