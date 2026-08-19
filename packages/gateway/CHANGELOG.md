@@ -1,5 +1,17 @@
 # @velum-labs/routekit-gateway
 
+## 1.0.2
+
+### Patch Changes
+
+- 30956e3: Allow eval authoring models to choose compatible reasoning controls and include upstream error details plus the model call ID when authoring requests fail.
+  - @velum-labs/routekit-config-core@1.0.2
+  - @velum-labs/routekit-contracts@1.0.2
+  - @velum-labs/routekit-eval-contracts@1.0.2
+  - @velum-labs/routekit-eval-core@1.0.2
+  - @velum-labs/routekit-registry@1.0.2
+  - @velum-labs/routekit-runtime@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes

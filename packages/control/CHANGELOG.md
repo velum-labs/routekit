@@ -1,5 +1,14 @@
 # @velum-labs/routekit-control
 
+## 1.0.2
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@1.0.2
+- @velum-labs/routekit-eval-contracts@1.0.2
+- @velum-labs/routekit-runtime@1.0.2
+- @velum-labs/routekit-telemetry-core@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes

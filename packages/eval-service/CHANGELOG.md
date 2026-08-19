@@ -1,5 +1,14 @@
 # @velum-labs/routekit-eval-service
 
+## 1.0.2
+
+### Patch Changes
+
+- @velum-labs/routekit-eval-contracts@1.0.2
+- @velum-labs/routekit-eval-engine@1.0.2
+- @velum-labs/routekit-eval-store@1.0.2
+- @velum-labs/routekit-registry@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes

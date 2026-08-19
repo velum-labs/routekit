@@ -1,5 +1,11 @@
 # @velum-labs/routekit-config-core
 
+## 1.0.2
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes
