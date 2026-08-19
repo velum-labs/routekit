@@ -33,6 +33,12 @@
     "onboarding:evaluations:prepare": "node cli/prepare-onboarding-followup-evaluations.mjs",
     "onboarding:evaluations:manifests": "node cli/generate-onboarding-followup-evaluation-manifests.mjs",
     "onboarding:evaluations:aggregate": "node cli/aggregate-onboarding-followup-evaluations.mjs",
+    "onboarding:generalization:collect": "node cli/collect-onboarding-generalization-data.mjs",
+    "onboarding:generalization:construction:prepare": "node cli/prepare-onboarding-generalization-construction.mjs",
+    "onboarding:generalization:construction:manifests": "node cli/generate-onboarding-generalization-construction-manifests.mjs",
+    "onboarding:generalization:evaluation:prepare": "node cli/prepare-onboarding-generalization-evaluation.mjs",
+    "onboarding:generalization:evaluation:manifests": "node cli/generate-onboarding-generalization-evaluation-manifests.mjs",
+    "onboarding:generalization:aggregate": "node cli/aggregate-onboarding-generalization.mjs",
     "runner:build": "vercel vcr build docker . routekit-experiment-runner:coding-router --push -- -f apps/experiment-platform/Dockerfile.coding-router-runner",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "types:check": "tsc --noEmit"
