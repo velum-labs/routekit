@@ -59,27 +59,52 @@ async function completedExperiment(experimentId) {
   return snapshot;
 }
 
-const [auditBytes, constructionAuditBytes, realCohort, repairSnapshot, neutralSnapshot] =
-  await Promise.all([
-    readFile(auditFile),
-    readFile(constructionAuditFile),
-    readJsonl(realCohortFile),
-    completedExperiment("onboarding-optimization-routekit-assistance-repair-1-v1"),
-    completedExperiment("onboarding-optimization-neutral-93-v1")
-  ]);
+const [
+  auditBytes,
+  constructionAuditBytes,
+  realCohort,
+  repairSnapshot,
+  neutralSnapshot,
+  neutralRetrySnapshot
+] = await Promise.all([
+  readFile(auditFile),
+  readFile(constructionAuditFile),
+  readJsonl(realCohortFile),
+  completedExperiment("onboarding-optimization-routekit-assistance-repair-1-v1"),
+  completedExperiment("onboarding-optimization-neutral-93-v1"),
+  completedExperiment("onboarding-optimization-neutral-retry-2-v1")
+]);
 const audit = JSON.parse(auditBytes);
 const constructionAudit = JSON.parse(constructionAuditBytes);
 const store = new VercelBlobArtifactStore();
 const repairRecord = repairSnapshot.jobs[0];
 const repair = responseObject(await readJsonArtifact(store, repairRecord.outputArtifact));
-const neutralOutputs = new Map(
+const neutralEntries = (
   await Promise.all(
-    neutralSnapshot.jobs.map(async (record) => [
-      `${record.job.taskId}:${record.job.treatmentId}`,
-      responseObject(await readJsonArtifact(store, record.outputArtifact))
-    ])
+    neutralSnapshot.jobs.map(async (record) => {
+      try {
+        return [
+          `${record.job.taskId}:${record.job.treatmentId}`,
+          responseObject(await readJsonArtifact(store, record.outputArtifact))
+        ];
+      } catch {
+        return undefined;
+      }
+    })
   )
+).filter(Boolean);
+const neutralOutputs = new Map(neutralEntries);
+const neutralRetryMetadata = new Map(
+  neutralRetrySnapshot.experiment.manifest.tasks.map((task) => [task.id, task.metadata])
 );
+for (const record of neutralRetrySnapshot.jobs) {
+  const metadata = neutralRetryMetadata.get(record.job.taskId);
+  const output = responseObject(await readJsonArtifact(store, record.outputArtifact));
+  if (!metadata?.originalTaskId || !metadata.originalTreatmentId) {
+    throw new Error(`invalid neutral retry metadata for ${record.job.id}`);
+  }
+  neutralOutputs.set(`${metadata.originalTaskId}:${metadata.originalTreatmentId}`, output);
+}
 const structure = constructionAudit.private.find(
   (entry) => entry.repositoryId === "velum-labs/routekit"
 )?.structure;

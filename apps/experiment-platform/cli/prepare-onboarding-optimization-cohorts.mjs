@@ -73,16 +73,24 @@ async function completedExperiment(experimentId) {
   return snapshot;
 }
 
-async function outputMap(snapshot) {
+async function outputMap(snapshot, ignoreInvalid = false) {
   const store = new VercelBlobArtifactStore();
-  return new Map(
+  const entries = (
     await Promise.all(
-      snapshot.jobs.map(async (record) => [
-        `${record.job.taskId}:${record.job.treatmentId}`,
-        responseObject(await readJsonArtifact(store, record.outputArtifact))
-      ])
+      snapshot.jobs.map(async (record) => {
+        try {
+          return [
+            `${record.job.taskId}:${record.job.treatmentId}`,
+            responseObject(await readJsonArtifact(store, record.outputArtifact))
+          ];
+        } catch (error) {
+          if (!ignoreInvalid) throw error;
+          return undefined;
+        }
+      })
     )
-  );
+  ).filter(Boolean);
+  return new Map(entries);
 }
 
 function convertHumanCard(card) {
@@ -142,7 +150,8 @@ const [
   constructionAuditBytes,
   repairSnapshot,
   privateConstructionSnapshot,
-  neutralSnapshot
+  neutralSnapshot,
+  neutralRetrySnapshot
 ] = await Promise.all([
   readJsonl(naturalHardFile),
   readJsonl(realCohortFile),
@@ -152,13 +161,26 @@ const [
   readFile(constructionAuditFile),
   completedExperiment("onboarding-optimization-repair-3-v1"),
   completedExperiment("onboarding-optimization-private-registries-4-v1"),
-  completedExperiment("onboarding-optimization-neutral-93-v1")
+  completedExperiment("onboarding-optimization-neutral-93-v1"),
+  completedExperiment("onboarding-optimization-neutral-retry-2-v1")
 ]);
-const [repairOutputs, privateOutputs, neutralOutputs] = await Promise.all([
+const [repairOutputs, privateOutputs, neutralOutputs, neutralRetryOutputs] = await Promise.all([
   outputMap(repairSnapshot),
   outputMap(privateConstructionSnapshot),
-  outputMap(neutralSnapshot)
+  outputMap(neutralSnapshot, true),
+  outputMap(neutralRetrySnapshot)
 ]);
+const neutralRetryMetadata = new Map(
+  neutralRetrySnapshot.experiment.manifest.tasks.map((task) => [task.id, task.metadata])
+);
+for (const record of neutralRetrySnapshot.jobs) {
+  const metadata = neutralRetryMetadata.get(record.job.taskId);
+  const output = neutralRetryOutputs.get(`${record.job.taskId}:${record.job.treatmentId}`);
+  if (!metadata?.originalTaskId || !metadata.originalTreatmentId || !output) {
+    throw new Error(`invalid neutral retry metadata for ${record.job.id}`);
+  }
+  neutralOutputs.set(`${metadata.originalTaskId}:${metadata.originalTreatmentId}`, output);
+}
 const validationAudit = JSON.parse(validationAuditBytes);
 const selection = JSON.parse(selectionBytes);
 const constructionAudit = JSON.parse(constructionAuditBytes);
