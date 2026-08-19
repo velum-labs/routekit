@@ -1,0 +1,1117 @@
+schemaVersion: 1
+experimentId: onboarding-generalization-neutral-120-v1
+objective: Create one frozen taxonomy-neutral Sol responsibility decomposition for every chronologically held-out coding task.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 7e5731c78befbbae4486948bd574b8d573557976
+dataset:
+  id: onboarding-generalization-neutral-120-v1
+  hash: 528e9d100d94899e712ec73edeb836ae806487aa3400cdef7b512716140dd445
+  role: construction
+matrix:
+  treatments:
+    - id: neutral_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: neutral_reference
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: backstage-backstage-heldout-pr-34480
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-34480/sha256/5c/5c8d6c2ab87bd52f612e38dd3a214ad9e9fd8fd7c8f4aead660da58b6a4d6772.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34480
+      mergedAt: 2026-08-18T21:03:05Z
+      baseRefOid: be8039148c3c40b7caee774e1ab214ffecab7bb1
+      taskTextHash: 77bc240544ab3012802e71457a4ba03755cc4fb571d3cd94344e82527968765f
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35229
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35229/sha256/eb/ebaf659e281c5b8eec99490f5c0e6c5d4e21f9bf74e9cb43e7fd8028aa1f487a.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35229
+      mergedAt: 2026-08-18T08:44:35Z
+      baseRefOid: bdf0440f08f1a9b2dc7dddf9220754c824cc74f8
+      taskTextHash: d18fc78e14b2f828ad3cf4e1dc53b999a3051dadbcb1ba8a7a086182a12c0449
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-34635
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-34635/sha256/f1/f1f189f295461c5b56fdf03202b03cacb830ab9c1e3857511be77524b2482ff0.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34635
+      mergedAt: 2026-08-18T07:23:43Z
+      baseRefOid: eeac444a9aba7c107525d2a726851e907418c181
+      taskTextHash: ade7e2b2a3aac741c0730dc1834e15042f1e968272a4680579bb490d4378204b
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35230
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35230/sha256/e4/e4630fff53957d74f0037f2f32d4ca94dbc0d8306bad96513455e7a0b1daf782.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35230
+      mergedAt: 2026-08-17T19:17:40Z
+      baseRefOid: 224a70b8866c3f5e939079acc6f46b5137ef7991
+      taskTextHash: 8d7ef655c2be0d40af98b70b4cfefedeab013ae9553bbe4b25860c02be711341
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-34892
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-34892/sha256/ac/ac28a446da34aa771f9df8974dbbe270ec8c7ab0b06c1192fcdfe0d94d275630.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34892
+      mergedAt: 2026-08-17T18:29:48Z
+      baseRefOid: 224a70b8866c3f5e939079acc6f46b5137ef7991
+      taskTextHash: 99eb62b89f2cf9e3157302640187ce4ed886f83a5b8c54ccdff10ff5918abe0d
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-34891
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-34891/sha256/76/762249f8ea67580fc2db1c3fca6f42d64de734d44742e093ccd5ab10e3f7e0a4.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34891
+      mergedAt: 2026-08-17T16:27:55Z
+      baseRefOid: 1747897bfa697c3d9510815c79ca8aaae8ec72ec
+      taskTextHash: 8d3d6f13722602c99423bc4bf2930191c726b8a3cab724de46f885610d498abc
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-34890
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-34890/sha256/64/64bd9a8a34be7857b9417b6710a06b02663f0084a791c40f33e0bd97ff3c3e39.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34890
+      mergedAt: 2026-08-17T13:46:06Z
+      baseRefOid: 4610e8517c27a4b208b8660668ad488de56f3a52
+      taskTextHash: 1ae616422e43e625e0243ac87a4942dda7ba926549f1c89f04243009a01fc807
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35226
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35226/sha256/16/16eda18c2ff237f29d53ff70e8f9737e4af3275f27420832bbeb02fb59e3e8c2.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35226
+      mergedAt: 2026-08-17T10:56:24Z
+      baseRefOid: ed6ffc9c5247b232c8e9cf47d4a85ad0b6bf05e4
+      taskTextHash: 051dc1c69e1bfebf6062afb2e4438a8078cd8bf24a6e343597c7465d387d5613
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35222
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35222/sha256/ed/ed57c87f52ae8aaf4fa0599801736237b674f59b20255f5aded5b12532b1d33a.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35222
+      mergedAt: 2026-08-17T09:55:29Z
+      baseRefOid: 4ab83738e989247c4b2244f9e0023597fe7d5cf5
+      taskTextHash: 6190b74b9ce5af1ba3420ed07fa39b5d428f3dd58866d0a1f1c48862214715f6
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35205
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35205/sha256/8c/8cdceafc66e5408e07581b563d2f56bf31925e522d19fb25fc28fac77da6c1c0.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35205
+      mergedAt: 2026-08-17T09:43:16Z
+      baseRefOid: 4ab83738e989247c4b2244f9e0023597fe7d5cf5
+      taskTextHash: 8821c0e1c4b5bda73bb2f470dca6de3805b7792d752b9fd78778a7f19c3c4c93
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35207
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35207/sha256/5c/5cfebc7432a9885463f70c5eb74bd5d45ee1b70ecb65af57bb39e57bfacaf73a.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35207
+      mergedAt: 2026-08-17T09:07:42Z
+      baseRefOid: 3af4ef9914c898798c772e76f59abd55955f73c4
+      taskTextHash: 3297ee488e004d732cd4128600d2c5a744b2493aeff72166a786b0d26ae3adbe
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35096
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35096/sha256/05/05a602fcdcb4983f46703086d70c3f6610797c94ccb8e374af83b5ef1c7d856f.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35096
+      mergedAt: 2026-08-14T17:21:58Z
+      baseRefOid: 53050605b84eb01626a7af2d9fc03eff5644e8a3
+      taskTextHash: c2748498b662f93834e8a53d5e1c7e7c2549b5941f89983c446b49b47510dc13
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35209
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35209/sha256/4e/4e76fb4042750e9ec6f2b68f139900794146a51a96ee4673502631d08b2464f1.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35209
+      mergedAt: 2026-08-14T15:45:34Z
+      baseRefOid: 698a3045bf58ef03d6ef8d278a61f9ee6792b38e
+      taskTextHash: edf987f249a615f61c68b3569111a903089082095f7c852c9d4f0ea9edb2b0c6
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35017
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35017/sha256/dc/dc739c45964c90fa2a1edee9cf295be5149886165c19309ad62fb66dc4497ed6.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35017
+      mergedAt: 2026-08-14T14:07:58Z
+      baseRefOid: a052aea0e24911fcac803085ed79f3fe23e0a46e
+      taskTextHash: 8aa90c222e06eb5402013c6a372c36c979618190558b4bbebc8ca129cd520ed1
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35187
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35187/sha256/b4/b46597481774420432feb4b4ffe03e2f991d371bb5fc850c6236c097cafe820f.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35187
+      mergedAt: 2026-08-14T13:36:10Z
+      baseRefOid: ec1548de90e336de529594593018f10581ac95b1
+      taskTextHash: 8d8ee3d371b23dddecb409a8017eaec13c0f3d3af8a9ffdc377916df9e75c48d
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35199
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35199/sha256/92/923ba747cdc54cf620a538313eb96409cbb5070d98b9ac68d8f3f980d2893a7e.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35199
+      mergedAt: 2026-08-14T12:50:06Z
+      baseRefOid: 163ebe7c1f27d0b540cfa9e6ddd10cac07ef5211
+      taskTextHash: 14e251c8573d295e8acd9848d80f8ab7306d532f42f265422ebaa5c30fbdd73c
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35013
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35013/sha256/88/88f9ce898c3b6b07711eb899eb55dfdd1bb488b4a996318df786b5eb66743ab9.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35013
+      mergedAt: 2026-08-14T11:52:43Z
+      baseRefOid: a052aea0e24911fcac803085ed79f3fe23e0a46e
+      taskTextHash: d9d29a5f0e6a3e7ef76c67b2532b103ac848ea6b0d6baa0163deb79fdc0f1b8d
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35193
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35193/sha256/b8/b87fa04dc40afe58e8d0e3ea64180dada8bb1c1d0f895a88eb2e9efa83f3ef0b.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35193
+      mergedAt: 2026-08-14T11:50:49Z
+      baseRefOid: 52071d4971341cf5845b6e48dc15ec9bc3afbeb6
+      taskTextHash: 90bcd4ff2de832138d9e8e900bc8530340a5efae104956204703d72aa4bd2251
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35176
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35176/sha256/93/93f8474038677317a0284ceb34b8a45282a7f2c8669b8492a77e97e0781f4bf6.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35176
+      mergedAt: 2026-08-12T22:11:37Z
+      baseRefOid: 52071d4971341cf5845b6e48dc15ec9bc3afbeb6
+      taskTextHash: 9636e6eb4211bb3102258ccfc7a3726a747ae83d32547d3a5af60d514273a838
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35191
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35191/sha256/b0/b0d54778d606600a91768acc3050374af700b07cc7d6126e0c88c04937bbfb49.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35191
+      mergedAt: 2026-08-12T21:29:01Z
+      baseRefOid: 52071d4971341cf5845b6e48dc15ec9bc3afbeb6
+      taskTextHash: 5c42d9948b153e73ed686d73c9fe8d010038fe43de7d72444941ef07ee37d100
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35059
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35059/sha256/22/22aa6bb69e1f8259525fc86b87f689ce69dc55a0ea582a1dbb8754db49196cde.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35059
+      mergedAt: 2026-08-12T16:22:09Z
+      baseRefOid: ec1548de90e336de529594593018f10581ac95b1
+      taskTextHash: 177116943a9f3d51bee95d6a7a28aa756da95642d39746168484e7b65b7900bb
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-34965
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-34965/sha256/d6/d6c93c6b0ed4d7846d246098d5139e36475d3a135a373348da383f894c42b476.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34965
+      mergedAt: 2026-08-12T15:16:35Z
+      baseRefOid: 0a16de860ed9eed58268e4b9d8306bab49bee8fe
+      taskTextHash: 50f019c8d24c9fd20ad5e731ad0c0e41df68dc20785a8b26b23ab78885e5923d
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35175
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35175/sha256/a9/a994bb48cf238c2a85a230ca6062d667df21b08856ec6c855f8d960d42c4645b.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35175
+      mergedAt: 2026-08-12T14:29:23Z
+      baseRefOid: 8ea4c3ec3cc711ae99e25b6dc9f90d3eb691db23
+      taskTextHash: c440943b56c150e365d3caad0c010eebeaac40889ebf43a83d731e78f5c89c61
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35168
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35168/sha256/25/25e5897d9602ca459cf158d304fff5cce1fad316b0d3c71f2e4bc689eefa114b.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35168
+      mergedAt: 2026-08-12T14:27:25Z
+      baseRefOid: 8ea4c3ec3cc711ae99e25b6dc9f90d3eb691db23
+      taskTextHash: d8ca1499ab38f4e5d97a250e7de92bd80ab6ca70a6973b8dcfe5bba913addc4d
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35173
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35173/sha256/65/6597a081a53287ea56cd4755a8a80de5ed67cc7c7aae889d705352dc6763cb77.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35173
+      mergedAt: 2026-08-12T14:23:21Z
+      baseRefOid: 8ea4c3ec3cc711ae99e25b6dc9f90d3eb691db23
+      taskTextHash: 797a9cb73cdc976fbc9a607cd9f1e1c320724cdfa75789a224d7c701140d6bdc
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35169
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35169/sha256/51/5163c071af79d7de09ea2cca6422d051a8ffd7ca3ad6a943b0280f68ca3d5a71.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35169
+      mergedAt: 2026-08-12T14:21:16Z
+      baseRefOid: 8ea4c3ec3cc711ae99e25b6dc9f90d3eb691db23
+      taskTextHash: cf64a02acfdc8445e508fb1d296c6396c44ef028015ca7b71bed2ae6734b581e
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35170
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35170/sha256/d2/d27c5a0debc9229cbd55c94f72d7a664ad244c9e095577f8af13aebdafb09bfb.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35170
+      mergedAt: 2026-08-12T14:20:09Z
+      baseRefOid: 8ea4c3ec3cc711ae99e25b6dc9f90d3eb691db23
+      taskTextHash: 7d5371d217303d46d8b6e776558cf901b99f807a9689e491c397877067fae300
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-34014
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-34014/sha256/8a/8a5e4337cf9100c22dda21cd51cd86ab1857d188ffa610cfed934bb8191b95e3.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34014
+      mergedAt: 2026-08-11T14:17:14Z
+      baseRefOid: 25463a867ce73ad4bd14179889f84cd815affbb7
+      taskTextHash: 1f57ad10464647bd68c5b97c7498c490ed16e6627fe7713b82318b8a6b11d145
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35128
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35128/sha256/10/10fd03fcc29409ab8abc37e730a3be7268b6a86438c9f000abe160ce6478c407.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35128
+      mergedAt: 2026-08-11T10:26:24Z
+      baseRefOid: a178067f5651d3a88221c48420425b87c5c244f6
+      taskTextHash: 2a3ab10502b71529c462bc402253dcdda387c799e245aa4d50fa884bc236aa8c
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35171
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35171/sha256/05/05913b36b2bc05f239d069e8e3e60bf89122d5db9c5727d7c7d2f9bf90a69a60.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35171
+      mergedAt: 2026-08-11T09:32:33Z
+      baseRefOid: 8ea4c3ec3cc711ae99e25b6dc9f90d3eb691db23
+      taskTextHash: 9af8958c29fed9b016e1f18fdd00b83de0a91e817c323e51794ae9b8d5d0e019
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35172
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35172/sha256/e3/e33a2f8390e6f15f29f4f9b41fbcdea2a6908018ecc87052fa52ca635ae94bff.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35172
+      mergedAt: 2026-08-11T07:06:26Z
+      baseRefOid: 8ea4c3ec3cc711ae99e25b6dc9f90d3eb691db23
+      taskTextHash: ddeb3c9f5653f09a064c58e9c5f198cefbc1fa95710a803edd427d7430574087
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35163
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35163/sha256/84/847356d7b01aa930ff08737861b96c6048f711c905f15b642cb067467ef7f18d.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35163
+      mergedAt: 2026-08-10T10:19:22Z
+      baseRefOid: 25463a867ce73ad4bd14179889f84cd815affbb7
+      taskTextHash: e86f073e74dc6bbfe4771d6a72e31b66b9317322d57eb203e627bdf79391677f
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35132
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35132/sha256/84/84de43269ac173fb3b82e957b43bf559a56265c17683819e63c6f378ad51b22e.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35132
+      mergedAt: 2026-08-06T16:19:17Z
+      baseRefOid: a178067f5651d3a88221c48420425b87c5c244f6
+      taskTextHash: 69f49d5dde4812e7066bd6132235d675bc9657eb1c3ff39456f3c27a98cd06e3
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35139
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35139/sha256/65/652dc2852233b06d982b9235dee6fa74387673b60ba2bbd7859edaba5b731081.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35139
+      mergedAt: 2026-08-06T14:47:37Z
+      baseRefOid: aa5a0cdf4cf06ecbe1d6ba3e390f62c6a1825e5d
+      taskTextHash: d52e0211f9e3357859e0a0bdd4685f937fe7682606c11b937b6b02640a602dcb
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35131
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35131/sha256/08/0858e92ae5fdde36d5a39524f815daf3d8a5bb40ecb824fc42d28e6482424ef0.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35131
+      mergedAt: 2026-08-06T14:46:36Z
+      baseRefOid: a178067f5651d3a88221c48420425b87c5c244f6
+      taskTextHash: 4c62fc97d6bbf1749ff256bd9ccec41c87f4fac778b87c7d97a55d4fab354520
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35029
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35029/sha256/cb/cbd964059fea053f0871ea2593b95e8b7d851ba266c7735a896feb430a81efe7.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35029
+      mergedAt: 2026-08-06T08:42:44Z
+      baseRefOid: d7d03d97e5fb20fcdc13bfcc3b537c9d4ede86ca
+      taskTextHash: 45841a50a22576f21ab40c499c118b1738103161426ce68a221d24841a341d79
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-34335
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-34335/sha256/dc/dc63edce4afec769d6ee6885fdde3c72720b03b747b684a4121000067d83b8e5.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34335
+      mergedAt: 2026-08-05T14:22:30Z
+      baseRefOid: 9138f3422d62140580b282680eeb30a9bff4dc7e
+      taskTextHash: e7695fdb81557ed0f685cd504cd409ecddf921f9bd8d4faaecfdd9bf2d59e5ae
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35124
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35124/sha256/77/77d9287692633b4c7223abe456e7bdbd0774fc082bf4d8e72f6c797d89e38773.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35124
+      mergedAt: 2026-08-05T10:09:43Z
+      baseRefOid: b9d08a6263489ca76208ecd12b4322c01aa58688
+      taskTextHash: ed444025d27347f79185ef79a1f40ec432986dd31c0c8d7d542df8dec91ad9ff
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-32637
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-32637/sha256/12/12260b9a48e98a50ce5ca8a24b6ffc002dfbb5d7fc26934a1c70d3395eccf4b6.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 32637
+      mergedAt: 2026-08-05T07:32:49Z
+      baseRefOid: c3ca20c864d490d70acbbc27dbc277cec60be28b
+      taskTextHash: 04e448096755e228cc0fc28523c18655237b60b586bf9f1a148a2786cc5072fb
+      split: heldout-evaluation
+  - id: backstage-backstage-heldout-pr-35102
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/backstage-backstage-heldout-pr-35102/sha256/f7/f7fa791ed2b724bdb69b8af4fb16b9ebe2ef9dc5198160004f038001b94c9c65.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 35102
+      mergedAt: 2026-08-05T07:25:19Z
+      baseRefOid: 1ee82c0f2838e6c6790676acc4a3ace2f4b45e30
+      taskTextHash: e3e1e5188ad7fd240cfd8a2869107480dbb38faa4ba54bbca5da181cb2520887
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130539
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130539/sha256/48/48271a0bd2ecd1317214dab12bec24f4e09d1d8acbaccdff2ce6a2fb526a1345.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130539
+      mergedAt: 2026-08-19T12:43:39Z
+      baseRefOid: e7cab7fb28ee9331aee8ee200163992caf10dc72
+      taskTextHash: 7f0560c5e95a12a82634e62a37393c0763301ec4dc353da7d75577baa6473b6b
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130906
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130906/sha256/01/015701aa121d4629867355aecf7fe5b78216c104fb737786dacf940797cdf842.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130906
+      mergedAt: 2026-08-19T12:19:09Z
+      baseRefOid: fc9e50e700438f8d7f749f08955b31bde931dca6
+      taskTextHash: b8bb65720e18bcdfe40175ba1f48de940bf05afcf52fdb9a42c9289397e8034a
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130875
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130875/sha256/c8/c8eb2656d7e7925d2e63f67de51836c17e240bc0bb2ccba6c9e7e123872b252e.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130875
+      mergedAt: 2026-08-19T12:01:37Z
+      baseRefOid: c17be8e64f6cb701d417cb8c58ac439f92d3dc2b
+      taskTextHash: d63a19a0c1449460d6c8d84ed420d192ca13b209c1d23204e71fc5a6536584b0
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130723
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130723/sha256/bf/bf56d6ceff63d9767ada158aa516a7a77a542a193a815ab79aa73e424d8e735f.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130723
+      mergedAt: 2026-08-19T11:52:25Z
+      baseRefOid: 2c5e7fedd3dae53c2e859d5cfa82d02af23a2279
+      taskTextHash: 57a73eb5ed7c367e33f87ac187d688789256b30644c0b358b12a15b1e282366d
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-131022
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-131022/sha256/9a/9a2aedfa98d8e53a33515ad094cfb6feedaace6677bacf81c6315471c64af746.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 131022
+      mergedAt: 2026-08-19T11:25:38Z
+      baseRefOid: f944ce1caf2f2c1d7654e3bc834a43d93a7623f9
+      taskTextHash: 5b8b3be6f30d39e794b18fa093e11f71af715f4fc9c78b0f3e07ad8149447490
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130919
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130919/sha256/d5/d5b89fa8d16936f5ade573274c9df73b753db69faa5c7b8345248222dca0f957.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130919
+      mergedAt: 2026-08-19T10:52:17Z
+      baseRefOid: 52b0853631677263bbb7fac8c8003f8d16a7066e
+      taskTextHash: 651e134efe458aef86a586514606b0c578c0447c2a44dc2a312ed2c595c33db3
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-131009
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-131009/sha256/a0/a080b8aa5749bf90c6fbe58931b2103fa80f00a5a502301a5435ff9e092902ef.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 131009
+      mergedAt: 2026-08-19T10:48:26Z
+      baseRefOid: 52b0853631677263bbb7fac8c8003f8d16a7066e
+      taskTextHash: d5136cac1fd2bc2ad57c804d9a6519cf667cbce663ea30a5c89bba032c14fdc9
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-131014
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-131014/sha256/24/2433ba0c86acf61be62d75c9d0544d508854e7bdc13e77c8f8f6358c7276d33a.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 131014
+      mergedAt: 2026-08-19T10:45:21Z
+      baseRefOid: f623437a199d62c2fd01cad8e348d3421a7be456
+      taskTextHash: 3e83d56b5062156c9978dabf8f23fa50ec83310fe76561574039eea405542606
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130954
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130954/sha256/54/5477ef4b2c0a0f99bdf1e0f8b91c3cb30e0978f2faa0a2d97b4956b02e2cfa5c.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130954
+      mergedAt: 2026-08-19T10:14:52Z
+      baseRefOid: 86397c5606a2cbfada6d84c946bf3b17a1784c70
+      taskTextHash: af4b211ff3e271895dec93fb7eb488d3c487d9bc6a75e462a5a7a89d8a2722fe
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130858
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130858/sha256/22/22fd22c9efc25f9a53fbb8a29b14c31c346c77b9bcdcda500a61c88a5c2d6e87.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130858
+      mergedAt: 2026-08-19T09:58:24Z
+      baseRefOid: 8063ce2bb5591fd1f9ac6eeadb9e2c026f10cd94
+      taskTextHash: 12264d846f6a415282eac0fa3e28bb1db3d7f8400023867e025dc4c5a451b05b
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130849
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130849/sha256/48/485ddc98c915e75245bc035a597693a79c15ca4464e84ff612f8ca874b45bb4f.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130849
+      mergedAt: 2026-08-19T09:46:17Z
+      baseRefOid: 3961bc1337e168549881553579d84c2c01f7ace1
+      taskTextHash: 04872cc115b46d6f2f3a20d97456ea0ca570e6a4d77d59a67124bbdbba4e63a7
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-131010
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-131010/sha256/45/45e814a6c746a63c8c708689d23eee3a0ead77a4ded672e0ba92936c82e20199.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 131010
+      mergedAt: 2026-08-19T09:36:01Z
+      baseRefOid: 8063ce2bb5591fd1f9ac6eeadb9e2c026f10cd94
+      taskTextHash: 74fffb5c70a6c986a05639414a220267b0f8170b7352b4e0b464d375b6def301
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130908
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130908/sha256/0c/0c3681f38d6849d70afe7ccf5f8587f4b9074e4beb4553a6447a13b191407c30.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130908
+      mergedAt: 2026-08-19T08:39:04Z
+      baseRefOid: 12bf9e7d07f91afca49a82f253c50c0dcba1ad89
+      taskTextHash: 119bfdf9f0f7dfea3f5cce9c1a00621fde57af332000aba0bd2a966018d22ea8
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130930
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130930/sha256/f0/f01e074872a4863bfa6b0dc7aa8f6bd0534b81eb6225c9e651a6a216e3d61bd4.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130930
+      mergedAt: 2026-08-19T08:07:25Z
+      baseRefOid: 8b434a62588fd2c1a9eca5971801880c8595ba0f
+      taskTextHash: 13228652e0edaf9826032bcb536d67adb2bbb6fc6be21b4955590b40b6b76929
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130357
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130357/sha256/93/935333f936301723a92f10021cef1f258861b14b376603d28cc9b689c45bacb5.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130357
+      mergedAt: 2026-08-19T07:53:55Z
+      baseRefOid: eec4a1c66b328851863369c9e031931c9b83cdbe
+      taskTextHash: 191d17b31cb268b9a71022729429f566f36d9b816c0d10599c306c7f4d3e49dc
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130952
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130952/sha256/35/352931c370ce31f4520b0865b9135a0956935b269162d5acdce7b1338352d9a8.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130952
+      mergedAt: 2026-08-19T07:39:54Z
+      baseRefOid: aae7f0292741e0953ff4a84e0ed94537b4155c14
+      taskTextHash: fb469fe0306478fd94536f8a9d3c069ded4ddd6153eaa88838f88722848313c0
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130887
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130887/sha256/eb/eb8f6d4ac267f5afb3f34d68d30daf5f50b467dc6a399de074e74e2eda42f4d6.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130887
+      mergedAt: 2026-08-19T07:34:36Z
+      baseRefOid: b29375f6bf77a393273afa714678eb415b93ddc1
+      taskTextHash: 770ff281992cedf7a8dbe04ac87c829e92316c8919a1077e6383a5d2d3ce1f83
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130904
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130904/sha256/c7/c7c7d4d3196901792dbfc92ddf8ea7a48810253bf513a31c1ffe6489661afa1c.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130904
+      mergedAt: 2026-08-19T06:42:25Z
+      baseRefOid: dfa18e0d6bfdc6e3b9b00f76d092bb5c975230e4
+      taskTextHash: dbe02c2a01d87cc68135ed47d373c34d16032684a6d1a8dcd9b13a8077bf7521
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130735
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130735/sha256/7b/7b8db5a9eee8ff2b907371efff48694ea4bc84c558dad793067905337fb44ae3.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130735
+      mergedAt: 2026-08-18T22:15:27Z
+      baseRefOid: f3344e3d9233876b18ff44144f00dc2b643ed224
+      taskTextHash: f1e44f448f2eee9ccb3b8c6e3759407945a47e9c2ae188f686906d552418025d
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130968
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130968/sha256/54/5485e21e1810898879d1b5b6cd9f5084baf1e196982df09321ef43ab0ab6b305.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130968
+      mergedAt: 2026-08-18T22:06:16Z
+      baseRefOid: 9da4a0539babb000db33594817fbe8f36f56c5c7
+      taskTextHash: 7febc0e421aeb0b6a3e891f67d4c0e1c3fd6aecda8b8fcd96f91c935be999325
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130633
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130633/sha256/8e/8e99b531ddada0a74978743458fd5cb6137dbfa81603edf21ef8264880778697.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130633
+      mergedAt: 2026-08-18T21:17:28Z
+      baseRefOid: a3a8829c85d727b28ad68ae3308830823b5a0868
+      taskTextHash: 049877f4bb98e0a45a45984f756341cb8901f5097b5daad4ce70e9f57bf90c27
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130982
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130982/sha256/24/2461b950873120f3d10761cce436eeed3bdbe1fb8603742495c307e3fa26c1a3.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130982
+      mergedAt: 2026-08-18T21:16:46Z
+      baseRefOid: 9575f9e23cad7db59053c89e470b98e7f94c962e
+      taskTextHash: b8c59e73dfad0080998f441100c0dcdad42561904395ca1aa0682523ad477175
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130964
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130964/sha256/10/1084cf0dcc9e5359c513b9e8e6443a282e1fb9ccbbe091eae2523ba2cfb3d073.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130964
+      mergedAt: 2026-08-18T20:51:56Z
+      baseRefOid: a3a8829c85d727b28ad68ae3308830823b5a0868
+      taskTextHash: cbf91b9b55e5feccc5ea68e4379480cf6d245ea45ce031b1f5281dc7dea40a67
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130628
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130628/sha256/2d/2d1e9a8373f17d9e14b3f832cb007f6d5cc9c21028f1f4fbeb00444102eb9f66.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130628
+      mergedAt: 2026-08-18T19:38:05Z
+      baseRefOid: 59a8cbb6cd0d7a0946767fee57510ac96af8f112
+      taskTextHash: 71a1dfeff35b39f3c41e59760daa514858b4758d65762082f5cfb09284cf5e54
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130957
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130957/sha256/b8/b8e834dcc20ce47aae52a8c9fa89faee212a0668ef54dabbce18c5e92c8a2ab1.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130957
+      mergedAt: 2026-08-18T18:27:14Z
+      baseRefOid: 86397c5606a2cbfada6d84c946bf3b17a1784c70
+      taskTextHash: 06e922eed6e774645b67a11bce722486e9682334af3973788ae942895b44b457
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130505
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130505/sha256/7f/7f1f441e0514ff2facb8cf5584c2f0496ada1c669f161a7668054aa9e14c4613.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130505
+      mergedAt: 2026-08-18T17:28:39Z
+      baseRefOid: c276491be8e492674989d4eabed4f6cc9bb9c3ec
+      taskTextHash: 84ccd1e7cee33bd5f201ce3665a1c3d35db96c8f43a8872fabe8188ba02a946c
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130806
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130806/sha256/5c/5c13cbfbec15a616f4dd1bd5f24308a3d7336a5d13c307eeb74c16f6adb734dc.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130806
+      mergedAt: 2026-08-18T16:59:36Z
+      baseRefOid: 51566383c9956d6b03629fced194969423365ccb
+      taskTextHash: df14747e2b5a515b77346d69d83e633bc8491a41dc89cecc8e0305fd05371ade
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130785
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130785/sha256/ea/ea01a1903ac87fdc2905174f3c60af58d38b44da578b71e60e3364f059bcd9b2.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130785
+      mergedAt: 2026-08-18T16:16:18Z
+      baseRefOid: 2fe57cc0438c9dacb86c393c62582857b05f305c
+      taskTextHash: c6d51f8269d9e43f38a4265a60313c3fe835a526bb683d780a6fb04a63cb0633
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130852
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130852/sha256/a7/a7bc760cd24df7abbf79b9954e917f408dbfa1244a1de8e52f9d528744ba4a93.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130852
+      mergedAt: 2026-08-18T16:10:04Z
+      baseRefOid: d0cedd0780d7d5813b2a063608456be4d52db60e
+      taskTextHash: 573bdaf034bc13a86043932037dc534480eb8c07560a09b303dff4f776fb21d7
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130700
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130700/sha256/23/23bc4e48a01c9f9af859f19316416ed4980513449e8c83df93fab67c2f5fd94a.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130700
+      mergedAt: 2026-08-18T15:56:24Z
+      baseRefOid: f41579452afabd7fd5c206caf7c6fb43fc7d2968
+      taskTextHash: d330da3900950323929496c42ffdee25b7ed61bc92207c0b2528369a3e6bb129
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130616
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130616/sha256/7b/7bb96858a99cfb98fc29517685c31e09ca786f0ee75a844afa3c7d840d8ff591.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130616
+      mergedAt: 2026-08-18T15:53:43Z
+      baseRefOid: 0e2c4559e7f4f86f4ded872b3c07301580010f34
+      taskTextHash: e4e10c26fa4f870bacfe691949c1cb502094492154900057cf40b28dc2aa6302
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130933
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130933/sha256/b9/b981a244f58749bfff28604c5e2e1faed1a731cde40332fe108ef4d16facea2a.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130933
+      mergedAt: 2026-08-18T15:53:12Z
+      baseRefOid: 3b6e93105d10fc2ddcdcc931b36f0bf0ad9bc049
+      taskTextHash: 1f6d931dfdcf0d996b2918171205c6da13e35b5e41d6ebcd7ebedea42c36b7c9
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130722
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130722/sha256/bd/bd0d9020cbfeae26a4626472e41d04ddb8de099736abbe551d488aa5ae311ead.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130722
+      mergedAt: 2026-08-18T15:35:43Z
+      baseRefOid: ca5ca2e581217a75b180b6de060ae536b2896828
+      taskTextHash: 7e789c18a4c269405e6fdafbde53e6d2046e87e3edef169081b3b4f6e2b1aa73
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130928
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130928/sha256/ef/efd6c2af6ddd94087d106cd3116d16c0837dd4e2c53088236952b8e0825e7aad.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130928
+      mergedAt: 2026-08-18T15:30:05Z
+      baseRefOid: 946e94f9810537d6ba1cf9808c18d64919901c24
+      taskTextHash: 25eb0ef755dbb207e934908ea85cd142ade1f1efd774390c7bae8aaec96ce9ca
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130609
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130609/sha256/50/50f5b1415384d1b4a001e9eae7aed04e658994920b4ab0c71a08d43c7975161d.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130609
+      mergedAt: 2026-08-18T15:22:22Z
+      baseRefOid: a8018381e9eaeb87092de758e55b321602783b77
+      taskTextHash: c2b3135f39b54e1b6c95e8f26ad73b545cf366dcc7dda978e1507843f7b2af6a
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130912
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130912/sha256/6d/6d94e67a1d34aaeb856ba818f470a4e7c19e85946f65c82460439a660e5d3361.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130912
+      mergedAt: 2026-08-18T15:14:33Z
+      baseRefOid: fe37e4e958c848d3023461b19276ec25ea7ed466
+      taskTextHash: 8c8219fa5504e60b73ac19613387e6fcdbc6d8fa47ecde29345b5d1adf35cd2f
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130327
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130327/sha256/b8/b8af6a56f0b3f6a70df6524ba98880533cf80e6d4a24f1a3117e4dd96b9f301a.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130327
+      mergedAt: 2026-08-18T15:03:26Z
+      baseRefOid: fe37e4e958c848d3023461b19276ec25ea7ed466
+      taskTextHash: 979dd8b4487d3be1c27af01ee220f01f26e64785d1f742f8b04c1c0a591c6c05
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130699
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130699/sha256/29/29e6956ef07c53270f8aeb2b8ad03548f9123999d419ed11999a3e7adf756517.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130699
+      mergedAt: 2026-08-18T14:52:19Z
+      baseRefOid: 0e02a16330720f5451638c6c00e7d8360546e0f9
+      taskTextHash: f4c6f691740e0aef2e04b18c839abbf60c7f2ccc8311ee580189be05677449a0
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130604
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130604/sha256/0d/0da1f48aeab895b9feed407ad7a5d7a2beba3174e5599051e38fe9ce435c57da.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130604
+      mergedAt: 2026-08-18T14:35:37Z
+      baseRefOid: 740c6514c6d7a3e86631062e48b02adafdaea0b2
+      taskTextHash: fad1263a1d4cfd2e70c91b87701ae58095839302213d548360de4a6bf2551aa2
+      split: heldout-evaluation
+  - id: grafana-grafana-heldout-pr-130856
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/grafana-grafana-heldout-pr-130856/sha256/c1/c18306c7142a421e14525cb64e8970d9028ffc258324ca5d7db163913add7eae.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130856
+      mergedAt: 2026-08-18T14:32:53Z
+      baseRefOid: 8e1c46e8e1cfc6b043123477176fef22b1c082b5
+      taskTextHash: 70f7699d7a6f1b141c0da9cd6176eb6e7ab44051bb2c341e609dc208cf6f746c
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141440
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141440/sha256/77/77fc4719b091de054f78b62729c5afff480f2565496803dc72df48d72e44ef5f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141440
+      mergedAt: 2026-08-18T14:41:10Z
+      baseRefOid: 643d8f6c393f87207ef6855f692af69b96250fa5
+      taskTextHash: 856876a7543ca30ed663de943da59726ab43fc4b72e5119dee41254160882766
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141194
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141194/sha256/f4/f4e5953dd9e0ac05f1d0fd77e1d881806354ecf084685f360ae232404d7d0c2f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141194
+      mergedAt: 2026-08-18T13:31:08Z
+      baseRefOid: ec9448ceef13adbbcd3fa9f09b4d3c1fa54cc674
+      taskTextHash: dd4aab9adba8b87ee1c23dbc67aa4322c32589758fd2b67e1a483b93e7784b19
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141105
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141105/sha256/9f/9f10c601574271e0f7561743d775447d3af11bf30b03d486274d24f46b1db0dc.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141105
+      mergedAt: 2026-08-17T13:26:19Z
+      baseRefOid: a818af18fe29d999d6741234c8cd72709ef2f424
+      taskTextHash: a64bead340b1a60eab321aa3dba3e6b5ccfb2d606ec2a1bec84a072354ebe4a7
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141104
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141104/sha256/6b/6bbf220754362cdaad12a9db7e22b1ee08528efae13f3349b30cbab0493bedc0.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141104
+      mergedAt: 2026-08-17T12:28:22Z
+      baseRefOid: a231bf3f37761e8955eefba61855da1a526a3eb9
+      taskTextHash: e811b1c045683518aeab18a0538b020826db3366708863321683759b9c073f4e
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141296
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141296/sha256/fa/fabd44eeea2093df38ecc9b4914d58330e66b08e3b9dbd720d9f9de1d41da853.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141296
+      mergedAt: 2026-08-12T11:19:18Z
+      baseRefOid: 8c078bc32e90f0ea72f57169846b533e20b1ca71
+      taskTextHash: c2e23f50955d20aec5af7c14408e8a49919861b692067c3c72dc8367890b98db
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141324
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141324/sha256/f5/f54ebad877176289009e6623a391d548ebfca9ef1df2db87d74b9d2edfddfedb.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141324
+      mergedAt: 2026-08-11T20:33:18Z
+      baseRefOid: a76f2bbb5a67c4a0142f49f5b40423905c356e86
+      taskTextHash: a3ead1f8e930a8ebf6d596562c93253d693fbdab0ee385b2bddbd3b8959b4cd8
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140925
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140925/sha256/20/20caa9c8474812dfd71f8437b80d735dd3a377e461ea223efd73d47d1e5c4189.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140925
+      mergedAt: 2026-08-11T15:33:16Z
+      baseRefOid: 752b88759ecfcbbd9de1c30e94a7bdcde992cb17
+      taskTextHash: 2e44f7a3979de4f4a5155fef91fcd980226d2db67e0e74f00b232981687a3193
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141292
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141292/sha256/e4/e4439f005bfb702920e62b1842cb59471443a479c9be00b43f330b0a12e10d01.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141292
+      mergedAt: 2026-08-10T15:00:12Z
+      baseRefOid: 94c136764292cc5fac976c0de6587daaea56410f
+      taskTextHash: 06657119931d6a48856c18de0ad5f834168a0d88cb2a7ffef88bed272d5c2584
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141273
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141273/sha256/b1/b14a4f3eb378287ed7f67c6ae12f81058bb462bb4607b93867a65557c008bd69.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141273
+      mergedAt: 2026-08-08T20:19:59Z
+      baseRefOid: b882c60b4023bdf09264c2d5d30a2cadebc240fb
+      taskTextHash: 60b2ee44baba85e200f051bc8ef87753c39e58cc89f272f16df65534f1b6e58a
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141146
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141146/sha256/23/23681873c4361bee51224c280ace66652b705644e6da14da8a8b3425eeb45574.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141146
+      mergedAt: 2026-08-06T02:22:34Z
+      baseRefOid: 25c88fd21984152e30aed3bd2601011b70617e9a
+      taskTextHash: 54f515bfb05a196aebc2f8f6d01ebf065059ea81bb6127d4f71bb69b0158587c
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141209
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141209/sha256/1f/1f8cdfb87ddbbb161a85ed14abd5391f2c6f0c9b390a075f91f45cb00084cbb2.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141209
+      mergedAt: 2026-08-05T23:18:33Z
+      baseRefOid: ec9448ceef13adbbcd3fa9f09b4d3c1fa54cc674
+      taskTextHash: c85781d387c2ab15c8f69f7d70e30a85c413238b4fea2addf5ac11ecbc5847d2
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140694
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140694/sha256/02/02cd1171d80b2bf49127c27d488fd5db6fb67201ac6cfad4c6021fd26e382060.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140694
+      mergedAt: 2026-08-05T03:38:29Z
+      baseRefOid: aa94f417962c7c4a3798e042dd0ce24cc9374a1e
+      taskTextHash: 55d6ee62fc76a7aa46f4fc2da39388819dc3d713ff7067b9a32dcea1d9c3216d
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141060
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141060/sha256/b8/b8a13b1f3613ab42156b6eb2a19c391f74d355af32b821449aa49bad0b213f2f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141060
+      mergedAt: 2026-08-04T16:54:32Z
+      baseRefOid: 5aef4d9a009d870af0d6abd11e3c648338595a7b
+      taskTextHash: d6d1171b0198c4171c1fab93e83577af6ede6276b0a95e96e8852d368fc41e6d
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141145
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141145/sha256/be/be1444525ba0c7f57752cf91bfe876519aa4ccc0c1758d40db83a8001f279392.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141145
+      mergedAt: 2026-08-04T12:28:30Z
+      baseRefOid: b037c6852709aa22e06432a1bf90275ea510467f
+      taskTextHash: e371ce8b3f16932c3d90ef0b5cf849150f7bdb1171bdc9afd11250e8e020daee
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141131
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141131/sha256/30/3036ea505464b864ae0a984b7d766b311861cb390a98dbc034031bc62b053a7c.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141131
+      mergedAt: 2026-08-03T13:47:16Z
+      baseRefOid: a818af18fe29d999d6741234c8cd72709ef2f424
+      taskTextHash: e8356bfb79d419d6a0c6d985bbcd8b246cb1cea74c308b71b1ce84317368ebc2
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141082
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141082/sha256/c7/c7afb712b526f1ebc3e620adc0c5558f3a78486ae7217f4c85b504c9d4f6adf5.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141082
+      mergedAt: 2026-07-31T18:49:43Z
+      baseRefOid: 0357dd59ded6f636c07075dadb803114ab66a031
+      taskTextHash: c49a57fdbb1d65a7255688ac4f48fa0d23f5b6e36a69e09dfec3f54000e0e720
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141066
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141066/sha256/bc/bc032cb68aac99664d9ed656b97ecdea5e9ed876685d3edac586603b50129fc1.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141066
+      mergedAt: 2026-07-31T17:13:41Z
+      baseRefOid: 8e608f6b90eaae92055474eeddbd92784c5830df
+      taskTextHash: 73bad2c710372e9c10d02cc3066bee2ec60eb1dae23ef2416814c7aa9dac6c49
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141075
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141075/sha256/a5/a58763f38854f5ddffc314f14ef00f8f8212e6a3c493ed3599f831d3eb5b7b33.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141075
+      mergedAt: 2026-07-31T14:37:42Z
+      baseRefOid: 8e608f6b90eaae92055474eeddbd92784c5830df
+      taskTextHash: d84149d4e19062e2080157bd2451520d5bacfe296223bf558e093e5c9403a2fa
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141048
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141048/sha256/d2/d24d53cac2d353f6c7959afa8ed558b616b5b05f238530a6286c113fa5add9de.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141048
+      mergedAt: 2026-07-30T13:21:41Z
+      baseRefOid: 6fd1049740274a3adfa5d5be904715a780465bf2
+      taskTextHash: bb0f4c2e6a6cd27ab86b9d4b1d1b8cdda19106436906bcadbcefae78088a4faf
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141034
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141034/sha256/2b/2ba92a79f4807cec9fe72d4fee9e0c93346cc539f67905695198ef1a54cfda87.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141034
+      mergedAt: 2026-07-29T17:36:01Z
+      baseRefOid: 7fbcad5e8ec387e23061602eb2d4b110b049410c
+      taskTextHash: 7f26f29c70d519faab0bd1011d7f8472198a436720b33407b7ba4adbba608db2
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-141012
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-141012/sha256/3c/3c84cc96a90a91e9d2e9c831cefd0d0a0b07120660b9a4ff4bf91b0521f7c9e2.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141012
+      mergedAt: 2026-07-29T14:36:02Z
+      baseRefOid: 7ed622c80f39f99dc9efc8275fd1244b1791fa67
+      taskTextHash: 9f4d322e2185be329786b0be9728668c60066933df73c7e41d71020655cb00f4
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140982
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140982/sha256/76/7610a91d8e5d6c2c8c534d87a84d69364a6b8b4bfead81bd631af8f5b0074e46.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140982
+      mergedAt: 2026-07-29T13:18:01Z
+      baseRefOid: 8f19f1ec9349f516eb72e677a8ac2fa3fa930035
+      taskTextHash: a88c07cd910fcf86505f88a2e341529365774206d8847fe76f9647a53f809178
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140882
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140882/sha256/2d/2d1b36d8c3abeda0682ceb1be6f203acf57da96f2c747d1fb8e223bf00533f75.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140882
+      mergedAt: 2026-07-28T19:26:02Z
+      baseRefOid: 42850664fd99edca42ca8bbfd20ecfb197fdbdc7
+      taskTextHash: ad1596c941d125734f3ddf6d8d8f43826035ddf3bb539edb20f0d4cd643e7358
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140966
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140966/sha256/d2/d23e930132d2511ebc49bdfffe2154d1e723764bcbeeaedf4ccdce5cc8b85756.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140966
+      mergedAt: 2026-07-28T18:32:08Z
+      baseRefOid: 42850664fd99edca42ca8bbfd20ecfb197fdbdc7
+      taskTextHash: 92c9728c9993f329561d6f1556f142874b45259f7ec6ba2694df6a7a1a704725
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140921
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140921/sha256/78/782e190724a54625be85cb68c89a3dd7bd5b5e9480d75916441a2e9e5c6f1d73.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140921
+      mergedAt: 2026-07-28T18:32:00Z
+      baseRefOid: 0d50fdfe28baf5a84e024f775d53a9d4e500e0b8
+      taskTextHash: 4d1efcc562e79a348b5ad945c70d4b6b4de449acbe108e17cf5710b4b44d8013
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140990
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140990/sha256/71/71e759d0f6a71b9dd6a7d86021c3a6d80921d5c502b13b6a7fa99917c4cb3eaa.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140990
+      mergedAt: 2026-07-28T16:54:12Z
+      baseRefOid: 8f19f1ec9349f516eb72e677a8ac2fa3fa930035
+      taskTextHash: ce5076de9725c8030de3fcea5817a7fa8ca7f5b31ee5c6be291ec93f44d6b820
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140892
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140892/sha256/f1/f1b9142525ce60d87761e3536669b0330bf5222fb38bd7ecd24da52fd9c6aa05.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140892
+      mergedAt: 2026-07-28T16:54:01Z
+      baseRefOid: 2a5a1c06c4bb33424a8253d876a094cc01957b07
+      taskTextHash: b2b04be851dfc12fea9016b764f6406de198b999f21415ee1e589951d65f5c34
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140916
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140916/sha256/93/93b8b46cdef26f4f26da30902222e2638b01055f0f04e4548af68d02ca65154f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140916
+      mergedAt: 2026-07-28T15:35:57Z
+      baseRefOid: 8f19f1ec9349f516eb72e677a8ac2fa3fa930035
+      taskTextHash: 55ccdf594f45760adb638d868914463fa2cacb657c0cfc697fdbc4d1fed8eab5
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140960
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140960/sha256/b8/b858d9559872f39ca6f7d385b107cb52b30fc4e57a5f45818f303940a149e16a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140960
+      mergedAt: 2026-07-28T11:11:58Z
+      baseRefOid: 7bd662ff25ec4b4f11b510405d799a1f400b572e
+      taskTextHash: 4ef83fcbbf5e495f0919616d3294270587fcf46026e61051a664faa30f257b8d
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140289
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140289/sha256/fd/fd416dd00be7a7463858c2c5e15b345bc5d1850e58dc924feab68112e7107a0c.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140289
+      mergedAt: 2026-07-28T08:49:58Z
+      baseRefOid: aa94f417962c7c4a3798e042dd0ce24cc9374a1e
+      taskTextHash: 98d758c1ca014ca21bc26a935811a8fa9c284167057de1cdcb212da9c905cb46
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140334
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140334/sha256/42/42505625aacbbdd1a24dfdbe4b58ccb1f812b01d532fec7f912270c7d832d773.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140334
+      mergedAt: 2026-07-28T01:03:57Z
+      baseRefOid: 864752076be60d89afdc214d902e97183ac065dd
+      taskTextHash: 3b453d83a8571239816e01b37191e9bdbfad0445efe953fe55a96763e1b92ce8
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-139864
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-139864/sha256/48/48a40c791598475ef4a422c5ddcbbd47ad119f3adc6b4fd6992198132d39f1eb.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 139864
+      mergedAt: 2026-07-27T14:26:01Z
+      baseRefOid: 8739a1e42445c03d10d9d97e65681d9f5db90913
+      taskTextHash: 345110cb56ad4000ce1e1d3ea30931de406fa6e1d610765e1af3e58791ed1ce3
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140959
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140959/sha256/45/4553a3e79ace5d369a2f6051bae47f955f30819985fb40c5aa7ee6adadefc548.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140959
+      mergedAt: 2026-07-27T12:15:59Z
+      baseRefOid: 752b88759ecfcbbd9de1c30e94a7bdcde992cb17
+      taskTextHash: f3be575e7e2cb7fe280f78aef173e04e607f9e1210c7f894194aeea1b014fafb
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-139795
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-139795/sha256/35/355c70d452ae85649df9dbc2da65147f446b8275a88f934abe8e704daf1c5ce0.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 139795
+      mergedAt: 2026-07-26T08:01:53Z
+      baseRefOid: 2a5a1c06c4bb33424a8253d876a094cc01957b07
+      taskTextHash: c0ef598c535169aca7ed8e087ad9e7aa34edaea319daf081ac9a978e526ff06a
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140029
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140029/sha256/59/596d22153738526809c1ed812357e17ea76c830034f838d28128d1a6ad29b480.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140029
+      mergedAt: 2026-07-24T12:21:50Z
+      baseRefOid: 32385309d3adfddd8d79f7a8e2e873db88a782b1
+      taskTextHash: 959a78c2fab48116d86a872b078d9868abeaeb1f2a0dd8a902c47359c6242b59
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140886
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140886/sha256/14/14d4f8231843f1f6f63b357cec18f683afa2a9b44cfed442027298cdd465b11f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140886
+      mergedAt: 2026-07-24T06:55:51Z
+      baseRefOid: aa94f417962c7c4a3798e042dd0ce24cc9374a1e
+      taskTextHash: d66876d40f35ffb57e27b7ba93e43723fd5c6c5060bf073fb781d0eb7af26b0d
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140759
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140759/sha256/be/be1e7f83627b1ac9f5fbf1f9b36edb928061667a56afef32b5d3e85d2de58513.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140759
+      mergedAt: 2026-07-24T04:09:59Z
+      baseRefOid: e475f160b16c6b69c48ec05c9a46567f31dc5651
+      taskTextHash: 2156a89276ebb67cb6b20be35977373821d11a3f01c53e3879a17bd890fbc5a8
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-139933
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-139933/sha256/94/94d7eacefd39d99db50c12ad4db33437cfb088bd65d58f4dcab2eb331e6f0ee1.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 139933
+      mergedAt: 2026-07-24T04:09:49Z
+      baseRefOid: aa94f417962c7c4a3798e042dd0ce24cc9374a1e
+      taskTextHash: 27a382bd2dbf97b1bcd66d5409283a191691c765d58c256a36472e6f3ee04d48
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140871
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140871/sha256/8d/8dfb4f8cf6b2602c8d109661ce328e1752d7e7dfb121642010b225d473bc5fac.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140871
+      mergedAt: 2026-07-24T02:33:57Z
+      baseRefOid: df2facd2c99ece18ded0e0ce7c0f80652b2cf2cb
+      taskTextHash: e37cc2e395b4335303a69647d57739f7c84b9b02306b1b2a3adbd4d66e839c36
+      split: heldout-evaluation
+  - id: kubernetes-kubernetes-heldout-pr-140013
+    inputArtifact: inputs/onboarding-generalization-neutral-120-v1/kubernetes-kubernetes-heldout-pr-140013/sha256/e9/e9f57df76669c3350c9c9add93926959ae30f5171d043e8bc59943d266dc7075.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 140013
+      mergedAt: 2026-07-23T16:03:52Z
+      baseRefOid: df2facd2c99ece18ded0e0ce7c0f80652b2cf2cb
+      taskTextHash: 8065c4fa2986122a0eaa470de1f790d319830222094eb75e76d34218dc6d535b
+      split: heldout-evaluation
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 6.9
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
