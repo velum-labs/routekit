@@ -232,3 +232,7 @@ eventual onboarding workflow are specified in
 
 That document is a research specification only. It does not authorize artifact upload, manifest
 submission, paid inference, confirmation execution, or a budget change.
+
+The completed development-run results for the common-reference, unknown, structure, Area Card,
+and automated-onboarding experiments are reported in
+`ONBOARDING_AREA_DEFINITION_RESULTS_2026-08-19.md`.
