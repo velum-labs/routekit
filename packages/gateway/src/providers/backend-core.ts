@@ -3,15 +3,17 @@ import {
   conversationFromOpenAiMessages,
   conversationText
 } from "@velum-labs/routekit-contracts/protocol-ir";
-import { randomId } from "@velum-labs/routekit-runtime/timing";
 import {
   executeWebRequest,
   type RouteKitPlatform,
   routeKitError
 } from "@velum-labs/routekit-runtime/effect";
 import { StreamPump } from "@velum-labs/routekit-runtime/sse";
+import { randomId } from "@velum-labs/routekit-runtime/timing";
 import { Effect } from "effect";
 import type { HttpClient } from "effect/unstable/http";
+import { jsonResponse } from "../http/response.js";
+import { SseParseError } from "../sse/parse.js";
 import {
   type Backend,
   type BackendPorts,
@@ -19,9 +21,7 @@ import {
   type BackendRequestOptions,
   staticBackendModelPort
 } from "./backend.js";
-import { jsonResponse } from "../http/response.js";
 import type { ProviderRecord } from "./protocol.js";
-import { SseParseError } from "../sse/parse.js";
 
 export function invalidReasoningControlResponse(
   message: string,
@@ -67,6 +67,14 @@ export type ChatBody = {
   top_p?: number;
   top_k?: number;
   reasoning_effort?: string;
+  response_format?: {
+    type?: string;
+    json_schema?: {
+      name?: string;
+      schema?: unknown;
+      strict?: boolean;
+    };
+  };
 };
 
 export type ProviderBackendOptions = {

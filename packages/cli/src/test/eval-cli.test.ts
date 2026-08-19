@@ -13,13 +13,14 @@ import { EVAL_POLICY } from "@velum-labs/routekit-eval-contracts";
 import { Effect } from "effect";
 
 import { buildProgram } from "../cli.js";
-import { child, runProgram } from "./effect-cli-test.js";
 import {
   evalAuthoringRequestBody,
   evalAuthoringResponseFailureDetail,
+  evalAuthoringStructuredOutput,
   evalSessionGatewayUrl
 } from "../effect/eval-authoring-target.js";
 import { policyShowCommand } from "../effect/eval-cli.js";
+import { child, runProgram } from "./effect-cli-test.js";
 
 const command = (name: string) => {
   return child(buildProgram(), name);
@@ -94,6 +95,73 @@ test("eval authoring HTTP failures include provider diagnostics and the inspecta
   assert.match(detail, /param reasoning\.effort/u);
   assert.match(detail, /call id model_call_eng826/u);
   assert.match(detail, /upstream body .*invalid_request_error/u);
+});
+
+test("eval authoring extracts requested JSON from common model wrappers", async () => {
+  const dimensions = {
+    dimensions: [
+      {
+        id: "gateway-protocols",
+        description: "Protocol translation",
+        includes: ["wire adapters"],
+        excludes: ["unrelated UI"]
+      }
+    ]
+  };
+  const normalize = (text: string) =>
+    Effect.runPromise(
+      evalAuthoringStructuredOutput({
+        operation: "authoring-dimensions",
+        text,
+        callId: "model_call_eng829",
+        schemaName: "routekit_routing_basis",
+        jsonSchema: { type: "object", required: ["dimensions"] }
+      })
+    );
+
+  assert.deepEqual(
+    JSON.parse(await normalize(`\`\`\`json\n${JSON.stringify(dimensions)}\n\`\`\``)),
+    dimensions
+  );
+  assert.deepEqual(
+    JSON.parse(await normalize(`Here is the requested basis:\n${JSON.stringify(dimensions)}`)),
+    dimensions
+  );
+  assert.deepEqual(
+    JSON.parse(
+      await normalize(
+        JSON.stringify({
+          type: "function_call",
+          name: "routekit_routing_basis",
+          arguments: JSON.stringify(dimensions)
+        })
+      )
+    ),
+    dimensions
+  );
+});
+
+test("eval authoring invalid JSON includes parse diagnostics, call id, and bounded output", async () => {
+  const invalid = `${'{"dimensions":['}${"x".repeat(20_000)}`;
+  const exit = await Effect.runPromiseExit(
+    evalAuthoringStructuredOutput({
+      operation: "authoring-dimensions",
+      text: invalid,
+      callId: "model_call_eng829",
+      schemaName: "routekit_routing_basis",
+      jsonSchema: { type: "object", required: ["dimensions"] }
+    })
+  );
+  assert.equal(exit._tag, "Failure");
+  if (exit._tag === "Failure") {
+    const message = String(exit.cause);
+    assert.match(message, /author model returned invalid JSON/u);
+    assert.match(message, /parse error/u);
+    assert.match(message, /call id model_call_eng829/u);
+    assert.match(message, /author output/u);
+    assert.match(message, /truncated/u);
+    assert.equal(message.includes("x".repeat(17_000)), false);
+  }
 });
 
 test("eval command tree exposes the compositional product workflow", () => {

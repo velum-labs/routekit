@@ -15,16 +15,49 @@ import {
   wrapResponsesEncryptedContent
 } from "../adapters/openai-responses-wire.js";
 import { responsesToChat } from "../adapters/responses.js";
-import { OpenAiBackend } from "../providers/openai-backend.js";
+import { anthropicMessages } from "../providers/anthropic-codec.js";
+import type { ChatBody } from "../providers/backend-core.js";
 import {
   AnthropicBackend,
   CodexResponsesBackend,
   GoogleGenAiBackend
 } from "../providers/backends.js";
+import { OpenAiBackend } from "../providers/openai-backend.js";
 import { ChatStreamAssembler } from "../sse/chat-assembler.js";
 import { SseDecoder, SseParseError } from "../sse/parse.js";
 
 import { asTransport, sse } from "./provider-backends-fixtures.js";
+
+test("Responses JSON schemas reach Anthropic as native structured output formats", () => {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["dimensions"],
+    properties: { dimensions: { type: "array" } }
+  };
+  const chat = responsesToChat(
+    {
+      model: "claude-code/claude-opus-5",
+      input: "propose dimensions",
+      text: {
+        format: {
+          type: "json_schema",
+          name: "routekit_routing_basis",
+          schema,
+          strict: true
+        }
+      }
+    },
+    "claude-opus-5"
+  ) as ChatBody;
+  const outbound = anthropicMessages(chat, "claude-opus-5");
+  assert.deepEqual(outbound.output_config, {
+    format: {
+      type: "json_schema",
+      schema
+    }
+  });
+});
 
 test("direct provider backends reject malformed reasoning controls before transport", async () => {
   const cases = [
