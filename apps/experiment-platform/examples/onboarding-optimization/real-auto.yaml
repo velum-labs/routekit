@@ -459,7 +459,7 @@ selection:
     - composition_contract_validity
   maximumPromotedTreatments: 1
 budget:
-  providerMaximumUsd: 3.26
+  providerMaximumUsd: 4.11
   vercelMaximumUsd: 0.5
 dataAccess:
   lockedTest: false

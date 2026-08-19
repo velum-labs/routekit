@@ -21,7 +21,7 @@ async function inventory(datasetId) {
   );
 }
 
-function manifest({ experimentId, objective, source, tasks }) {
+function manifest({ experimentId, objective, source, tasks, budgetMultiplier = 1.15 }) {
   const selectedTasks = tasks ?? source.tasks;
   const treatments = source.metadata.treatmentDefinitions.map((definition) => {
     const estimate =
@@ -75,7 +75,7 @@ function manifest({ experimentId, objective, source, tasks }) {
       maximumPromotedTreatments: source.metadata.comparisonGroups.length
     },
     budget: {
-      providerMaximumUsd: Number((expected * 1.15).toFixed(2)),
+      providerMaximumUsd: Number((expected * budgetMultiplier).toFixed(2)),
       vercelMaximumUsd: 0.5
     },
     dataAccess: { lockedTest: false }
@@ -136,7 +136,8 @@ const specifications = [
       experimentId: "onboarding-optimization-real-auto-45-v1",
       objective:
         "Evaluate automatically generated registries on frozen real conversational coding prompts.",
-      source: real
+      source: real,
+      budgetMultiplier: 1.45
     })
   },
   {

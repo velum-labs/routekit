@@ -19,7 +19,7 @@ const outputDirectory = path.join(
   "apps/experiment-platform/examples/onboarding-optimization"
 );
 
-function manifest(experimentId, objective, tasks) {
+function manifest(experimentId, objective, tasks, budgetMultiplier = 1.15) {
   const treatments = inventory.metadata.treatmentDefinitions.map((definition) => {
     const estimate =
       definition.evaluationRole === "composition_reference"
@@ -72,7 +72,7 @@ function manifest(experimentId, objective, tasks) {
       maximumPromotedTreatments: 4
     },
     budget: {
-      providerMaximumUsd: Number((expected * 1.15).toFixed(2)),
+      providerMaximumUsd: Number((expected * budgetMultiplier).toFixed(2)),
       vercelMaximumUsd: 0.75
     },
     dataAccess: { lockedTest: false }
@@ -100,7 +100,8 @@ const specifications = [
     value: manifest(
       "onboarding-optimization-final-84x4x3-v1",
       "Evaluate human, previous unconstrained, validation-selected, and repaired registries on an untouched chronological final test with an independent judge.",
-      inventory.tasks
+      inventory.tasks,
+      1.45
     )
   }
 ];
