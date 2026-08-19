@@ -1,0 +1,57 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-neutral-retry-2-v1
+objective: Retry two taxonomy-neutral references whose original responses repeated fields until truncated.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: f3778091b4c2e8ccc2052b6cf0f461baae530c55
+dataset:
+  id: onboarding-optimization-neutral-retry-2-v1
+  hash: d9de25a37370bb1c6614629c70cfa30244ffaab8d22172b80a2d88a4d612cecf
+  role: construction
+matrix:
+  treatments:
+    - id: neutral_retry
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: neutral_reference_retry
+        timeoutSeconds: 360
+      estimatedProviderCostUsd: 0.3
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: retry-real-conversation-codex-9b802e3b4677781fe77c
+    inputArtifact: inputs/onboarding-optimization-neutral-retry-2-v1/retry-real-conversation-codex-9b802e3b4677781fe77c/sha256/cd/cd01066311c2325ab0ea06d01b07d9366de41e2a4bf41f48d6ba6751f39346d3.json
+    metadata:
+      repositoryId: velum-labs/factory
+      sourceEpisodeId: codex-9b802e3b4677781fe77c
+      originalTaskId: real-conversation-codex-9b802e3b4677781fe77c
+      originalTreatmentId: neutral_sol
+      retryReason: original response repeated fields until the completion limit
+      retryCompletionLimit: 6144
+      maximumResponsibilities: 6
+  - id: retry-real-conversation-codex-58d36071fee6d9bc6661
+    inputArtifact: inputs/onboarding-optimization-neutral-retry-2-v1/retry-real-conversation-codex-58d36071fee6d9bc6661/sha256/e5/e5f477fb50dfd7a0f272460c136713647b7b47bf9afb804017f8080c50042ac4.json
+    metadata:
+      repositoryId: velum-labs/routekit
+      sourceEpisodeId: codex-58d36071fee6d9bc6661
+      originalTaskId: real-conversation-codex-58d36071fee6d9bc6661
+      originalTreatmentId: neutral_sol
+      retryReason: original response repeated fields until the completion limit
+      retryCompletionLimit: 6144
+      maximumResponsibilities: 6
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 2
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 0.69
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
