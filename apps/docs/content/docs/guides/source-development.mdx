@@ -17,13 +17,12 @@ The repository pins pnpm through `package.json`.
 ## Install dependencies and verify the repository
 
 ```sh
-corepack enable
-pnpm install --frozen-lockfile
-pnpm tsgo:patch
-pnpm check
-pnpm build
-pnpm test
-pnpm verify
+corepack pnpm install --frozen-lockfile
+corepack pnpm tsgo:patch
+corepack pnpm check
+corepack pnpm build
+corepack pnpm test
+corepack pnpm verify
 ```
 
 `pnpm test` requires no external service, network, or database. The E2E matrix
@@ -34,17 +33,21 @@ HTTP/provider matrix; installed coding-agent CLI cases remain optional.
 ## Run focused development workflows
 
 ```sh
-pnpm build:cli
-pnpm test:root
-pnpm test:e2e:matrix
-pnpm package:lint
-pnpm package:types
-pnpm docs:dev
-pnpm docs:build
+corepack pnpm build:cli
+corepack pnpm test:root
+corepack pnpm test:e2e:matrix
+corepack pnpm package:lint
+corepack pnpm package:types
+corepack pnpm docs:dev
+corepack pnpm docs:build
 ```
 
-Run `pnpm dev:link-routekit` to install a `routekit-dev` binary linked to the
-checkout.
+Run `corepack pnpm dev:link-routekit` to install a `routekit-dev` binary linked
+to the checkout. The command rebuilds with the repository-pinned pnpm version
+before every launch; set `ROUTEKIT_DEV_SKIP_BUILD=1` only after a successful
+build when you explicitly want a faster invocation. If the current shell
+previously resolved the command from another checkout, run `rehash` in zsh or
+`hash -r` in bash after linking.
 
 ## Next steps
 

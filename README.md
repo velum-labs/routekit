@@ -266,25 +266,26 @@ RouteKit is a TypeScript pnpm/Turborepo monorepo. It requires Node.js 22.22.0 or
 newer and uses pnpm 11.15.1 through Corepack.
 
 ```sh
-corepack enable
-pnpm install --frozen-lockfile
-pnpm check
-pnpm build
-pnpm test
+corepack pnpm install --frozen-lockfile
+corepack pnpm check
+corepack pnpm build
+corepack pnpm test
 ```
 
 Useful focused commands:
 
 ```sh
-pnpm build:cli
-pnpm dev:link-routekit
-pnpm docs:dev
-pnpm docs:build
-pnpm verify
+corepack pnpm build:cli
+corepack pnpm dev:link-routekit
+corepack pnpm docs:dev
+corepack pnpm docs:build
+corepack pnpm verify
 ```
 
-`pnpm dev:link-routekit` installs a separate `routekit-dev` command that runs
-this checkout without replacing the published `routekit` binary.
+`corepack pnpm dev:link-routekit` installs a separate `routekit-dev` command
+that rebuilds and runs this checkout without replacing the published
+`routekit` binary. The wrapper also keeps the repository-pinned pnpm version on
+the complete Turbo build process path.
 
 ## Repository map
 
