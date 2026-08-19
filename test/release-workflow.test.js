@@ -19,7 +19,7 @@ const deployDocsAction = readFileSync(
 test("Changesets versioning regenerates the public changelog", () => {
   assert.equal(
     manifest.scripts["version-packages"],
-    "changeset version && pnpm docs:generate-public-changelog"
+    "changeset version && corepack pnpm docs:generate-public-changelog"
   );
   assert.match(releaseWorkflow, /version: corepack pnpm version-packages/);
   assert.doesNotMatch(releaseWorkflow, /version: corepack pnpm changeset version/);
@@ -44,10 +44,7 @@ test("verified releases publish documentation through the shared action", () => 
     releaseWorkflow,
     /routekit-released: \$\{\{ steps\.routekit-release\.outputs\.released \}\}/
   );
-  assert.match(
-    releaseWorkflow,
-    /needs\.release\.outputs\.routekit-released == 'true'/
-  );
+  assert.match(releaseWorkflow, /needs\.release\.outputs\.routekit-released == 'true'/);
   assert.match(releaseWorkflow, /uses: \.\/\.github\/actions\/deploy-docs/);
   assert.match(releaseWorkflow, /group: docs-production/);
   assert.doesNotMatch(releaseWorkflow, /environment: docs-production/);
@@ -65,9 +62,7 @@ test("shared documentation deployment stages, validates, and promotes one Vercel
   const validationIndex = deployDocsAction.indexOf(
     'if [[ ! "${deployment_url}" =~ ^https://[^[:space:]]+$ ]]'
   );
-  const promotionIndex = deployDocsAction.indexOf(
-    'vercel_cli promote "${deployment_url}" --yes'
-  );
+  const promotionIndex = deployDocsAction.indexOf('vercel_cli promote "${deployment_url}" --yes');
   assert.notEqual(validationIndex, -1);
   assert.notEqual(promotionIndex, -1);
   assert.ok(validationIndex < promotionIndex);

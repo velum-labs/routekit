@@ -24,8 +24,8 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm depcruise` | dependency-cruiser package-boundary rules. | After changing imports; also run from `pnpm check`. |
 | `pnpm package:lint` | publint over every publishable package. | After `pnpm build`; part of `pnpm verify` / `pnpm release`. |
 | `pnpm package:types` | `@arethetypeswrong/cli` (ESM-only profile) over publishable packages. | After `pnpm build`; part of `pnpm verify` / `pnpm release`. |
-| `pnpm dev:link-routekit` | Links the `routekit-dev` wrapper globally. | To run this checkout's CLI from other repos. |
-| `pnpm dev:run-routekit` | Rebuilds and runs the local RouteKit CLI. | For dev-loop CLI runs. |
+| `corepack pnpm dev:link-routekit` | Links the `routekit-dev` wrapper globally through the repository-pinned pnpm. | To run this checkout's CLI from other repos. |
+| `corepack pnpm dev:run-routekit` | Rebuilds and runs the local RouteKit CLI with pinned pnpm in the complete Turbo process tree. | For dev-loop CLI runs. |
 | `pnpm t3:deploy` / `pnpm t3:destroy` | Manages ownership-guarded macOS launchd or Linux systemd T3 services. | For operator-managed T3 hosts. |
 | `pnpm docs:dev` | Validates public docs, generates machine-readable indexes, then runs the Fumadocs site (`apps/docs`). | Local docs preview. |
 | `pnpm docs:build` | Validates and builds the public Fumadocs site. | Before shipping docs; the docs workspace also builds during the root build. |
@@ -182,8 +182,9 @@ changelog are available during the build.
 | --- | --- |
 | `scripts/routekit-e2e-matrix.mjs` | Credential-free and live RouteKit verification matrix (`pnpm test:e2e:matrix`). |
 | `scripts/routekit-qualification.mjs` | L06 route descriptors consumed by the matrix. |
-| `scripts/routekit-dev.mjs` | Rebuild-then-run wrapper for this checkout's CLI (`pnpm dev:run-routekit`). |
-| `scripts/link-routekit-dev.mjs` | Links `routekit-dev` globally (`pnpm dev:link-routekit`). |
+| `scripts/run-turbo.mjs` | Runs Turbo with the repository-pinned pnpm on the complete child-process path. |
+| `scripts/routekit-dev.mjs` | Rebuild-then-run wrapper for this checkout's CLI (`corepack pnpm dev:run-routekit`). |
+| `scripts/link-routekit-dev.mjs` | Links `routekit-dev` globally (`corepack pnpm dev:link-routekit`). |
 
 ## Release files
 

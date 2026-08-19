@@ -40,11 +40,13 @@ Contributors can install a separate global `routekit-dev` command that always
 runs their local checkout instead of the published npm package:
 
 ```bash
-corepack enable
-pnpm install --frozen-lockfile
-pnpm dev:link-routekit
+corepack pnpm install --frozen-lockfile
+corepack pnpm dev:link-routekit
 routekit-dev --version
 ```
+
+If the current shell previously resolved `routekit-dev` from another checkout,
+run `rehash` in zsh or `hash -r` in bash after linking.
 
 Run it from any project repo:
 
@@ -55,8 +57,9 @@ routekit-dev codex
 ```
 
 The dev command rebuilds `packages/cli` before launch, preserves the
-caller's working directory, and does not replace the normal `routekit` binary.
-Set `ROUTEKIT_DEV_SKIP_BUILD=1` after a build for a faster local check.
+caller's working directory, uses the repository-pinned pnpm version throughout
+the Turbo build, and does not replace the normal `routekit` binary. Set
+`ROUTEKIT_DEV_SKIP_BUILD=1` after a successful build for a faster local check.
 
 ## Command ownership
 
