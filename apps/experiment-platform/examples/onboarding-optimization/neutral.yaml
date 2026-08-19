@@ -1,0 +1,874 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-neutral-93-v1
+objective: Create frozen taxonomy-neutral responsibility decompositions for natural-hard and real conversational coding tasks.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 7d7012d08a4dbf6a48d52e18c4d4b132e8d9f4ca
+dataset:
+  id: onboarding-optimization-neutral-93-v1
+  hash: bad0bb87e6d50b021b52e093e0f1d76148bf34486452be98e95c49b20f1e1cbc
+  role: construction
+matrix:
+  treatments:
+    - id: neutral_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: neutral_reference
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: natural-hard-grafana-grafana-pr-80511
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-grafana-grafana-pr-80511/sha256/ae/aed7f9b514aa197a7fb03888c400e354919d93ea8c95fa3f2781eb0a19433639.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: grafana-grafana-pr-80511
+      repositoryId: grafana/grafana
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134516/sha256/c5/c59bcc4cefc6d64a84b0ce2607a400af17f8c25c90fb30e5e51d11b4645dcf05.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134516
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-grafana-grafana-pr-101285
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-grafana-grafana-pr-101285/sha256/5e/5e688ef7a14ac7868a4510e1334d08b1941d6932bfdd4251f3b420ce7e8fcf03.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: grafana-grafana-pr-101285
+      repositoryId: grafana/grafana
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134769
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134769/sha256/c5/c59b0bc5cb68ae956042c5f0202b4c4dcd9c06c3dc3af4465c99491a0c3f74e2.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134769
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-136502
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-136502/sha256/b2/b27b65e3385c0c7161d89dc4b3080300ce21744ae9914d100deabfc7a039b0fc.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-136502
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-138367
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-138367/sha256/f8/f8470b1f403dfa1ee894bb14bb25641553e1cc71723c00dece1bc4ee6fcc4151.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-138367
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-140684
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-140684/sha256/bc/bc4e3c64b387515253559b60241d96988b255f065572b4d5e893f60595ab36fd.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-140684
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-135735
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-135735/sha256/f7/f79e93cb19b75eafbee3ad02bc151b2ab2755259f0fc19a50f46d9b437d4da92.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-135735
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-140723
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-140723/sha256/97/975ec5ddaf01d61e1020d091d6b1e973fc7358a7d937af0681b6be13288a8358.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-140723
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-139862
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-139862/sha256/03/03b806d334817b0d05d87c35f595c8d3b7d467ec91ab4678f21109f322f787c5.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-139862
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-140821
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-140821/sha256/64/6402d52d41ec05eacb3c9613b2d0bfc5248e28879129779f5e46f4656a8ad9d5.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-140821
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-140925
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-140925/sha256/c0/c0112b1bcf2e890e25758fb36de71e27f0aaab21fcc77246fc1455972c370e38.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-140925
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-grafana-grafana-pr-105422
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-grafana-grafana-pr-105422/sha256/20/2044f1cf430c794733ef1c859fe5b7cb4c1b73706adbb75ecf4ee16ab4250097.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: grafana-grafana-pr-105422
+      repositoryId: grafana/grafana
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-132061
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-132061/sha256/d4/d47bbed4820dda841060bad9e0fb1987f1e6cbf91d5e8c314174195efc2812e6.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-132061
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-grafana-grafana-pr-116038
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-grafana-grafana-pr-116038/sha256/d0/d07e668d598598793b94d33e7aea1847eaa1fa44bf4340c5f6328b7745aad650.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: grafana-grafana-pr-116038
+      repositoryId: grafana/grafana
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-133896
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-133896/sha256/da/da52f36345220abfdb024272fbb57d274575fa36c3af9f03d85004d34093f775.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-133896
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-grafana-grafana-pr-118686
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-grafana-grafana-pr-118686/sha256/f3/f37bb1aa2806c935b1fccca275a7a499f16e3f463d8c7b1b2a42b34ea8826c50.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: grafana-grafana-pr-118686
+      repositoryId: grafana/grafana
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134404
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134404/sha256/0b/0b4a6c56d6eb82595d92e995d8723670ab81e8adcbc5301057010449ee68e292.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134404
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-grafana-grafana-pr-119124
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-grafana-grafana-pr-119124/sha256/39/3977851f8d12bdda7b6e9aaf00dd5095966af950002f0deb361a1266ff145679.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: grafana-grafana-pr-119124
+      repositoryId: grafana/grafana
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134935
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134935/sha256/5c/5c490326752c0adb4e1b1102be3913a4c4ddedad70cf5f8d376ab21311985f63.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134935
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134422
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134422/sha256/21/21cc3eb94519aa534a51f086e099b0731e505ab82e044298942aaf2788b2de2e.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134422
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-135625
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-135625/sha256/6d/6dfaa6040dcaa919e7e4dea6a056f1fe535fe730c26f7c683d6270a8432f4fea.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-135625
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-135749
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-135749/sha256/5a/5ad365576b13303f7ec4c4f745b29f98685503f5b90671cfed9f128d8f4bbd20.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-135749
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-137008
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-137008/sha256/4e/4eaec909279cd94ed937391647e84f41d326d8f3345260fe0ee271b783336f7c.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-137008
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-137224
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-137224/sha256/36/36d733fa8b3a8370e4d121f7d6bfdb096318a9698a8b6c462f31ccea505be5b1.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-137224
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134997
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134997/sha256/b0/b0ed9ba9e215f7a2a647dbef82e4b27017aa08e5f05eae1937d2853f863d7d69.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134997
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-137715
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-137715/sha256/40/40b916efc131c9b8244cf0c631afa7e6726dca61225c88260cf04dc6014e8d64.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-137715
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-138408
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-138408/sha256/eb/ebcb6346f664e4103292aaaeb7af0f9d66b68a2c01288eb442120158009bf3f5.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-138408
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-140033
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-140033/sha256/55/557edc632c28ecee6a539de7360b716d6e9bfb87e0b0701002f3d2381b54d81f.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-140033
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134936
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134936/sha256/1b/1be120d30e37eb514643b61c92aa2bb856c5786347198eeefa37ac55d8ea8748.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134936
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-grafana-grafana-pr-128725
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-grafana-grafana-pr-128725/sha256/53/534456c4109af0d01893b6e620ed85ec339000fb8b659de3cfa78be318601057.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: grafana-grafana-pr-128725
+      repositoryId: grafana/grafana
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-128799
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-128799/sha256/eb/eb3bd35da0f273b25c0a08d3afe0a807671bf0d63b51bd4a9c53d1457eb10115.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-128799
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-129418
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-129418/sha256/9a/9a6d7dcaef4069ea2eb00507e10380a3680259e815b3087abe6a165a592bd41c.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-129418
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-129594
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-129594/sha256/35/3576d8b9d8c4b383a2604d5769d8aec476b672ab3deb64bfe283bc07b79f12ef.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-129594
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-132838
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-132838/sha256/45/452ca05a12c06921c5b7cd500f71c194e4a1185dcdea74a32c794d0f9941260a.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-132838
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-133667
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-133667/sha256/5a/5aa2125c28a0d5ca64d5ce85281b5c1c1fa3da0134c0ab0a334f8cb6d8396cfd.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-133667
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-133893
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-133893/sha256/f7/f7d0a7a7583c643d97a64df980cc991c19fefa93403662c430c12c495a8a7720.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-133893
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134274
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134274/sha256/21/2141e2ec1c723d55f05c553178d334cbfee3de1da93ca13ceaf7eda94e9fc939.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134274
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134390
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134390/sha256/39/39e6a80e2ac06f4c97dbd92fe88173adbe231a136e28ce8e49e45565207cf35b.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134390
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134632
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134632/sha256/cb/cbaa8d1bfeff444edb08efa2f93f0649d77d0c9e3406425b217019dbedd861db.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134632
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-135100
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-135100/sha256/a4/a4a23818be7472ce9aa1d1583980aa048998811adb52206c158cb0d50a575ad3.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-135100
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-135400
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-135400/sha256/04/043069a9de522b411c5b1e521978b71f4a4eb315125fb56b88b4bb88abdba675.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-135400
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-135807
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-135807/sha256/86/86e34f61481a19a7b569e1a6fbcbbb0970ff347d19b6e0412f1168f763211821.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-135807
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-136633
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-136633/sha256/a5/a53c3ebce76bf442c60566613dd0377088501751dd80a6749a777c4a61c9c8cb.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-136633
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-139261
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-139261/sha256/d6/d654dd2d806e1918f32e7c52f9bdb1efe8e5d819f5e97a290c41b0b8332dfb8b.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-139261
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-139667
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-139667/sha256/f4/f44e9a16e22b20267735a868187f2f5fee068f57d605487fe88fc5cf9d1c183a.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-139667
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-139842
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-139842/sha256/82/824176bcee76a156da639acdf82c371734424de32fc0319e83b38a16cb8d6c97.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-139842
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-139714
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-139714/sha256/c4/c4ecd9a77a9fd827ca9a3665abe13c3fcb6189a8ccc4c41e5011a78366e5997e.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-139714
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: real-conversation-codex-90c7796ac6759c0ab3e1
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-90c7796ac6759c0ab3e1/sha256/fb/fb4c82a9a5b6676fd3617e8a0548b67330020dd47d126460a7672573ea6ad3ee.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-90c7796ac6759c0ab3e1
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-d78497491b2cbbb825a9
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-d78497491b2cbbb825a9/sha256/ba/baa753e05af91a999c7c2a54e7a9b47d38f033ea852b5e746f909d362a94d4b8.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-d78497491b2cbbb825a9
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-f6d9f3e0d8944a4fc89c
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-f6d9f3e0d8944a4fc89c/sha256/4b/4b059b8036ff52317cb8ac17aeb29d7389487f85798c0512569f2d5dd788558a.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-f6d9f3e0d8944a4fc89c
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-d44423199f0c3644bcd7
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-d44423199f0c3644bcd7/sha256/55/550a240d4da767371d08dba9fd2d25496c40a1c2e9069f904b9abdf8c8a0a9c1.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-d44423199f0c3644bcd7
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-5e320bb2e30760f37490
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-5e320bb2e30760f37490/sha256/c0/c0de55a8904d76b8bc87e69d462c52ac7d4621c0babba7dc8c45c79810a3629d.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-5e320bb2e30760f37490
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-b102b310b737f902b506
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-b102b310b737f902b506/sha256/fe/fea0d368247eb2cc2ea81a4d327860a265c6b1ec013731712975d664eee50509.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-b102b310b737f902b506
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-88b654fdb08aa7c78998
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-88b654fdb08aa7c78998/sha256/cb/cb862d9291b7073b90d26f8123cecb1971b5b0c939a75cb2733c30ef3216c1fc.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-88b654fdb08aa7c78998
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-619b831b8ec265c8f32d
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-619b831b8ec265c8f32d/sha256/ed/ed4446e7e8b3977a5dbc8f5a3f44b444e9f0402b431b8d075cf08a83398395d9.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-619b831b8ec265c8f32d
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-781846119dd1484522de
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-781846119dd1484522de/sha256/eb/eb761e51392e8ff773e29f38762a5279e375f82aa74263e18513cd64799f48dc.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-781846119dd1484522de
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-e495f3144ab68528e519
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-e495f3144ab68528e519/sha256/4b/4b062a09dbb4a88371d557ec1e4a16a222d4b8ebe37f6fc04618e2282b1253d6.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-e495f3144ab68528e519
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-78c7dbc12d49788088c3
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-78c7dbc12d49788088c3/sha256/25/25a6f96b7d327291ac345dc63acf337798d22dd7f9c9ed1085ce68823289e14e.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-78c7dbc12d49788088c3
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-cb323451e0efd3a784d6
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-cb323451e0efd3a784d6/sha256/b5/b5f7d675359aac3955117ecba162e85051b0da5e6f11d01ec38ee180997d4974.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-cb323451e0efd3a784d6
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-671d41781b9ae563e1fc
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-671d41781b9ae563e1fc/sha256/cf/cf2aafa105697b6ff8d06ab273db983ef1ce8e8fb630f20ef6bf0d5a138edfa2.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-671d41781b9ae563e1fc
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-c6028ba28a45f031f681
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-c6028ba28a45f031f681/sha256/09/09feeb71c9942b97c6d0f017e6fe1892066808b754610d158d1e948e732d1fe6.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-c6028ba28a45f031f681
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-42158ec6a7b708bacd6f
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-42158ec6a7b708bacd6f/sha256/2b/2b5a1e7d1572c72acac89fd3539a03b50b30249ff1648c6c5a04eff06719f132.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-42158ec6a7b708bacd6f
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-1f48b73779da66d268e9
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-1f48b73779da66d268e9/sha256/1a/1a859071a6b2e45a270beb1e7d8ba0bee1a6ef9c2bbfdae0c599a79832c9ffb5.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-1f48b73779da66d268e9
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-d943729972a2175b7a70
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-d943729972a2175b7a70/sha256/a9/a95884ada54639b8785cbaf6925d3edcb40483a49b54beb4272ba3f78fc8bdec.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-d943729972a2175b7a70
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-347f01ad45e4adb65b2e
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-347f01ad45e4adb65b2e/sha256/6f/6fa8f2833e8f7fbc9c98843f630a01a016d887cb433a3857a0fa1adb98fad197.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-347f01ad45e4adb65b2e
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-5e645e1fd8c8396cd1b6
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-5e645e1fd8c8396cd1b6/sha256/49/49c212d72532086ea6d7e42ecadb60fd78e447cadbf2eaf968868d233f5a9ec6.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-5e645e1fd8c8396cd1b6
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-f87eeaf070093b70f39c
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-f87eeaf070093b70f39c/sha256/03/03c85a9a5f0153e1ff2790bb262fe5041cd17c03dfb25867ab5fd8723739aaef.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-f87eeaf070093b70f39c
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-58d36071fee6d9bc6661
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-58d36071fee6d9bc6661/sha256/5c/5c1dd124e99f31ffaa928ed2397b3fe17fa3b59f72436f1f48cacd4c84c75b41.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-58d36071fee6d9bc6661
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-fca5e2fe37e9b707c227
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-fca5e2fe37e9b707c227/sha256/18/18b3d38a8e9a2f191cd14b3c00a081b658bb91e882b538c86ea53d04a4962a25.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-fca5e2fe37e9b707c227
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-686d400ba0d5951b63bf
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-686d400ba0d5951b63bf/sha256/51/514894a76b1efdaf6699ed1d06c77113f50181a84c2ff9bfe434ae29d9786faf.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-686d400ba0d5951b63bf
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-1852a374b9e6c3d4dae8
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-1852a374b9e6c3d4dae8/sha256/eb/ebc0129af74aa3585537dbcadf5331abdebc9a0be07a2417f8f5905c4a1a1080.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-1852a374b9e6c3d4dae8
+      repositoryId: velum-labs/factory
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-c0b9739d5795fe2442f1
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-c0b9739d5795fe2442f1/sha256/5e/5ec8eda7281c6fe4bca5f9d9516bd74544de7a8392ec7b9f74a5e1cda9a191db.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-c0b9739d5795fe2442f1
+      repositoryId: velum-labs/factory
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-fc7383f61fb41568d80e
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-fc7383f61fb41568d80e/sha256/1c/1c4312150d797b17664cccacae7beb02847a9fc828ae770d5772ba57b4f9c606.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-fc7383f61fb41568d80e
+      repositoryId: velum-labs/factory
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-47ede235f4f910bd757c
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-47ede235f4f910bd757c/sha256/f0/f022d241b2de6862088d23734f9c9ead1c8218bfbd850576b99b0610b4875e81.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-47ede235f4f910bd757c
+      repositoryId: velum-labs/velum
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-445a5cd0c33e72dfd871
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-445a5cd0c33e72dfd871/sha256/54/546ad219d42aaa18bf2bdafdbd5cffb35a298c23b41cf817247dc394e7c41803.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-445a5cd0c33e72dfd871
+      repositoryId: velum-labs/routekit
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-f2d96201f5d5dacb4b81
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-f2d96201f5d5dacb4b81/sha256/a9/a9c5c6d8beed716889864ed6521220b38d0f203d84e85c11077b8842c7b8f52f.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-f2d96201f5d5dacb4b81
+      repositoryId: velum-labs/routekit
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-3fb59c6355716cc843df
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-3fb59c6355716cc843df/sha256/1a/1a88df7f1febfc96c21d19056bda6586b6edc47ddfa5dc8bbed616e0ab7d9533.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-3fb59c6355716cc843df
+      repositoryId: velum-labs/factory
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-2a36c149e34e55027b34
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-2a36c149e34e55027b34/sha256/31/31c108b7cec7e9d285c2bfec15235db0cd386b53ae79dc03a6e821b79810a91b.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-2a36c149e34e55027b34
+      repositoryId: velum-labs/factory
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-c583d0bc98035ae5ffeb
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-c583d0bc98035ae5ffeb/sha256/95/95b148064ef6c31e57e1b6a3011ffcfa3902ba6b6409db50d5e0721118d08745.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-c583d0bc98035ae5ffeb
+      repositoryId: velum-labs/factory
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-8b720289bdc13d3ce56e
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-8b720289bdc13d3ce56e/sha256/ff/ff2132ce5f5b36f797da3f7655fa5eea133d20d0dc5a49880c82ab80c629f311.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-8b720289bdc13d3ce56e
+      repositoryId: velum-labs/routekit
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-250fe22327c75e9fc28a
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-250fe22327c75e9fc28a/sha256/a5/a5c33cc6d67b6425954626d8f2095de651b6af36f698671679801648f8555dda.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-250fe22327c75e9fc28a
+      repositoryId: velum-labs/factory
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-da69b866e0e88c15b42c
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-da69b866e0e88c15b42c/sha256/08/08fb1e709536b066c9a9a75fc6c9426c870f277a58608f7fe5d3b3f0f9a462af.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-da69b866e0e88c15b42c
+      repositoryId: velum-labs/factory
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-0a43141066aa2a9c74cc
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-0a43141066aa2a9c74cc/sha256/a6/a680371a5f4965bdfab3b57b18b3e7340572abaff739e07d6105e27096e7942e.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-0a43141066aa2a9c74cc
+      repositoryId: velum-labs/ori
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-9b802e3b4677781fe77c
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-9b802e3b4677781fe77c/sha256/4a/4a857a5dc84c2d5626f93dc2f8b5c73cbb7af4d0f6533d3a4796bd3b01fb0362.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-9b802e3b4677781fe77c
+      repositoryId: velum-labs/factory
+      split: test
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-b5b435bb2035cde6fa3d
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-b5b435bb2035cde6fa3d/sha256/ec/ec79c9aa091fc3c0b3f75342bd0d17a945e1aaa0f45b2ce66d83d094180d35d8.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-b5b435bb2035cde6fa3d
+      repositoryId: velum-labs/routekit
+      split: test
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-52e4b907a4e05269da7a
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-52e4b907a4e05269da7a/sha256/07/07ce530291960f999a3d08072c5f5df82f9ae872bebd54771c6fd9ca18066850.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-52e4b907a4e05269da7a
+      repositoryId: velum-labs/ori
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-67e55227bbac15e73bb8
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-67e55227bbac15e73bb8/sha256/5c/5cbda1ac3f91710f12870c0f3828a664a7a3cd59f6e821e1a401c108ff633b96.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-67e55227bbac15e73bb8
+      repositoryId: velum-labs/factory
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-24f3f5c14ae9288489ab
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-24f3f5c14ae9288489ab/sha256/a6/a602c45f40f1eff59a6dc01ca803b36f7634c5c7540b7b338f5ee00b507b854d.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-24f3f5c14ae9288489ab
+      repositoryId: velum-labs/factory
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-d1cb1e7fcb9dd3af7db3
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-d1cb1e7fcb9dd3af7db3/sha256/05/050a61b1ecb499342eb50dc8b925d5068edef18007d949da192aed5527d5efce.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-d1cb1e7fcb9dd3af7db3
+      repositoryId: velum-labs/routekit
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-771cb5eb09a262d76081
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-771cb5eb09a262d76081/sha256/1b/1b4b8f1da20162bbd62ed215b298737b7c8f2b7db07231bc1accfdfdff8ba729.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-771cb5eb09a262d76081
+      repositoryId: velum-labs/routekit
+      split: test
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-71d47132abf35d16d394
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-71d47132abf35d16d394/sha256/10/10598036a89fcf0ecdd73a34d76519eb763c6eef9cb06c650d52dc416f7fd724.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-71d47132abf35d16d394
+      repositoryId: velum-labs/routekit
+      split: test
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-faa8fb7347270f23ce24
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-faa8fb7347270f23ce24/sha256/e9/e9a0646b26225c01e7ca78ca204458b51da64b24b3ec84cc5e2354a2eccd628e.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-faa8fb7347270f23ce24
+      repositoryId: velum-labs/routekit
+      split: test
+      contextual: true
+      diagnostic: false
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 5.35
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false

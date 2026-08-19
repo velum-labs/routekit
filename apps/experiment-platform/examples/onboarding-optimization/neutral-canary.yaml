@@ -1,0 +1,91 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-neutral-canary-6-v1
+objective: Validate taxonomy-neutral contracts across every repository in the two added cohorts.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 7d7012d08a4dbf6a48d52e18c4d4b132e8d9f4ca
+dataset:
+  id: onboarding-optimization-neutral-93-v1
+  hash: bad0bb87e6d50b021b52e093e0f1d76148bf34486452be98e95c49b20f1e1cbc
+  role: construction
+matrix:
+  treatments:
+    - id: neutral_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: neutral_reference
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: natural-hard-grafana-grafana-pr-80511
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-grafana-grafana-pr-80511/sha256/ae/aed7f9b514aa197a7fb03888c400e354919d93ea8c95fa3f2781eb0a19433639.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: grafana-grafana-pr-80511
+      repositoryId: grafana/grafana
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: natural-hard-kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/natural-hard-kubernetes-kubernetes-pr-134516/sha256/c5/c59bcc4cefc6d64a84b0ce2607a400af17f8c25c90fb30e5e51d11b4645dcf05.json
+    metadata:
+      cohort: natural-hard
+      sourceEpisodeId: kubernetes-kubernetes-pr-134516
+      repositoryId: kubernetes/kubernetes
+      split: validation
+      contextual: false
+      diagnostic: false
+  - id: real-conversation-codex-90c7796ac6759c0ab3e1
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-90c7796ac6759c0ab3e1/sha256/fb/fb4c82a9a5b6676fd3617e8a0548b67330020dd47d126460a7672573ea6ad3ee.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-90c7796ac6759c0ab3e1
+      repositoryId: velum-labs/routekit
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-1852a374b9e6c3d4dae8
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-1852a374b9e6c3d4dae8/sha256/eb/ebc0129af74aa3585537dbcadf5331abdebc9a0be07a2417f8f5905c4a1a1080.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-1852a374b9e6c3d4dae8
+      repositoryId: velum-labs/factory
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-47ede235f4f910bd757c
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-47ede235f4f910bd757c/sha256/f0/f022d241b2de6862088d23734f9c9ead1c8218bfbd850576b99b0610b4875e81.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-47ede235f4f910bd757c
+      repositoryId: velum-labs/velum
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-0a43141066aa2a9c74cc
+    inputArtifact: inputs/onboarding-optimization-neutral-93-v1/real-conversation-codex-0a43141066aa2a9c74cc/sha256/a6/a680371a5f4965bdfab3b57b18b3e7340572abaff739e07d6105e27096e7942e.json
+    metadata:
+      cohort: real-conversation
+      sourceEpisodeId: codex-0a43141066aa2a9c74cc
+      repositoryId: velum-labs/ori
+      split: test
+      contextual: true
+      diagnostic: true
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 0.35
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
