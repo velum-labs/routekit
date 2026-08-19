@@ -24,6 +24,8 @@ Turborepo orchestrates `packages/*` from the root.
 | `pnpm depcruise` | dependency-cruiser package-boundary rules. | After changing imports; also run from `pnpm check`. |
 | `pnpm package:lint` | publint over every publishable package. | After `pnpm build`; part of `pnpm verify` / `pnpm release`. |
 | `pnpm package:types` | `@arethetypeswrong/cli` (ESM-only profile) over publishable packages. | After `pnpm build`; part of `pnpm verify` / `pnpm release`. |
+| `pnpm release:registry:preflight` | Verifies that every public workspace package name already exists on npm before OIDC publication starts. | Before publishing a version that introduces a public workspace package; prevents a partially published fixed release. |
+| `pnpm release:registry:verify` | Verifies that npm exposes every public workspace package at its exact checkout version. | After Changesets publication and before release artifacts, Linear synchronization, or docs promotion. |
 | `corepack pnpm dev:link-routekit` | Links the `routekit-dev` wrapper globally through the repository-pinned pnpm. | To run this checkout's CLI from other repos. |
 | `corepack pnpm dev:run-routekit` | Rebuilds and runs the local RouteKit CLI with pinned pnpm in the complete Turbo process tree. | For dev-loop CLI runs. |
 | `pnpm t3:deploy` / `pnpm t3:destroy` | Manages ownership-guarded macOS launchd or Linux systemd T3 services. | For operator-managed T3 hosts. |
@@ -187,6 +189,15 @@ changelog are available during the build.
 | `scripts/link-routekit-dev.mjs` | Links `routekit-dev` globally (`corepack pnpm dev:link-routekit`). |
 
 ## Release files
+
+The npm release workflow uses OIDC trusted publishing. A newly introduced
+public workspace package must first be created on npm with maintainer
+credentials, then configured with `.github/workflows/release-packages.yml` as
+its trusted publisher. Do this before merging the version-packages PR.
+`pnpm release:registry:preflight` fails before publication when a package name
+has not been bootstrapped, and `pnpm release:registry:verify` prevents
+post-release automation from treating a partial fixed-group publication as a
+complete RouteKit release.
 
 | File | Purpose |
 | --- | --- |
