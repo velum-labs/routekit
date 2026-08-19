@@ -253,6 +253,33 @@ configuration are valid.
 Never unmask both gateway services. EFS is durability, not a distributed
 writer lock.
 
+### Public nginx overlay
+
+The private Tailscale Service above forwards directly to RouteKit and does not
+require nginx. Deployments that additionally terminate public TLS with nginx
+must include the user-data-managed RouteKit location settings:
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:8080;
+  include /etc/nginx/snippets/routekit-tailnet-location.conf;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Proto https;
+}
+```
+
+Gateway user data installs that snippet from
+`templates/nginx-routekit-tailnet-location.conf`. It disables request and
+response buffering and sets `proxy_read_timeout`, `proxy_send_timeout`, and
+`send_timeout` to 600 seconds so long-running non-streaming model calls are not
+cut off at nginx's defaults.
+
+For an existing gateway, copy the reviewed snippet into place, run
+`sudo nginx -t`, and reload nginx. Do not apply Terraform solely to update this
+file: gateway user-data changes replace the instance. Roll the template in
+during the normal passive-first replacement procedure described under
+Upgrades.
+
 ## 6. Enroll laptops and T3 hosts
 
 On each laptop:

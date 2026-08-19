@@ -68,6 +68,10 @@ printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$${admin_user}" >/etc/sudoers.d/route
 chmod 0440 /etc/sudoers.d/routekit-admin
 
 if [ '${node_kind}' = 'gateway' ]; then
+  install -d -m 0755 /etc/nginx/snippets
+  printf '%s' '${nginx_routekit_location_b64}' | base64 -d >/etc/nginx/snippets/routekit-tailnet-location.conf
+  chmod 0644 /etc/nginx/snippets/routekit-tailnet-location.conf
+
   for _ in $(seq 1 120); do
     if [ -x /sbin/mount.efs ] && \
       dpkg-query -W amazon-efs-utils >/dev/null 2>&1 && \
