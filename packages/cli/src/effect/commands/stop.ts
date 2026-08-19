@@ -14,7 +14,7 @@ import {
 import { Effect } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 
-import { cliTryPromise } from "../../cli-session.js";
+import { cliFailure, cliTryPromise } from "../../cli-session.js";
 import { controlClientForRecord, daemonLifecycleLockPath, readDaemonRecord } from "../../client.js";
 import { routekitRoot } from "../root-command.js";
 
@@ -70,9 +70,7 @@ export const makeStopCommand = (
             stopped = !processAlive(record.pid);
           }
           if (!stopped) {
-            return yield* Effect.fail(
-              new Error(`RouteKit daemon pid ${record.pid} did not stop`)
-            );
+            return yield* cliFailure(`RouteKit daemon pid ${record.pid} did not stop`);
           }
           if (ctx.json) ctx.emit({ stopped: true, requested, pid: record.pid });
           else ctx.presenter.success("stopped RouteKit");

@@ -42,8 +42,7 @@ import {
   serviceEnvironment
 } from "../../daemon.js";
 import { routekitRoot } from "../root-command.js";
-import { gatewayServeFlags } from "./start.js";
-import { drainGraceMs } from "../../commands/serve-options.js";
+import { drainGraceMs, gatewayServeFlags } from "../serve-options.js";
 
 export function daemonSupervisorController(kind: "systemd" | "launchd"): SupervisorController {
   return supervisorController(kind, ROUTEKIT_PRODUCT, "daemon");
@@ -316,6 +315,14 @@ export const makeDaemonServiceCommand = (
     ])
   );
 
+function logFileSize(path: string): number | undefined {
+  try {
+    return statSync(path).size;
+  } catch {
+    return undefined;
+  }
+}
+
 function readAppendedLog(path: string, offset: number, size: number): Promise<string> {
   return new Promise((resolve) => {
     let data = "";
@@ -380,22 +387,12 @@ export const makeLogsCommand = (
           .slice(-lines);
         if (trailing.length > 0) runtime.stdout.write(`${trailing.join("\n")}\n`);
         if (!follow) return;
-        let offset = (() => {
-          try {
-            return statSync(path).size;
-          } catch {
-            return 0;
-          }
-        })();
-        yield* Effect.forever(
+        let offset = logFileSize(path) ?? 0;
+        return yield* Effect.forever(
           Effect.gen(function* () {
             yield* Effect.sleep("500 millis");
-            let size: number;
-            try {
-              size = statSync(path).size;
-            } catch {
-              return;
-            }
+            const size = logFileSize(path);
+            if (size === undefined) return;
             if (size < offset) offset = 0;
             if (size === offset) return;
             const chunk = yield* cliTryPromise(() => readAppendedLog(path, offset, size));

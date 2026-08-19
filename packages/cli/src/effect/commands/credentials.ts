@@ -13,7 +13,7 @@ import {
   listNativeIntegrations,
   type NativeIntegrationTool
 } from "../../adapters/native-integrations.js";
-import { cliTryPromise } from "../../cli-session.js";
+import { cliFailure, cliTryPromise } from "../../cli-session.js";
 import { routekitHome } from "../../config.js";
 
 const optionalString = (name: string) =>
@@ -37,7 +37,7 @@ export const makeCredentialShellCommand = (
     ({ tool }) =>
       Effect.gen(function* () {
         if (tool !== undefined && tool !== "codex" && tool !== "claude") {
-          return yield* Effect.fail(new Error("--tool must be codex or claude"));
+          return yield* cliFailure("--tool must be codex or claude");
         }
         const home = routekitHome(runtime.env);
         const entries = listNativeIntegrations({ routekitHome: home }).filter(
@@ -80,18 +80,16 @@ export const makeCredentialsCommand = (
     ({ configPath, routekitHome: homeInput, tool }) =>
       Effect.gen(function* () {
         if (tool !== "codex" && tool !== "claude") {
-          return yield* Effect.fail(new Error("--tool must be codex or claude"));
+          return yield* cliFailure("--tool must be codex or claude");
         }
         if (!isAbsolute(homeInput)) {
-          return yield* Effect.fail(new Error("--routekit-home must be an absolute path"));
+          return yield* cliFailure("--routekit-home must be an absolute path");
         }
         const home = resolve(homeInput);
         const nativeTool = tool as NativeIntegrationTool;
         const entry = getNativeIntegration(nativeTool, configPath, { routekitHome: home });
         if (entry === undefined || entry.tokenRevoked === true) {
-          return yield* Effect.fail(
-            new Error(`no active RouteKit credential is registered for this ${nativeTool} integration`)
-          );
+          return yield* cliFailure(`no active RouteKit credential is registered for this ${nativeTool} integration`);
         }
         const token = yield* cliTryPromise(() =>
           readNativeCredential(nativeTool, entry.configPath, {
@@ -100,11 +98,9 @@ export const makeCredentialsCommand = (
           })
         );
         if (token === undefined) {
-          return yield* Effect.fail(
-            new Error(
+          return yield* cliFailure(
               `the RouteKit credential for this ${nativeTool} integration is missing; rerun its install command with --rotate-token`
-            )
-          );
+            );
         }
         runtime.stdout.write(`${token}\n`);
       })

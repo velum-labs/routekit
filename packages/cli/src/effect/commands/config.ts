@@ -22,7 +22,7 @@ import { Command, Flag } from "effect/unstable/cli";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import { withCliClient } from "../../cli-client.js";
-import { cliTry, cliTryPromise } from "../../cli-session.js";
+import { cliFailure, cliTry, cliTryPromise } from "../../cli-session.js";
 import {
   connectDaemon,
   daemonLifecycleLockPath,
@@ -141,7 +141,7 @@ const makeInitCommand = (runtime: CliRuntime): Command.Command.Any =>
       Effect.gen(function* () {
         const ctx = contextForFlags(yield* routekitRoot, runtime);
         if (options.empty && (options.provider !== undefined || options.defaultModel !== undefined)) {
-          return yield* Effect.fail(new Error("--empty conflicts with --provider and --default-model"));
+          return yield* cliFailure("--empty conflicts with --provider and --default-model");
         }
         const path = globalRouterConfigPath();
         const starterConfig = configInitRouterConfig(options);
@@ -157,7 +157,7 @@ const makeInitCommand = (runtime: CliRuntime): Command.Command.Any =>
                 ]
               : ["run `routekit providers status`", "run `routekit models list`"];
         if (existsSync(path) && !options.force) {
-          return yield* Effect.fail(new Error(`${path} already exists (pass --force to replace it)`));
+          return yield* cliFailure(`${path} already exists (pass --force to replace it)`);
         }
         if (readDaemonRecord() === undefined) {
           const lock = yield* cliTryPromise(() =>
@@ -207,7 +207,7 @@ const makeInitCommand = (runtime: CliRuntime): Command.Command.Any =>
           }
         }
         if (existsSync(path) && !options.force) {
-          return yield* Effect.fail(new Error(`${path} already exists (pass --force to replace it)`));
+          return yield* cliFailure(`${path} already exists (pass --force to replace it)`);
         }
         const connected = yield* connectDaemon;
         const client = connected?.client ?? (yield* routekitClient);
@@ -249,7 +249,7 @@ const makeEditCommand = (runtime: CliRuntime): Command.Command.Any =>
     Effect.gen(function* () {
       const ctx = contextForFlags(yield* routekitRoot, runtime);
       if (ctx.json) {
-        return yield* Effect.fail(new Error("`config edit` is interactive and does not support --json"));
+        return yield* cliFailure("`config edit` is interactive and does not support --json");
       }
       const path = yield* withCliClient((client) =>
         Effect.gen(function* () {

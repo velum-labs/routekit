@@ -23,6 +23,7 @@ import {
   evalStatusCommand,
   evalValidateCommand
 } from "../eval-cli.js";
+import { cliFailure } from "../../cli-session.js";
 import { routekitRoot } from "../root-command.js";
 
 type RepositoryOptions = {
@@ -126,9 +127,7 @@ export const makeEvalCommand = (
     (options) =>
       Effect.gen(function* () {
         if ((options.answer === undefined) === (options.answerFile === undefined)) {
-          return yield* Effect.fail(
-            new Error("provide exactly one of --answer or --answer-file")
-          );
+          return yield* cliFailure("provide exactly one of --answer or --answer-file");
         }
         yield* withStatus(
           runtime,

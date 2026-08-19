@@ -12,7 +12,7 @@ import { Effect, Option } from "effect";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import { launchTool, routekitToolRegistry } from "../../adapters/launch.js";
-import { cliTry, cliTryPromise } from "../../cli-session.js";
+import { cliFailure, cliTry, cliTryPromise } from "../../cli-session.js";
 import { routekitClient } from "../../client.js";
 import { isLaunchToolId, type LaunchToolId } from "../../launch-support.js";
 import { resolveTarget } from "../../target.js";
@@ -132,18 +132,14 @@ export const makeLauncherCommands = (
           Effect.gen(function* () {
             const globals = yield* routekitRoot;
             if (globals.json) {
-              return yield* Effect.fail(
-                new Error(`\`${integration.id}\` is interactive and does not support --json`)
-              );
+              return yield* cliFailure(`\`${integration.id}\` is interactive and does not support --json`);
             }
             if (integration.binary !== undefined && !commandOnPath(integration.binary)) {
-              return yield* Effect.fail(
-                new Error(
+              return yield* cliFailure(
                   `routekit preflight failed: "${integration.binary}" was not found on PATH — ${
                     integration.installHint ?? `install ${integration.binary}`
                   }`
-                )
-              );
+                );
             }
             const positionals = launcherPositionals(options.model, options.toolArgs);
             const model = positionals.model;
@@ -155,16 +151,12 @@ export const makeLauncherCommands = (
                 ? runtime.env[options.authTokenEnv]
                 : options.authToken;
             if (options.authTokenEnv !== undefined && externalToken === undefined) {
-              return yield* Effect.fail(
-                new Error(`credential environment variable is not set: ${options.authTokenEnv}`)
-              );
+              return yield* cliFailure(`credential environment variable is not set: ${options.authTokenEnv}`);
             }
             if (options.gatewayUrl !== undefined && externalToken !== undefined) {
               const external = new URL(options.gatewayUrl);
               if (external.protocol !== "https:" && !isLoopbackHost(external.hostname)) {
-                return yield* Effect.fail(
-                  new Error("authenticated external gateways require HTTPS")
-                );
+                return yield* cliFailure("authenticated external gateways require HTTPS");
               }
             }
             const tool = integration.id as LaunchToolId;

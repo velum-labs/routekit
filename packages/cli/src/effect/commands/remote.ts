@@ -17,7 +17,7 @@ import {
   runSshCommand,
   sshExitError
 } from "../../adapters/ssh-exec.js";
-import { type CliSession, cliTryPromise } from "../../cli-session.js";
+import { type CliSession, cliFailure, cliTryPromise } from "../../cli-session.js";
 import { resolveCredentialArgument } from "../../credentials.js";
 import { PEER_ADD_SCRIPT } from "../../generated/shell-scripts.js";
 import {
@@ -375,8 +375,8 @@ export const makeRemoteCommand = (
         const selected =
           name === undefined ? session.remotes.registry.active() : session.remotes.registry.find(name);
         if (selected === undefined) {
-          return yield* Effect.fail(
-            new Error(name === undefined ? "no active RouteKit remote" : `unknown RouteKit remote: ${name}`)
+          return yield* cliFailure(
+            name === undefined ? "no active RouteKit remote" : `unknown RouteKit remote: ${name}`
           );
         }
         const result = yield* remoteDetails(session, selected);
@@ -407,10 +407,10 @@ export const makeRemoteCommand = (
       Effect.gen(function* () {
         const ctx = contextForFlags(yield* routekitRoot, runtime);
         if (none && name !== undefined) {
-          return yield* Effect.fail(new Error("provide a remote name or --none, not both"));
+          return yield* cliFailure("provide a remote name or --none, not both");
         }
         if (!none && name === undefined) {
-          return yield* Effect.fail(new Error("provide a remote name or --none"));
+          return yield* cliFailure("provide a remote name or --none");
         }
         session.remotes.registry.use(none ? undefined : name);
         const result = { active: none ? null : name };

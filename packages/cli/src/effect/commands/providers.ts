@@ -10,6 +10,7 @@ import { Argument, Command, Flag } from "effect/unstable/cli";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import { withCliClient } from "../../cli-client.js";
+import { cliFailure } from "../../cli-session.js";
 import {
   isLaunchProviderId,
   LAUNCH_PROVIDER_IDS,
@@ -85,11 +86,9 @@ export const makeProvidersCommand = (
         if (options.defaultModel !== undefined) {
           const selected = splitNamespacedModel(options.defaultModel);
           if (selected.provider !== provider) {
-            return yield* Effect.fail(
-              new Error(
+            return yield* cliFailure(
                 `default model "${options.defaultModel}" does not belong to provider "${provider}"`
-              )
-            );
+              );
           }
         }
         const policy = {
@@ -213,7 +212,7 @@ export const makeProvidersCommand = (
             ? response.providers
             : response.providers.filter((entry) => entry.provider === parseKnownProvider(value));
         if (value !== undefined && statuses.length === 0) {
-          return yield* Effect.fail(new Error(`provider is not configured: ${value}`));
+          return yield* cliFailure(`provider is not configured: ${value}`);
         }
         const ctx = contextForFlags(yield* routekitRoot, runtime);
         if (ctx.json) ctx.emit({ providers: statuses });

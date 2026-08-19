@@ -26,28 +26,11 @@ import {
 } from "../../client.js";
 import { routekitHome } from "../../config.js";
 import { daemonSupervisorController } from "./daemon-service.js";
-import { drainGraceMs } from "../../commands/serve-options.js";
+import { drainGraceMs, gatewayServeFlags } from "../serve-options.js";
 import { routekitRoot } from "../root-command.js";
 
 const optionalString = (name: string) =>
   Flag.string(name).pipe(Flag.optional, Flag.map(Option.getOrUndefined));
-
-export const gatewayServeFlags = {
-  host: Flag.string("host").pipe(Flag.withDefault("127.0.0.1"), Flag.withDescription("bind host")),
-  port: Flag.string("port").pipe(Flag.withDefault("8080"), Flag.withDescription("bind port")),
-  authToken: optionalString("auth-token").pipe(
-    Flag.withDescription("authentication token (required for non-loopback hosts)")
-  ),
-  portless: Flag.boolean("portless").pipe(
-    Flag.withDefault(true),
-    Flag.withDescription("enable the stable local route")
-  ),
-  drainGrace: optionalString("drain-grace").pipe(
-    Flag.withDescription(
-      "grace for in-flight requests on shutdown/upgrade (default: $ROUTEKIT_DRAIN_GRACE or 30)"
-    )
-  )
-};
 
 function waitForRolledRecord(input: {
   hostPid: number;

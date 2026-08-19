@@ -16,7 +16,7 @@ import { Effect, Option } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 
 import { readControlRelayStdin, relayLocalControl } from "../../adapters/control-relay.js";
-import { cliTryPromise } from "../../cli-session.js";
+import { cliFailure, cliTryPromise } from "../../cli-session.js";
 import { daemonDataTokenPath, ensureDaemon } from "../../client.js";
 import { routekitVersion } from "../../state.js";
 import { routekitRoot } from "../root-command.js";
@@ -72,7 +72,7 @@ const makeRunCommand = (runtime: CliRuntime): Command.Command.Any =>
         }
         const entryPath = process.argv[1];
         if (entryPath === undefined) {
-          return yield* Effect.fail(new Error("RouteKit daemon entrypoint is unavailable"));
+          return yield* cliFailure("RouteKit daemon entrypoint is unavailable");
         }
         const running = yield* Effect.acquireRelease(
           cliTryPromise(() => startRouteKitDaemonHost({ ...daemonOptions, entryPath })),

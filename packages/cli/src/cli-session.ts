@@ -77,3 +77,8 @@ export function cliTryPromise<A>(run: () => Promise<A>): Effect.Effect<A, RouteK
     catch: (cause) => toRouteKitFailure(cause)
   });
 }
+
+/** Construct a typed CLI failure for direct `yield*` from command programs. */
+export function cliFailure(message: string): RouteKitFailure {
+  return new RouteKitFailure({ message });
+}

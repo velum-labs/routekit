@@ -22,7 +22,7 @@ import {
   formatAccountsStatusDetail
 } from "../../account-status-format.js";
 import { withCliClient } from "../../cli-client.js";
-import { cliTry, cliTryPromise } from "../../cli-session.js";
+import { cliFailure, cliTry, cliTryPromise } from "../../cli-session.js";
 import { isLaunchAccountKind, LAUNCH_ACCOUNT_KINDS } from "../../launch-support.js";
 import { activationKey, LoginAndActivateSubscription } from "../../services/account-login/service.js";
 import { routekitRoot } from "../root-command.js";
@@ -67,25 +67,19 @@ export const makeAccountsCommand = (
       Effect.gen(function* () {
         const ctx = contextForFlags(yield* routekitRoot, runtime);
         if (ctx.json || ctx.noInput) {
-          return yield* Effect.fail(
-            new Error("`accounts login` is interactive and does not support --json or --no-input")
-          );
+          return yield* cliFailure("`accounts login` is interactive and does not support --json or --no-input");
         }
         if (resolveAccountConnector(subscriptionKind) === undefined) {
-          return yield* Effect.fail(
-            new Error(
+          return yield* cliFailure(
               `unknown subscription kind ${JSON.stringify(subscriptionKind)}; first-launch kinds: ${LAUNCH_ACCOUNT_KINDS.join(", ")}`
-            )
-          );
+            );
         }
         const resolved = resolveAccountKind(subscriptionKind);
         const kind = resolved.kind;
         if (!isLaunchAccountKind(kind)) {
-          return yield* Effect.fail(
-            new Error(
+          return yield* cliFailure(
               `subscription kind ${JSON.stringify(subscriptionKind)} is not offered at first launch; supported kinds: ${LAUNCH_ACCOUNT_KINDS.join(", ")}`
-            )
-          );
+            );
         }
         if (resolved.localOnly) ctx.presenter.warn(`${resolved.kind}: ${LOCAL_ONLY_WARNING}`);
         if (noBrowser && resolved.kind === "claude-code") {
@@ -95,9 +89,7 @@ export const makeAccountsCommand = (
         }
         if (resolved.connector === "native") {
           if (name === undefined) {
-            return yield* Effect.fail(
-              new Error(`\`accounts login ${resolved.kind}\` requires --name <label>`)
-            );
+            return yield* cliFailure(`\`accounts login ${resolved.kind}\` requires --name <label>`);
           }
           const result = yield* withCliClient((client) =>
             loginAndActivateSubscription.execute({
