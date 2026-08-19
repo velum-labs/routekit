@@ -1,0 +1,43 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-routekit-assistance-repair-1-v1
+objective: Repair the automatic RouteKit registry from three real conversational validation tasks before evaluating five held-out test tasks.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: ed44a65e821fe52e411753997392a952b58e76e4
+dataset:
+  id: onboarding-optimization-routekit-assistance-repair-1-v1
+  hash: 04c97a87918daee6a9712c03b0bb3759caefb1d9d6a8427c28c3374a74411ea2
+  role: construction
+matrix:
+  treatments:
+    - id: repair_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_repair
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: repair-velum-labs-routekit
+    inputArtifact: inputs/onboarding-optimization-routekit-assistance-repair-1-v1/repair-velum-labs-routekit/sha256/06/0661728830b927a2d1ae2dae4247dbb68f85da06853c0ccfb2fd61f224cc40b2.json
+    metadata:
+      repositoryId: velum-labs/routekit
+      validationTasks: 3
+      testTaskTextExcluded: true
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 1
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 0.58
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
