@@ -13,7 +13,7 @@ export const POST = handleCallback<ExperimentQueueMessage>(
     visibilityTimeoutSeconds: 600,
     retry: (error, metadata) =>
       error instanceof ExperimentJobDeferredError
-        ? { afterSeconds: 30 }
+        ? { afterSeconds: 2 }
         : metadata.deliveryCount > 5
           ? { acknowledge: true }
           : { afterSeconds: Math.min(300, 2 ** metadata.deliveryCount * 5) }

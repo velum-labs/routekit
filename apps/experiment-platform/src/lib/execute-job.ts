@@ -19,6 +19,7 @@ import { artifactReferenceFromPath } from "./artifact-reference";
 import { materializeArtifactMounts } from "./artifact-mounts";
 import { promptFromInput } from "./hosted-request";
 import { getArtifactStore, getExperimentLedger } from "./platform";
+import { providerCostFromPayload } from "./provider-cost";
 
 export class ExperimentJobDeferredError extends Error {
   readonly jobId: string;
@@ -47,19 +48,6 @@ function parseInput(input: Uint8Array): unknown {
   } catch {
     return { prompt: text };
   }
-}
-
-function providerCost(payload: unknown, fallback: number): number {
-  if (typeof payload !== "object" || payload === null) return fallback;
-  const object = payload as Record<string, unknown>;
-  const direct = object.cost_usd ?? object.cost;
-  if (typeof direct === "number" && direct >= 0) return direct;
-  const usage = object.usage;
-  if (typeof usage === "object" && usage !== null) {
-    const nested = (usage as Record<string, unknown>).cost_usd;
-    if (typeof nested === "number" && nested >= 0) return nested;
-  }
-  return fallback;
 }
 
 function digestFromImage(image: string | undefined): string {
@@ -209,7 +197,7 @@ async function executeHostedModel(
     stdout: responseText,
     stderr: "",
     latencyMs: Math.round(performance.now() - startedAt),
-    providerCostUsd: providerCost(payload, job.estimatedProviderCostUsd),
+    providerCostUsd: providerCostFromPayload(payload, job.estimatedProviderCostUsd),
     infrastructureCostUsd: job.estimatedInfrastructureCostUsd
   };
 }

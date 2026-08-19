@@ -114,15 +114,30 @@ Do not upload locked-test data. Verify exact paths against
 
 ## 6. Validate cloud dependencies
 
-Pull the development environment and run the non-secret readiness check:
+Pull the development environment and run the non-secret readiness check. Require the hosted-model
+gateway when preparing any experiment that contains hosted-model jobs:
 
 ```bash
 corepack pnpm dlx vercel@latest env pull .env.local --cwd .
-corepack pnpm experiments:cloud:check
+node --env-file=.env.local \
+  apps/experiment-platform/cli/cloud-preflight.mjs --require-gateway
 ```
 
-The check verifies Node, authentication settings, project role, Postgres, Blob, and optionally the
-hosted-model gateway. It prints no credential values.
+The check verifies Node, authentication settings, project role, Postgres, Blob, and an authenticated
+model-list or RouteKit health request. It prints no credential values.
+
+Before a real hosted-model run, also make one small structured-output request to each evaluation
+model:
+
+```bash
+node --env-file=.env.local \
+  apps/experiment-platform/cli/gateway-model-canary.mjs
+```
+
+The canary validates the Luna and Sol model routes, strict JSON output, latency, token accounting,
+and upstream economic-cost metadata. It does not print credential values. The AI Gateway key budget
+can report zero spend for BYOK traffic, so use the experiment manifest's provider-cost reservation
+as the hard budget limit and record `upstream_inference_cost` or `market_cost` as actual spend.
 
 ## 7. Deploy
 

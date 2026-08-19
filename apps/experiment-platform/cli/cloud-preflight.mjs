@@ -4,6 +4,7 @@ import { Client } from "@neondatabase/serverless";
 import { list } from "@vercel/blob";
 
 const checks = [];
+const requireGateway = process.argv.includes("--require-gateway");
 
 async function check(name, operation, required = true) {
   try {
@@ -76,19 +77,26 @@ await check(
     const aiGateway = process.env.AI_GATEWAY_URL;
     const gateway = routeKitGateway || aiGateway;
     if (!gateway) throw new Error("ROUTEKIT_GATEWAY_URL or AI_GATEWAY_URL is not configured");
-    const token = routeKitGateway
-      ? requiredEnvironment("ROUTEKIT_EVAL_TOKEN")
-      : process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
-    if (!token) throw new Error("AI Gateway requires AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN");
     const pathname = routeKitGateway ? "/health" : "/v1/models";
-    const response = await fetch(`${gateway.replace(/\/$/, "")}${pathname}`, {
-      headers: routeKitGateway ? {} : { authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(10_000)
-    });
+    const tokens = routeKitGateway
+      ? [requiredEnvironment("ROUTEKIT_EVAL_TOKEN")]
+      : [process.env.AI_GATEWAY_API_KEY, process.env.VERCEL_OIDC_TOKEN].filter(Boolean);
+    if (tokens.length === 0) {
+      throw new Error("AI Gateway requires AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN");
+    }
+    let response;
+    for (const [index, token] of tokens.entries()) {
+      response = await fetch(`${gateway.replace(/\/$/, "")}${pathname}`, {
+        headers: routeKitGateway ? {} : { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (![401, 403].includes(response.status) || index === tokens.length - 1) break;
+    }
+    if (response === undefined) throw new Error("gateway health request was not attempted");
     if (!response.ok) throw new Error(`gateway health returned HTTP ${response.status}`);
     return routeKitGateway ? "routekit" : "vercel-ai-gateway";
   },
-  false
+  requireGateway
 );
 
 console.log(JSON.stringify({ checkedAt: new Date().toISOString(), checks }, null, 2));

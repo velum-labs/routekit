@@ -5,12 +5,16 @@
   "description": "Vercel control plane for reproducible RouteKit experiments.",
   "license": "Apache-2.0",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev --port 3010",
     "build": "next build",
     "start": "next start --port 3010",
     "cli": "node cli/experiment-cli.mjs",
     "cloud:check": "node cli/cloud-preflight.mjs",
+    "gateway:canary": "node cli/gateway-model-canary.mjs",
     "assets:freeze": "node cli/freeze-coding-router-assets.mjs",
     "assets:upload": "node cli/upload-frozen-assets.mjs",
     "inputs:prepare": "node cli/prepare-luna-task-inputs.mjs",
