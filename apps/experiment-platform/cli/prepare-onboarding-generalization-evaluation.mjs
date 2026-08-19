@@ -233,7 +233,7 @@ function mappingRequest(tail, cards, neutral, treatmentId) {
 
 const [neutralSnapshot, generationSnapshot] = await Promise.all([
   completedExperiment("onboarding-generalization-neutral-120-v1"),
-  completedExperiment("onboarding-generalization-registries-3-v1")
+  completedExperiment("onboarding-generalization-registries-3-v2")
 ]);
 const [neutralOutputs, generationOutputs] = await Promise.all([
   outputsByTask(neutralSnapshot),

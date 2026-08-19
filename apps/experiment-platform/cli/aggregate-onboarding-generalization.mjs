@@ -33,7 +33,7 @@ if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.VERCEL_OIDC_TOKEN) {
 const evaluationExperimentId = process.argv[2] ?? "onboarding-generalization-heldout-120-v1";
 const constructionExperimentIds = [
   "onboarding-generalization-neutral-120-v1",
-  "onboarding-generalization-registries-3-v1"
+  "onboarding-generalization-registries-3-v2"
 ];
 const mean = (values) =>
   values.length === 0 ? undefined : values.reduce((sum, value) => sum + value, 0) / values.length;

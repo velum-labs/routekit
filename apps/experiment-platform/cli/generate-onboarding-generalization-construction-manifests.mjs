@@ -96,9 +96,9 @@ const specifications = [
     })
   },
   {
-    name: "construction-registries",
+    name: "construction-registries-v2",
     value: manifest({
-      experimentId: "onboarding-generalization-registries-3-v1",
+      experimentId: "onboarding-generalization-registries-3-v2",
       objective:
         "Generate rule-guided and unconstrained eight-area registries from older coding tasks only, with a fourteen-day embargo before evaluation.",
       source: generation,
@@ -110,7 +110,7 @@ const specifications = [
           evaluationRole: "registry_generation",
           timeoutSeconds: 240
         },
-        estimatedProviderCostUsd: 0.15,
+        estimatedProviderCostUsd: 0.5,
         estimatedInfrastructureCostUsd: 0
       }))
     })
