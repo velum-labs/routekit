@@ -14,7 +14,11 @@ import { Effect } from "effect";
 
 import { buildProgram } from "../cli.js";
 import { child, runProgram } from "./effect-cli-test.js";
-import { evalSessionGatewayUrl } from "../effect/eval-authoring-target.js";
+import {
+  evalAuthoringRequestBody,
+  evalAuthoringResponseFailureDetail,
+  evalSessionGatewayUrl
+} from "../effect/eval-authoring-target.js";
 import { policyShowCommand } from "../effect/eval-cli.js";
 
 const command = (name: string) => {
@@ -52,6 +56,46 @@ test("eval authoring uses the selected remote data URL with the remote session c
   assert.equal(evalSessionGatewayUrl("http://127.0.0.1:8080"), "http://127.0.0.1:8080");
 });
 
+test("eval authoring lets the selected model choose compatible reasoning controls", () => {
+  const body = JSON.parse(
+    evalAuthoringRequestBody({
+      operationId: "authoring-826",
+      model: "claude-code/claude-opus-5",
+      instructions: "propose dimensions",
+      input: "{}",
+      schemaName: "routekit_routing_basis",
+      jsonSchema: { type: "object" },
+      maximumOutputTokens: 8_192
+    })
+  ) as Record<string, unknown>;
+  assert.equal(body.model, "claude-code/claude-opus-5");
+  assert.equal(body.max_output_tokens, 8_192);
+  assert.equal(Object.hasOwn(body, "reasoning"), false);
+});
+
+test("eval authoring HTTP failures include provider diagnostics and the inspectable call id", async () => {
+  const response = Response.json(
+    {
+      error: {
+        type: "invalid_request_error",
+        code: "unsupported_reasoning_control",
+        param: "reasoning.effort",
+        message: 'reasoning effort "none" is not supported'
+      }
+    },
+    {
+      status: 400,
+      headers: { "x-routekit-model-call-id": "model_call_eng826" }
+    }
+  );
+  const detail = await Effect.runPromise(evalAuthoringResponseFailureDetail(response));
+  assert.match(detail, /HTTP 400/u);
+  assert.match(detail, /code unsupported_reasoning_control/u);
+  assert.match(detail, /param reasoning\.effort/u);
+  assert.match(detail, /call id model_call_eng826/u);
+  assert.match(detail, /upstream body .*invalid_request_error/u);
+});
+
 test("eval command tree exposes the compositional product workflow", () => {
   const evalCommand = command("eval");
   assert.deepEqual(
@@ -81,14 +125,18 @@ test("eval command tree exposes the compositional product workflow", () => {
     ["dimensions", "evaluations"]
   );
 
-  assert.equal(commandChildren(evalCommand).some((entry) => ["prepare", "show"].includes(entry.name)), false);
+  assert.equal(
+    commandChildren(evalCommand).some((entry) => ["prepare", "show"].includes(entry.name)),
+    false
+  );
   assert.doesNotMatch(evalCommand.description ?? "", /profile/u);
 });
 
 test("eval workflow defaults to repository state and configured RouteKit targets", () => {
   const evalCommand = command("eval");
   const subcommand = (name: string) => child(evalCommand, name);
-  const optionNames = (name: string) => commandOptions(subcommand(name)).map((option) => option.name);
+  const optionNames = (name: string) =>
+    commandOptions(subcommand(name)).map((option) => option.name);
 
   for (const name of [
     "setup",

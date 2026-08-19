@@ -23,6 +23,9 @@ type AuthoringSession = {
   readonly bearerCredential: Redacted.Redacted<string>;
 };
 
+const AUTHORING_FAILURE_BODY_BYTES = 16 * 1024;
+const MODEL_CALL_ID_HEADER = "x-routekit-model-call-id";
+
 export const evalSessionGatewayUrl = (
   openedGatewayUrl: string,
   selectedRemoteGatewayUrl?: string
@@ -65,6 +68,91 @@ const outputText = (payload: unknown): string | undefined => {
   return text.length === 0 ? undefined : text;
 };
 
+export const evalAuthoringRequestBody = (input: EvalAuthoringCompletion): string =>
+  JSON.stringify({
+    model: input.model,
+    instructions: input.instructions,
+    input: input.input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: input.schemaName,
+        schema: input.jsonSchema,
+        strict: true
+      }
+    },
+    // Do not force `reasoning.effort: "none"`. `none` is not a portable
+    // effort value and healthy catalog models can reject it before provider I/O.
+    max_output_tokens: input.maximumOutputTokens
+  });
+
+const readAuthoringFailureBody = async (
+  response: Response
+): Promise<{ readonly text: string; readonly truncated: boolean }> => {
+  if (response.body === null) return { text: "", truncated: false };
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      const remaining = AUTHORING_FAILURE_BODY_BYTES - bytes;
+      if (remaining <= 0) {
+        await reader.cancel().catch(() => undefined);
+        return { text: Buffer.concat(chunks).toString("utf8"), truncated: true };
+      }
+      const chunk =
+        next.value.byteLength > remaining ? next.value.subarray(0, remaining) : next.value;
+      chunks.push(chunk);
+      bytes += chunk.byteLength;
+      if (chunk.byteLength < next.value.byteLength) {
+        await reader.cancel().catch(() => undefined);
+        return { text: Buffer.concat(chunks).toString("utf8"), truncated: true };
+      }
+    }
+    return { text: Buffer.concat(chunks).toString("utf8"), truncated: false };
+  } finally {
+    reader.releaseLock();
+  }
+};
+
+const upstreamErrorMetadata = (
+  body: string
+): { readonly code?: string; readonly param?: string } => {
+  try {
+    const payload = JSON.parse(body) as { error?: unknown };
+    if (typeof payload.error !== "object" || payload.error === null) return {};
+    const error = payload.error as { code?: unknown; param?: unknown };
+    return {
+      ...(typeof error.code === "string" && error.code.length > 0 ? { code: error.code } : {}),
+      ...(typeof error.param === "string" && error.param.length > 0 ? { param: error.param } : {})
+    };
+  } catch {
+    return {};
+  }
+};
+
+export const evalAuthoringResponseFailureDetail = (response: Response): Effect.Effect<string> =>
+  Effect.promise(async () => {
+    const body = await readAuthoringFailureBody(response).catch(() => ({
+      text: "",
+      truncated: false
+    }));
+    const text = body.text.trim();
+    const metadata = upstreamErrorMetadata(text);
+    const callId = response.headers.get(MODEL_CALL_ID_HEADER);
+    return [
+      response.status >= 300 && response.status < 400
+        ? "author model request was redirected and rejected"
+        : `author model request failed with HTTP ${String(response.status)}`,
+      ...(metadata.code === undefined ? [] : [`code ${metadata.code}`]),
+      ...(metadata.param === undefined ? [] : [`param ${metadata.param}`]),
+      ...(callId === null || callId.length === 0 ? ["call id unavailable"] : [`call id ${callId}`]),
+      `upstream body ${text.length === 0 ? "<empty>" : text}${body.truncated ? "… (truncated)" : ""}`
+    ].join("; ");
+  });
+
 function targetAuthoringTransport(
   session: AuthoringSession,
   httpContext: Context.Context<HttpClient.HttpClient>
@@ -75,21 +163,7 @@ function targetAuthoringTransport(
         input.schemaName === "routekit_routing_basis"
           ? ("authoring-dimensions" as const)
           : ("authoring-evaluations" as const);
-      const body = JSON.stringify({
-        model: input.model,
-        instructions: input.instructions,
-        input: input.input,
-        text: {
-          format: {
-            type: "json_schema",
-            name: input.schemaName,
-            schema: input.jsonSchema,
-            strict: true
-          }
-        },
-        reasoning: { effort: "none" },
-        max_output_tokens: input.maximumOutputTokens
-      });
+      const body = evalAuthoringRequestBody(input);
       if (Buffer.byteLength(body) > EVAL_AUTHORING_REQUEST_BYTES) {
         return yield* authoringFailure(
           operation,
@@ -119,12 +193,8 @@ function targetAuthoringTransport(
         )
       );
       if (response.status < 200 || response.status >= 300) {
-        return yield* authoringFailure(
-          operation,
-          response.status >= 300 && response.status < 400
-            ? "author model request was redirected and rejected"
-            : `author model request failed with HTTP ${String(response.status)}`
-        );
+        const detail = yield* evalAuthoringResponseFailureDetail(response);
+        return yield* authoringFailure(operation, detail);
       }
       const payload = yield* Effect.tryPromise({
         try: () => response.json(),

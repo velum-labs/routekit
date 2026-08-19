@@ -28,3 +28,8 @@ export function openaiReasoningCapabilities(
   }
   return undefined;
 }
+
+/** GPT-5.x Chat Completions reject legacy `max_tokens`; use `max_completion_tokens`. */
+export function openaiChatUsesMaxCompletionTokens(modelId: string): boolean {
+  return /(?:^|[./])gpt-5(?:[.:-]|$)/.test(modelId);
+}

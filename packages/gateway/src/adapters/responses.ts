@@ -247,7 +247,9 @@ export function handleResponses(
 
     if (!upstream.ok) {
       const detail = yield* gatewayTryPromise(() => upstream.text());
-      return jsonResponse(upstream.status, { error: unwrapUpstreamError(detail) });
+      return jsonResponse(upstream.status, {
+        error: unwrapUpstreamError(detail, { preserveMetadata: true })
+      });
     }
 
     if (executor !== undefined) {

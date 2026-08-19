@@ -8,13 +8,28 @@
  * `invalid_request_error` from the backend must stay an
  * `invalid_request_error` on the door.
  */
-export function unwrapUpstreamError(detail: string): { type: string; message: string } {
+export function unwrapUpstreamError(
+  detail: string,
+  options: { readonly preserveMetadata?: boolean } = {}
+): { type: string; message: string; code?: string; param?: string } {
   try {
-    const parsed = JSON.parse(detail) as { error?: { type?: unknown; message?: unknown } };
+    const parsed = JSON.parse(detail) as {
+      error?: { type?: unknown; message?: unknown; code?: unknown; param?: unknown };
+    };
     if (typeof parsed.error?.message === "string") {
       return {
         type: typeof parsed.error.type === "string" ? parsed.error.type : "api_error",
-        message: parsed.error.message
+        message: parsed.error.message,
+        ...(options.preserveMetadata === true &&
+        typeof parsed.error.code === "string" &&
+        parsed.error.code.length > 0
+          ? { code: parsed.error.code }
+          : {}),
+        ...(options.preserveMetadata === true &&
+        typeof parsed.error.param === "string" &&
+        parsed.error.param.length > 0
+          ? { param: parsed.error.param }
+          : {})
       };
     }
   } catch {

@@ -146,6 +146,66 @@ test("injects the default model and pipes the completion back", async () => {
   }
 });
 
+test("GPT-5 Chat Completions translate max_tokens to max_completion_tokens", async () => {
+  const mock = await startMock();
+  const backend = new OpenAiBackend({ baseUrl: `${mock.url}/v1` });
+  const gateway = await startGateway({ backend });
+  try {
+    for (const model of [
+      "gpt-5.6-sol",
+      "openai.gpt-5.6-luna",
+      "bedrock/openai.gpt-5.5",
+      "routekit/bedrock/us.openai.gpt-5.7"
+    ]) {
+      const response = await fetch(`${gateway.url()}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model,
+          max_tokens: 128,
+          messages: [{ role: "user", content: "hi" }]
+        })
+      });
+      assert.equal(response.status, 200, model);
+      const body = mock.lastChatBody();
+      assert.equal(body?.max_completion_tokens, 128, model);
+      assert.equal("max_tokens" in (body ?? {}), false, model);
+    }
+
+    const modern = await fetch(`${gateway.url()}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "bedrock/openai.gpt-5.6-terra",
+        max_tokens: 128,
+        max_completion_tokens: 256,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(modern.status, 200);
+    const modernBody = mock.lastChatBody();
+    assert.equal(modernBody?.max_completion_tokens, 256);
+    assert.equal("max_tokens" in (modernBody ?? {}), false);
+
+    const legacy = await fetch(`${gateway.url()}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        max_tokens: 64,
+        messages: [{ role: "user", content: "hi" }]
+      })
+    });
+    assert.equal(legacy.status, 200);
+    const legacyBody = mock.lastChatBody();
+    assert.equal(legacyBody?.max_tokens, 64);
+    assert.equal("max_completion_tokens" in (legacyBody ?? {}), false);
+  } finally {
+    await Effect.runPromise(gateway.close);
+    await mock.close();
+  }
+});
+
 test("compound provider operations are not counted as retries", () => {
   const attribution = collectAttribution({
     effective_model: "codex/gpt-test",
