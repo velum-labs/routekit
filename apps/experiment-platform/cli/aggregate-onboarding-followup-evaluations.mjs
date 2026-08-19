@@ -316,7 +316,7 @@ const report = [
   "| -- | -- | --: | --: | --: | --: | --: | --: | --: | --: | --: |",
   ...rows.map(
     (row) =>
-      `| ${row.experimentId} | ${row.comparisonGroup} | ${row.pairedPredictions} | ${decimal(
+      `| ${row.experimentId} | ${row.comparisonGroup} / ${row.treatmentId} | ${row.pairedPredictions} | ${decimal(
         row.meanActiveAreaAbsoluteError
       )} | ${decimal(row.meanCosineSimilarity)} | ${decimal(
         row.activeAreaF1
