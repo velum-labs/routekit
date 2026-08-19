@@ -1,0 +1,121 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-routekit-assistance-final-5x3-v1
+objective: Compare human, automatic, and validation-repaired RouteKit registries on five held-out real conversational test tasks.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 5a62a18de69f241e758f9afc465a95046148d697
+dataset:
+  id: onboarding-optimization-routekit-assistance-final-5x3-v1
+  hash: 910e57ca2a38bd989c0a0a33066d0218d7e53c1273c0f2411a4fb7d9a1baa8ee
+  role: development
+matrix:
+  treatments:
+    - id: human__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: human__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: auto__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: auto
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: auto__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: auto
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: repaired__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: repaired
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: repaired__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: repaired
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: routekit-assistance-final-codex-b5b435bb2035cde6fa3d
+    inputArtifact: inputs/onboarding-optimization-routekit-assistance-final-5x3-v1/routekit-assistance-final-codex-b5b435bb2035cde6fa3d/sha256/d4/d4cae3f07e06d37ed9b68620db22b3e654af91f0c5f3970fd08bde53fdb6e2a5.json
+    metadata:
+      sourceEpisodeId: codex-b5b435bb2035cde6fa3d
+      repositoryId: velum-labs/routekit
+      split: test
+      repairFrozenBeforeTestTaskExposure: true
+  - id: routekit-assistance-final-codex-d1cb1e7fcb9dd3af7db3
+    inputArtifact: inputs/onboarding-optimization-routekit-assistance-final-5x3-v1/routekit-assistance-final-codex-d1cb1e7fcb9dd3af7db3/sha256/8f/8f5c9ea283f805123317a50aa751c0837c73a15b4d45596a41317de809c56cdc.json
+    metadata:
+      sourceEpisodeId: codex-d1cb1e7fcb9dd3af7db3
+      repositoryId: velum-labs/routekit
+      split: test
+      repairFrozenBeforeTestTaskExposure: true
+  - id: routekit-assistance-final-codex-771cb5eb09a262d76081
+    inputArtifact: inputs/onboarding-optimization-routekit-assistance-final-5x3-v1/routekit-assistance-final-codex-771cb5eb09a262d76081/sha256/e6/e6d926807994abd2fe13891483a0f1037888084b7104bb0e83db4d365a250e09.json
+    metadata:
+      sourceEpisodeId: codex-771cb5eb09a262d76081
+      repositoryId: velum-labs/routekit
+      split: test
+      repairFrozenBeforeTestTaskExposure: true
+  - id: routekit-assistance-final-codex-71d47132abf35d16d394
+    inputArtifact: inputs/onboarding-optimization-routekit-assistance-final-5x3-v1/routekit-assistance-final-codex-71d47132abf35d16d394/sha256/d4/d44a95c279aa099da44c36ec3d80d921d7453321d6df8ffdd012ce40ec16be50.json
+    metadata:
+      sourceEpisodeId: codex-71d47132abf35d16d394
+      repositoryId: velum-labs/routekit
+      split: test
+      repairFrozenBeforeTestTaskExposure: true
+  - id: routekit-assistance-final-codex-faa8fb7347270f23ce24
+    inputArtifact: inputs/onboarding-optimization-routekit-assistance-final-5x3-v1/routekit-assistance-final-codex-faa8fb7347270f23ce24/sha256/5e/5eb88448b5a9375129678e6e9ba8a836a8422895065724e88388c05c0b411acc.json
+    metadata:
+      sourceEpisodeId: codex-faa8fb7347270f23ce24
+      repositoryId: velum-labs/routekit
+      split: test
+      repairFrozenBeforeTestTaskExposure: true
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_mean_cosine_similarity
+    - composition_active_area_f1
+    - composition_top_area_agreement
+    - composition_unknown_absolute_error
+  maximumPromotedTreatments: 3
+budget:
+  providerMaximumUsd: 0.83
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
