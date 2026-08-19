@@ -1,0 +1,48 @@
+schemaVersion: 1
+experimentId: onboarding-generalization-neutral-retry-1-v1
+objective: Retry the one truncated taxonomy-neutral Sol decomposition with a larger completion allowance.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 546fb20a9f3d287eba7e4b329416e31dddb6758e
+dataset:
+  id: onboarding-generalization-neutral-retry-1-v1
+  hash: 86e295925ee05dba7dc6a7f0eaae8bbcb62891099aad83f9f4e7611881bf4fd8
+  role: construction
+matrix:
+  treatments:
+    - id: neutral_sol_retry
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: neutral_reference
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.6
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: grafana-grafana-heldout-pr-130858
+    inputArtifact: inputs/onboarding-generalization-neutral-retry-1-v1/grafana-grafana-heldout-pr-130858/sha256/33/3322130c41f8234d8768a70fd3c41cacc49c6c0c6caee0b242785a1a5866ecdb.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130858
+      mergedAt: 2026-08-19T09:58:24Z
+      baseRefOid: 8063ce2bb5591fd1f9ac6eeadb9e2c026f10cd94
+      taskTextHash: 12264d846f6a415282eac0fa3e28bb1db3d7f8400023867e025dc4c5a451b05b
+      split: heldout-evaluation
+      retryReason: original strict JSON response reached the 8192-token completion limit
+      originalExperimentId: onboarding-generalization-neutral-120-v1
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 1
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 0.8
+  vercelMaximumUsd: 0.05
+dataAccess:
+  lockedTest: false
