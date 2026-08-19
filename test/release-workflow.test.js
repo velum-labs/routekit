@@ -25,6 +25,26 @@ test("Changesets versioning regenerates the public changelog", () => {
   assert.doesNotMatch(releaseWorkflow, /version: corepack pnpm changeset version/);
 });
 
+test("npm publishing fails closed before and after a workspace release", () => {
+  const release = manifest.scripts.release;
+  const preflightIndex = release.indexOf("corepack pnpm release:registry:preflight");
+  const publishIndex = release.indexOf("changeset publish");
+  const verifyIndex = release.indexOf("corepack pnpm release:registry:verify");
+  assert.notEqual(preflightIndex, -1);
+  assert.notEqual(publishIndex, -1);
+  assert.notEqual(verifyIndex, -1);
+  assert.ok(preflightIndex < publishIndex);
+  assert.ok(publishIndex < verifyIndex);
+
+  assert.match(releaseWorkflow, /id: npm-release/);
+  assert.match(releaseWorkflow, /steps\.changesets\.outputs\.hasChangesets == 'false'/);
+  assert.match(releaseWorkflow, /run: corepack pnpm release:registry:verify/);
+  assert.match(
+    releaseWorkflow,
+    /steps\.npm-release\.outcome == 'success' && steps\.routekit-release\.outputs\.released == 'true'/
+  );
+});
+
 test("manual documentation publishing is main-only and approval-gated", () => {
   assert.match(publishDocsWorkflow, /on:\n  workflow_dispatch:\n/);
   assert.doesNotMatch(publishDocsWorkflow, /\n  push:/);

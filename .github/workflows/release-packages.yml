@@ -82,9 +82,14 @@ jobs:
           NPM_TOKEN: ""
           NPM_CONFIG_PROVENANCE: "true"
 
+      - name: Verify complete npm workspace release
+        id: npm-release
+        if: ${{ !cancelled() && steps.changesets.outputs.hasChangesets == 'false' }}
+        run: corepack pnpm release:registry:verify
+
       - name: Resolve published RouteKit release
         id: routekit-release
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.npm-release.outcome == 'success' }}
         env:
           PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
           RELEASE_SHA: ${{ github.sha }}
@@ -109,7 +114,7 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Synchronize published release with Linear
-        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        if: ${{ !cancelled() && steps.npm-release.outcome == 'success' && steps.routekit-release.outputs.released == 'true' }}
         uses: linear/linear-release-action@af56a9a388625921f3757a2f988e4d7aca958377 # v0
         with:
           access_key: ${{ secrets.LINEAR_RELEASE_ACCESS_KEY }}
@@ -121,7 +126,7 @@ jobs:
             npm=https://www.npmjs.com/package/@velum-labs/routekit/v/${{ steps.routekit-release.outputs.version }}
 
       - name: Upload or repair installer, SBOM, and license artifacts
-        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        if: ${{ !cancelled() && steps.npm-release.outcome == 'success' && steps.routekit-release.outputs.released == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ github.sha }}
@@ -137,7 +142,7 @@ jobs:
             --clobber
 
       - name: Publish stable installer channel
-        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        if: ${{ !cancelled() && steps.npm-release.outcome == 'success' && steps.routekit-release.outputs.released == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ github.sha }}
@@ -159,7 +164,7 @@ jobs:
           fi
 
       - name: Validate documented installer URL
-        if: ${{ !cancelled() && steps.routekit-release.outputs.released == 'true' }}
+        if: ${{ !cancelled() && steps.npm-release.outcome == 'success' && steps.routekit-release.outputs.released == 'true' }}
         env:
           INSTALLER_URL: https://github.com/${{ github.repository }}/releases/download/routekit-latest/install.sh
         run: |
