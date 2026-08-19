@@ -160,9 +160,9 @@ const makeInstallCommand = (
       dryRun: Flag.boolean("dry-run").pipe(
         Flag.withDescription("probe the host and report the steps without changing it")
       ),
-      use: Flag.boolean("use").pipe(
-        Flag.withDefault(true),
-        Flag.withDescription("make this the active remote after enrollment")
+      use: Flag.boolean("no-use").pipe(
+        Flag.map((disabled) => !disabled),
+        Flag.withDescription("enroll without making this the active remote")
       )
     },
     (options) =>
@@ -293,9 +293,9 @@ export const makeRemoteCommand = (
       join: optionalStringFlag("join").pipe(
         Flag.withDescription("enroll the SSH account as a peer first (pass - to read from stdin)")
       ),
-      use: Flag.boolean("use").pipe(
-        Flag.withDefault(true),
-        Flag.withDescription("make this the active remote")
+      use: Flag.boolean("no-use").pipe(
+        Flag.map((disabled) => !disabled),
+        Flag.withDescription("add without making this the active remote")
       )
     },
     (options) =>

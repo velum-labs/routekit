@@ -17,7 +17,8 @@
     {
       "flags": "--no-input",
       "description": "never prompt; prompts resolve to their defaults",
-      "value": "none"
+      "value": "none",
+      "negated": true
     },
     {
       "flags": "--yes",
@@ -157,7 +158,8 @@
         {
           "flags": "--no-browser",
           "description": "prefer a browserless login flow (device code / copyable URL)",
-          "value": "none"
+          "value": "none",
+          "negated": true
         }
       ],
       "category": "subscriptions",
@@ -387,18 +389,18 @@
         "routekit",
         "claude"
       ],
-      "usage": "routekit claude <model> <tool-args...>",
+      "usage": "routekit claude [model] [tool-args...]",
       "summary": "launch Claude Code through RouteKit",
       "arguments": [
         {
           "name": "model",
-          "required": true,
+          "required": false,
           "variadic": false,
           "description": "live namespaced provider/model id"
         },
         {
           "name": "tool-args",
-          "required": true,
+          "required": false,
           "variadic": true,
           "description": "arguments passed to Claude Code"
         }
@@ -485,7 +487,8 @@
         {
           "flags": "--no-token",
           "description": "install configuration without issuing or changing a gateway token",
-          "value": "none"
+          "value": "none",
+          "negated": true
         }
       ],
       "category": "coding-tools",
@@ -575,18 +578,18 @@
         "routekit",
         "codex"
       ],
-      "usage": "routekit codex <model> <tool-args...>",
+      "usage": "routekit codex [model] [tool-args...]",
       "summary": "launch Codex through RouteKit (Responses-only; best-effort model filtering)",
       "arguments": [
         {
           "name": "model",
-          "required": true,
+          "required": false,
           "variadic": false,
           "description": "live namespaced provider/model id"
         },
         {
           "name": "tool-args",
-          "required": true,
+          "required": false,
           "variadic": true,
           "description": "arguments passed to Codex"
         }
@@ -673,7 +676,8 @@
         {
           "flags": "--no-token",
           "description": "install configuration without issuing or changing a gateway token",
-          "value": "none"
+          "value": "none",
+          "negated": true
         }
       ],
       "category": "coding-tools",
@@ -1217,9 +1221,10 @@
           "value": "required"
         },
         {
-          "flags": "--portless",
-          "description": "enable the stable local route",
-          "value": "none"
+          "flags": "--no-portless",
+          "description": "disable the stable local route",
+          "value": "none",
+          "negated": true
         },
         {
           "flags": "--drain-grace <value>",
@@ -2387,12 +2392,12 @@
         "providers",
         "status"
       ],
-      "usage": "routekit providers status <provider>",
+      "usage": "routekit providers status [provider]",
       "summary": "run live discovery for configured providers",
       "arguments": [
         {
           "name": "provider",
-          "required": true,
+          "required": false,
           "variadic": false
         }
       ],
@@ -2455,9 +2460,10 @@
           "value": "required"
         },
         {
-          "flags": "--use",
-          "description": "make this the active remote",
-          "value": "none"
+          "flags": "--no-use",
+          "description": "add without making this the active remote",
+          "value": "none",
+          "negated": true
         }
       ],
       "category": "remote",
@@ -2536,9 +2542,10 @@
           "value": "none"
         },
         {
-          "flags": "--use",
-          "description": "make this the active remote after enrollment",
-          "value": "none"
+          "flags": "--no-use",
+          "description": "enroll without making this the active remote",
+          "value": "none",
+          "negated": true
         }
       ],
       "category": "remote",
@@ -2658,12 +2665,12 @@
         "remote",
         "show"
       ],
-      "usage": "routekit remote show <name>",
+      "usage": "routekit remote show [name]",
       "summary": "show and probe one remote gateway",
       "arguments": [
         {
           "name": "name",
-          "required": true,
+          "required": false,
           "variadic": false
         }
       ],
@@ -2696,12 +2703,12 @@
         "remote",
         "use"
       ],
-      "usage": "routekit remote use <name>",
+      "usage": "routekit remote use [name]",
       "summary": "select the active remote, or return to local mode",
       "arguments": [
         {
           "name": "name",
-          "required": true,
+          "required": false,
           "variadic": false
         }
       ],
@@ -2805,7 +2812,8 @@
         {
           "flags": "--no-browser",
           "description": "prefer browserless subscription login flows",
-          "value": "none"
+          "value": "none",
+          "negated": true
         }
       ],
       "category": "setup",
@@ -2867,9 +2875,10 @@
           "value": "required"
         },
         {
-          "flags": "--portless",
-          "description": "enable the stable local route",
-          "value": "none"
+          "flags": "--no-portless",
+          "description": "disable the stable local route",
+          "value": "none",
+          "negated": true
         },
         {
           "flags": "--drain-grace <value>",
@@ -2923,9 +2932,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--watch <value>",
+          "flags": "--watch [seconds]",
           "description": "refresh continuously (default: 5 seconds)",
-          "value": "required"
+          "value": "optional"
         }
       ],
       "category": "operations",
@@ -3446,9 +3455,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--watch <value>",
+          "flags": "--watch [seconds]",
           "description": "refresh continuously (default: 5 seconds)",
-          "value": "required"
+          "value": "optional"
         }
       ],
       "category": "operations",

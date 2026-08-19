@@ -182,6 +182,25 @@ test("config help describes import-only singleton policy", () => {
   assert.match(importCommand.description ?? "", /replace the canonical singleton config/);
 });
 
+test("CLI metadata preserves negative flags and optional watch values", () => {
+  const program = buildProgram();
+  const start = command(program, "start");
+  const remote = command(program, "remote");
+  const add = child(remote, "add");
+  const install = child(remote, "install");
+  const status = command(program, "status");
+  const usage = command(program, "usage");
+
+  assert.equal(commandOptions(start).find((option) => option.name === "no-portless")?.negated, true);
+  assert.equal(commandOptions(add).find((option) => option.name === "no-use")?.negated, true);
+  assert.equal(commandOptions(install).find((option) => option.name === "no-use")?.negated, true);
+  for (const watchCommand of [status, usage]) {
+    const watch = commandOptions(watchCommand).find((option) => option.name === "watch");
+    assert.equal(watch?.valueName, "seconds");
+    assert.equal(watch?.valueOptional, true);
+  }
+});
+
 test("dynamic completion follows the command tree", () => {
   const program = buildProgram();
   const topLevel = completionCandidates(program, [""]);

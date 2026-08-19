@@ -98,10 +98,16 @@ function serializeOption(option) {
     ...option.aliases.map((alias) => alias.length === 1 ? `-${alias}` : `--${alias}`),
     `--${option.name}`
   ];
+  const valueShape = option.boolean
+    ? ""
+    : option.valueOptional
+      ? ` [${option.valueName}]`
+      : ` <${option.valueName}>`;
   return {
-    flags: `${names.join(", ")}${option.boolean ? "" : " <value>"}`,
+    flags: `${names.join(", ")}${valueShape}`,
     description: option.description ?? "",
-    value: option.boolean ? "none" : "required",
+    value: option.boolean ? "none" : option.valueOptional ? "optional" : "required",
+    ...(option.negated ? { negated: true } : {}),
     ...(option.hidden ? { visibility: "hidden" } : {})
   };
 }

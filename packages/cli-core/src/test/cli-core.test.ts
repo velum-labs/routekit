@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Command, Flag } from "effect/unstable/cli";
+import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import {
+  commandArguments,
   commandChildren,
   commandNames,
   commandOptions,
@@ -34,6 +35,29 @@ test("Effect command metadata follows the real command tree", () => {
     "remove"
   ]);
   assert.equal(effectCommandPath(root, remove), "sessions remove");
+});
+
+test("Effect command metadata follows mapped optional and variadic arguments", () => {
+  const inspect = Command.make("inspect", {
+    name: Argument.string("name").pipe(
+      Argument.optional,
+      Argument.map((name) => name)
+    ),
+    values: Argument.string("values").pipe(Argument.variadic({ min: 0 }))
+  });
+
+  assert.deepEqual(commandArguments(inspect), [
+    {
+      name: "name",
+      optional: true,
+      variadic: false
+    },
+    {
+      name: "values",
+      optional: true,
+      variadic: true
+    }
+  ]);
 });
 
 test("shared option and flag mechanics are deterministic", () => {

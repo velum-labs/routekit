@@ -9,10 +9,16 @@ type SingleParam = Param.Any & {
   readonly hidden: boolean;
   readonly description: Option.Option<string>;
   readonly primitiveType: { readonly _tag: string };
+  readonly typeName?: string;
 };
 
 type WrappedParam = Param.Any & {
   readonly param: Param.Any;
+};
+
+type VariadicParam = WrappedParam & {
+  readonly _tag: "Variadic";
+  readonly min: Option.Option<number>;
 };
 
 type CommandInternals = Command.Command.Any & {
@@ -28,6 +34,9 @@ export type EffectCommandOption = {
   readonly hidden: boolean;
   readonly description?: string;
   readonly boolean: boolean;
+  readonly negated: boolean;
+  readonly valueName?: string;
+  readonly valueOptional: boolean;
 };
 
 export type EffectCommandArgument = {
@@ -45,6 +54,30 @@ function unwrapParam(param: Param.Any): SingleParam {
 
 function descriptionOf(param: SingleParam): string | undefined {
   return "value" in param.description ? param.description.value : undefined;
+}
+
+function paramMetadata(param: Param.Any): {
+  readonly optional: boolean;
+  readonly variadic: boolean;
+} {
+  switch (param._tag) {
+    case "Single":
+      return { optional: false, variadic: false };
+    case "Map":
+    case "Transform":
+      return paramMetadata((param as WrappedParam).param);
+    case "Optional":
+      return { ...paramMetadata((param as WrappedParam).param), optional: true };
+    case "Variadic": {
+      const variadic = param as VariadicParam;
+      const metadata = paramMetadata(variadic.param);
+      const minimum = "value" in variadic.min ? variadic.min.value : undefined;
+      return {
+        optional: metadata.optional || minimum === undefined || minimum === 0,
+        variadic: true
+      };
+    }
+  }
 }
 
 export function commandChildren(
@@ -70,6 +103,11 @@ export function commandOptions(
 ): ReadonlyArray<EffectCommandOption> {
   return (command as CommandInternals).config.flags.map((param) => {
     const single = unwrapParam(param);
+    const boolean = single.primitiveType._tag === "Boolean";
+    const optionalValue =
+      !boolean &&
+      single.typeName?.startsWith("[") === true &&
+      single.typeName.endsWith("]");
     return {
       name: single.name,
       aliases: single.aliases,
@@ -77,7 +115,16 @@ export function commandOptions(
       ...(descriptionOf(single) !== undefined
         ? { description: descriptionOf(single) }
         : {}),
-      boolean: single.primitiveType._tag === "Boolean"
+      boolean,
+      negated: boolean && single.name.startsWith("no-"),
+      ...(!boolean
+        ? {
+            valueName: optionalValue
+              ? single.typeName!.slice(1, -1)
+              : (single.typeName ?? "value")
+          }
+        : {}),
+      valueOptional: optionalValue
     };
   });
 }
@@ -87,13 +134,14 @@ export function commandArguments(
 ): ReadonlyArray<EffectCommandArgument> {
   return (command as CommandInternals).config.arguments.map((param) => {
     const single = unwrapParam(param);
+    const metadata = paramMetadata(param);
     return {
       name: single.name,
       ...(descriptionOf(single) !== undefined
         ? { description: descriptionOf(single) }
         : {}),
-      optional: param._tag === "Optional",
-      variadic: param._tag === "Variadic"
+      optional: metadata.optional,
+      variadic: metadata.variadic
     };
   });
 }

@@ -389,6 +389,7 @@ export const makeUsageCommand = (
       watch: Flag.string("watch").pipe(
         Flag.optional,
         Flag.map(Option.getOrUndefined),
+        Flag.withMetavar("[seconds]"),
         Flag.withDescription("refresh continuously (default: 5 seconds)")
       )
     },

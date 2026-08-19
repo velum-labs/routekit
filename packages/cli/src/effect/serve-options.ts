@@ -11,9 +11,9 @@ export const gatewayServeFlags = {
   authToken: optionalString("auth-token").pipe(
     Flag.withDescription("authentication token (required for non-loopback hosts)")
   ),
-  portless: Flag.boolean("portless").pipe(
-    Flag.withDefault(true),
-    Flag.withDescription("enable the stable local route")
+  portless: Flag.boolean("no-portless").pipe(
+    Flag.map((disabled) => !disabled),
+    Flag.withDescription("disable the stable local route")
   ),
   drainGrace: optionalString("drain-grace").pipe(
     Flag.withDescription(

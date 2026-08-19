@@ -22,6 +22,7 @@ import {
 
 import { CliSession, runWithCliSession } from "./cli-session.js";
 import { CommandTelemetry } from "./command-telemetry.js";
+import { normalizeOptionalFlagValues } from "./adapters/optional-flag-value.js";
 import { buildEffectProgram } from "./effect/program.js";
 import { notifyIfUpdateAvailable } from "./update-notifier.js";
 import { routekitVersion } from "./state.js";
@@ -105,9 +106,10 @@ async function main(): Promise<void> {
   const session = new CliSession(processCliRuntime, undefined, effectRuntime);
   const commandTelemetry = new CommandTelemetry(session, processCliRuntime);
   const program = buildEffectProgram(session, processCliRuntime);
-  const argv = process.argv.slice(2);
+  const rawArgv = process.argv.slice(2);
+  const path = selectedCommandPath(program, rawArgv);
+  const argv = normalizeOptionalFlagValues(rawArgv, path);
   const json = hasJsonFlag(argv);
-  const path = selectedCommandPath(program, argv);
   await runWithCliSession(session, async () => {
     setTargetSelection(targetSelection(argv), session);
     const actionOnly = argv.some((arg) => ["--help", "-h", "--version", "-v"].includes(arg));

@@ -45,9 +45,9 @@ const makeRunCommand = (runtime: CliRuntime): Command.Command.Any =>
       authTokenFile: optionalString("auth-token-file").pipe(
         Flag.withDescription("private data-plane token file")
       ),
-      portless: Flag.boolean("portless").pipe(
-        Flag.withDefault(true),
-        Flag.withDescription("enable the stable local route")
+      portless: Flag.boolean("no-portless").pipe(
+        Flag.map((disabled) => !disabled),
+        Flag.withDescription("disable the stable local route")
       ),
       drainGraceMs: Flag.string("drain-grace-ms").pipe(
         Flag.withDefault("30000"),
