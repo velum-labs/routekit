@@ -151,7 +151,8 @@ const [
   repairSnapshot,
   privateConstructionSnapshot,
   neutralSnapshot,
-  neutralRetrySnapshot
+  neutralRetrySnapshot,
+  neutralInsufficientRetrySnapshot
 ] = await Promise.all([
   readJsonl(naturalHardFile),
   readJsonl(realCohortFile),
@@ -162,24 +163,38 @@ const [
   completedExperiment("onboarding-optimization-repair-3-v1"),
   completedExperiment("onboarding-optimization-private-registries-4-v1"),
   completedExperiment("onboarding-optimization-neutral-93-v1"),
-  completedExperiment("onboarding-optimization-neutral-retry-2-v1")
+  completedExperiment("onboarding-optimization-neutral-retry-2-v1"),
+  completedExperiment("onboarding-optimization-neutral-insufficient-retry-1-v1")
 ]);
-const [repairOutputs, privateOutputs, neutralOutputs, neutralRetryOutputs] = await Promise.all([
+const [
+  repairOutputs,
+  privateOutputs,
+  neutralOutputs,
+  neutralRetryOutputs,
+  neutralInsufficientRetryOutputs
+] = await Promise.all([
   outputMap(repairSnapshot),
   outputMap(privateConstructionSnapshot),
   outputMap(neutralSnapshot, true),
-  outputMap(neutralRetrySnapshot)
+  outputMap(neutralRetrySnapshot, true),
+  outputMap(neutralInsufficientRetrySnapshot)
 ]);
-const neutralRetryMetadata = new Map(
-  neutralRetrySnapshot.experiment.manifest.tasks.map((task) => [task.id, task.metadata])
-);
-for (const record of neutralRetrySnapshot.jobs) {
-  const metadata = neutralRetryMetadata.get(record.job.taskId);
-  const output = neutralRetryOutputs.get(`${record.job.taskId}:${record.job.treatmentId}`);
-  if (!metadata?.originalTaskId || !metadata.originalTreatmentId || !output) {
-    throw new Error(`invalid neutral retry metadata for ${record.job.id}`);
+for (const [snapshot, outputs] of [
+  [neutralRetrySnapshot, neutralRetryOutputs],
+  [neutralInsufficientRetrySnapshot, neutralInsufficientRetryOutputs]
+]) {
+  const metadataByTask = new Map(
+    snapshot.experiment.manifest.tasks.map((task) => [task.id, task.metadata])
+  );
+  for (const record of snapshot.jobs) {
+    const metadata = metadataByTask.get(record.job.taskId);
+    const output = outputs.get(`${record.job.taskId}:${record.job.treatmentId}`);
+    if (!output) continue;
+    if (!metadata?.originalTaskId || !metadata.originalTreatmentId) {
+      throw new Error(`invalid neutral retry metadata for ${record.job.id}`);
+    }
+    neutralOutputs.set(`${metadata.originalTaskId}:${metadata.originalTreatmentId}`, output);
   }
-  neutralOutputs.set(`${metadata.originalTaskId}:${metadata.originalTreatmentId}`, output);
 }
 const validationAudit = JSON.parse(validationAuditBytes);
 const selection = JSON.parse(selectionBytes);

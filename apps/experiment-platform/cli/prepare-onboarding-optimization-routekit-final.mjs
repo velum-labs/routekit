@@ -65,14 +65,16 @@ const [
   realCohort,
   repairSnapshot,
   neutralSnapshot,
-  neutralRetrySnapshot
+  neutralRetrySnapshot,
+  neutralInsufficientRetrySnapshot
 ] = await Promise.all([
   readFile(auditFile),
   readFile(constructionAuditFile),
   readJsonl(realCohortFile),
   completedExperiment("onboarding-optimization-routekit-assistance-repair-1-v1"),
   completedExperiment("onboarding-optimization-neutral-93-v1"),
-  completedExperiment("onboarding-optimization-neutral-retry-2-v1")
+  completedExperiment("onboarding-optimization-neutral-retry-2-v1"),
+  completedExperiment("onboarding-optimization-neutral-insufficient-retry-1-v1")
 ]);
 const audit = JSON.parse(auditBytes);
 const constructionAudit = JSON.parse(constructionAuditBytes);
@@ -94,16 +96,23 @@ const neutralEntries = (
   )
 ).filter(Boolean);
 const neutralOutputs = new Map(neutralEntries);
-const neutralRetryMetadata = new Map(
-  neutralRetrySnapshot.experiment.manifest.tasks.map((task) => [task.id, task.metadata])
-);
-for (const record of neutralRetrySnapshot.jobs) {
-  const metadata = neutralRetryMetadata.get(record.job.taskId);
-  const output = responseObject(await readJsonArtifact(store, record.outputArtifact));
-  if (!metadata?.originalTaskId || !metadata.originalTreatmentId) {
-    throw new Error(`invalid neutral retry metadata for ${record.job.id}`);
+for (const snapshot of [neutralRetrySnapshot, neutralInsufficientRetrySnapshot]) {
+  const metadataByTask = new Map(
+    snapshot.experiment.manifest.tasks.map((task) => [task.id, task.metadata])
+  );
+  for (const record of snapshot.jobs) {
+    let output;
+    try {
+      output = responseObject(await readJsonArtifact(store, record.outputArtifact));
+    } catch {
+      continue;
+    }
+    const metadata = metadataByTask.get(record.job.taskId);
+    if (!metadata?.originalTaskId || !metadata.originalTreatmentId) {
+      throw new Error(`invalid neutral retry metadata for ${record.job.id}`);
+    }
+    neutralOutputs.set(`${metadata.originalTaskId}:${metadata.originalTreatmentId}`, output);
   }
-  neutralOutputs.set(`${metadata.originalTaskId}:${metadata.originalTreatmentId}`, output);
 }
 const structure = constructionAudit.private.find(
   (entry) => entry.repositoryId === "velum-labs/routekit"
