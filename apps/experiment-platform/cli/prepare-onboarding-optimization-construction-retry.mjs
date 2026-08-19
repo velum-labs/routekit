@@ -69,8 +69,8 @@ for (const target of retryTargets) {
       originalTaskId: target.originalTaskId,
       originalTreatmentId: target.originalTreatmentId,
       retryReason: "original response reached max_completion_tokens before valid JSON closed",
-      originalMaximumCompletionTokens: 8192,
-      retryMaximumCompletionTokens: 16_384
+      originalCompletionLimit: 8192,
+      retryCompletionLimit: 16_384
     }
   });
   sourceDigests.push(digest(sourceBytes));
