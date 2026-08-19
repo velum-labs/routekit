@@ -1,5 +1,17 @@
 # @velum-labs/routekit-gateway
 
+## 1.0.3
+
+### Patch Changes
+
+- 1a117e9: Forward Responses JSON schemas to Anthropic structured outputs and include bounded author output, parse diagnostics, and model call IDs when eval authoring returns invalid JSON.
+  - @velum-labs/routekit-config-core@1.0.3
+  - @velum-labs/routekit-contracts@1.0.3
+  - @velum-labs/routekit-eval-contracts@1.0.3
+  - @velum-labs/routekit-eval-core@1.0.3
+  - @velum-labs/routekit-registry@1.0.3
+  - @velum-labs/routekit-runtime@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes
