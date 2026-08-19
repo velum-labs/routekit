@@ -1,0 +1,120 @@
+schemaVersion: 1
+experimentId: onboarding-generalization-heldout-canary-3-v1
+objective: Validate all three registries, both models, and all repositories on three held-out tasks before the full run.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 7272aaf5d35c96d81fe90c28af659592982acbe4
+dataset:
+  id: onboarding-generalization-heldout-120-v1
+  hash: 263d64207fb0c12fdde120d528584beed2d565a5f25e1a9d336b1372a8f22259
+  role: development
+matrix:
+  treatments:
+    - id: human__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: human__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: auto_rules__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: auto_rules
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: auto_rules__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: auto_rules
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: auto_unconstrained__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: auto_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: auto_unconstrained__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: auto_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: backstage-backstage-heldout-pr-34480
+    inputArtifact: inputs/onboarding-generalization-heldout-120-v1/backstage-backstage-heldout-pr-34480/sha256/7e/7e5c88d35a208f48a621da35514d9f236b6e149a8bfd02075e3220251c08603c.json
+    metadata:
+      repositoryId: backstage/backstage
+      pullRequestNumber: 34480
+      mergedAt: 2026-08-18T21:03:05Z
+      baseRefOid: be8039148c3c40b7caee774e1ab214ffecab7bb1
+      taskTextHash: 77bc240544ab3012802e71457a4ba03755cc4fb571d3cd94344e82527968765f
+      split: heldout-evaluation
+      temporalEmbargoDays: 14
+      latestGenerationMergedAt: 2026-07-14T00:19:31Z
+  - id: grafana-grafana-heldout-pr-130906
+    inputArtifact: inputs/onboarding-generalization-heldout-120-v1/grafana-grafana-heldout-pr-130906/sha256/38/38966d8ec74b2ec424dd51259824ed916bc1ef32df0e414d76c45a4972825a17.json
+    metadata:
+      repositoryId: grafana/grafana
+      pullRequestNumber: 130906
+      mergedAt: 2026-08-19T12:19:09Z
+      baseRefOid: fc9e50e700438f8d7f749f08955b31bde931dca6
+      taskTextHash: b8bb65720e18bcdfe40175ba1f48de940bf05afcf52fdb9a42c9289397e8034a
+      split: heldout-evaluation
+      temporalEmbargoDays: 14
+      latestGenerationMergedAt: 2026-08-03T21:17:12Z
+  - id: kubernetes-kubernetes-heldout-pr-141440
+    inputArtifact: inputs/onboarding-generalization-heldout-120-v1/kubernetes-kubernetes-heldout-pr-141440/sha256/9f/9f943863a2aca09f6ae87795614160a761f8c0bbd53ca199847bd1f2ba06f5b9.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      pullRequestNumber: 141440
+      mergedAt: 2026-08-18T14:41:10Z
+      baseRefOid: 643d8f6c393f87207ef6855f692af69b96250fa5
+      taskTextHash: 856876a7543ca30ed663de943da59726ab43fc4b72e5119dee41254160882766
+      split: heldout-evaluation
+      temporalEmbargoDays: 14
+      latestGenerationMergedAt: 2026-07-08T23:56:28Z
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_mean_cosine_similarity
+    - composition_active_area_f1
+    - composition_top_area_agreement
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 3
+budget:
+  providerMaximumUsd: 0.57
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false
