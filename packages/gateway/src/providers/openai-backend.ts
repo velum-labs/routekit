@@ -14,6 +14,7 @@ import {
 import { normalizeOpenAiResponsesCallIds } from "../adapters/openai-responses-wire.js";
 import type { Backend, BackendPorts, BackendRequest, BackendRequestOptions } from "./backend.js";
 import { joinPath, staticBackendModelPort } from "./backend.js";
+import { openaiChatUsesMaxCompletionTokens } from "./openai-reasoning.js";
 
 export type OpenAiBackendOptions = {
   /**
@@ -60,6 +61,22 @@ function invalidReasoningControlResponse(
     },
     { status: 400 }
   );
+}
+
+function withChatCompletionTokenBudget(payload: unknown): unknown {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+  const body = payload as Record<string, unknown>;
+  const model = typeof body.model === "string" ? body.model : "";
+  if (!openaiChatUsesMaxCompletionTokens(model)) return payload;
+  if (!Object.hasOwn(body, "max_tokens")) return payload;
+  const next = { ...body };
+  if (!Object.hasOwn(next, "max_completion_tokens")) {
+    next.max_completion_tokens = next.max_tokens;
+  }
+  delete next.max_tokens;
+  return next;
 }
 
 /** An OpenAI HTTP backend supporting Chat Completions and native Responses. */
@@ -167,7 +184,7 @@ export class OpenAiBackend implements Backend {
       !Array.isArray(selectedPayload)
         ? this.#openRouterReasoning(selectedPayload as Record<string, unknown>, selection)
         : selectedPayload;
-    const providerPayload = withoutRouteKitExtensions(payload);
+    const providerPayload = withChatCompletionTokenBudget(withoutRouteKitExtensions(payload));
     return this.#request("/chat/completions", {
       method: "POST",
       headers: this.#headers(options),
