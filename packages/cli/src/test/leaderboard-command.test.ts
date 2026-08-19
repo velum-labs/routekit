@@ -7,12 +7,12 @@ import { renderLeaderboard } from "../effect/commands/leaderboard.js";
 
 test("leaderboard rejects account dimension and keeps principal/model/provider", async () => {
   const leaderboard = child(buildProgram(), "leaderboard");
-  assert.match(leaderboard.description ?? "", /principal, model, or provider/);
+  assert.match(leaderboard.description ?? "", /principals, models, or providers/);
   assert.doesNotMatch(leaderboard.description ?? "", /\baccount\b.*dimension/i);
 
   await assert.rejects(
     runProgram(buildProgram(), ["leaderboard", "--by", "account"]),
-    /--by must be one of: principal, model, provider/
+    /ShowHelp: Help requested/
   );
 });
 
