@@ -1,0 +1,65 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-private-registries-4-v1
+objective: Generate eight-area hybrid registries for the frozen real conversational coding cohort.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 9b6a6739bba8715a01445b1c8dfadd436a25ff0d
+dataset:
+  id: onboarding-optimization-private-registries-4-v1
+  hash: 03f074e655c60c8ef705f308ae9a6f738085a96f6963e38ccaee60910fcc1805
+  role: construction
+matrix:
+  treatments:
+    - id: real_hybrid_registry
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: generate-velum-labs-routekit
+    inputArtifact: inputs/onboarding-optimization-private-registries-4-v1/generate-velum-labs-routekit/sha256/d4/d4b1221a61264d1073fdfb32974c19255820ce54f30e71c0b3ab00b373ba5c13.json
+    metadata:
+      repositoryId: velum-labs/routekit
+      resolvedStructureCommit: dc046c3fa3d1c7538e539bde42eff04411a2471d
+      constructionEpisodes: 40
+      evaluationTaskIdsExcluded: 45
+  - id: generate-velum-labs-factory
+    inputArtifact: inputs/onboarding-optimization-private-registries-4-v1/generate-velum-labs-factory/sha256/3b/3b149cc60274d8a87f899efd097ac7b287eb2ddb0ec5e615762fc51dd23af31d.json
+    metadata:
+      repositoryId: velum-labs/factory
+      resolvedStructureCommit: ada2e67a43b8fc231b390dbff6ced1efdcedf5cb
+      constructionEpisodes: 40
+      evaluationTaskIdsExcluded: 45
+  - id: generate-velum-labs-ori
+    inputArtifact: inputs/onboarding-optimization-private-registries-4-v1/generate-velum-labs-ori/sha256/ce/ce7963139496b96161478567c9651fae2b31217a2f1c149a932d1f2fb6da8e5a.json
+    metadata:
+      repositoryId: velum-labs/ori
+      resolvedStructureCommit: 6de4c828404840bb559c0542868ead7655293417
+      constructionEpisodes: 13
+      evaluationTaskIdsExcluded: 45
+  - id: generate-velum-labs-velum
+    inputArtifact: inputs/onboarding-optimization-private-registries-4-v1/generate-velum-labs-velum/sha256/64/64bb658f8f3e72a877e58bf56de800d947162d99c2dd5049b101cbb52ce89c35.json
+    metadata:
+      repositoryId: velum-labs/velum
+      resolvedStructureCommit: 29e2cdf704d411d2d1d9e7f129d56ae83f9ab60a
+      constructionEpisodes: 9
+      evaluationTaskIdsExcluded: 45
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 2.3
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false

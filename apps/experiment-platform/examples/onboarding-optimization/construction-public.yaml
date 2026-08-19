@@ -1,0 +1,154 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-public-registries-3x13-v1
+objective: Generate information, history-size, sampling, variance, area-count, and rule-guided registry candidates using construction-era information only.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 9b6a6739bba8715a01445b1c8dfadd436a25ff0d
+dataset:
+  id: onboarding-optimization-public-registries-3x13-v1
+  hash: f5f9fbb53cc393fb2dd515c3258c745840fab70e791faab8e80669a6cb174418
+  role: construction
+matrix:
+  treatments:
+    - id: tasks_only_40_recent
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_only
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_40_recent
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_recent
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_5_diverse
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_10_diverse
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_20_diverse
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_a
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_b
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_80_diverse
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_6areas
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_10areas
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_rules
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: registry_generation
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.5
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: generate-backstage-backstage
+    inputArtifact: inputs/onboarding-optimization-public-registries-3x13-v1/generate-backstage-backstage/sha256/45/45b1b0984d0487e02e015d85b20100685c45a4905f6f79adad5f080ab15dec3f.json
+    metadata:
+      repositoryId: backstage/backstage
+      resolvedStructureCommit: 29397654e29a7ee5721870135886a50fec5f2218
+      constructionTasksAvailable: 80
+      evaluationTaskTextExcluded: true
+  - id: generate-grafana-grafana
+    inputArtifact: inputs/onboarding-optimization-public-registries-3x13-v1/generate-grafana-grafana/sha256/d3/d3645ed3008062cf368161b78288d2afea2f739c05565ad3380afac4b0676110.json
+    metadata:
+      repositoryId: grafana/grafana
+      resolvedStructureCommit: a3c969a7fb833c07ce2f0b91826153fbd5241ff7
+      constructionTasksAvailable: 80
+      evaluationTaskTextExcluded: true
+  - id: generate-kubernetes-kubernetes
+    inputArtifact: inputs/onboarding-optimization-public-registries-3x13-v1/generate-kubernetes-kubernetes/sha256/3b/3b225c5144a2c8843897019edd8dfc66acde08a2aaeb5a73bfe2ddfbef1c604a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      resolvedStructureCommit: 28a13bcbd0c199dd1914140a688fa1c14696c75e
+      constructionTasksAvailable: 80
+      evaluationTaskTextExcluded: true
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: construction_contract_validity
+  secondaryMetrics:
+    - provider_cost_usd
+  maximumPromotedTreatments: 13
+budget:
+  providerMaximumUsd: 22.42
+  vercelMaximumUsd: 0.25
+dataAccess:
+  lockedTest: false
