@@ -1,0 +1,465 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-real-auto-45-v1
+objective: Evaluate automatically generated registries on frozen real conversational coding prompts.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: a84c7cb838e788caddce662abc02ad09e9ff9491
+dataset:
+  id: onboarding-optimization-real-auto-45-v1
+  hash: 9976c8be5d2ba25ea7fb2f7a0c7bd7597a3f002e938d9d395222383fba200a87
+  role: development
+matrix:
+  treatments:
+    - id: auto__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: auto
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: auto__claude
+      executor: hosted-model
+      configuration:
+        model: anthropic/claude-sonnet-5
+        evaluationRole: composition_independent_reference
+        comparisonGroup: auto
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.015
+      estimatedInfrastructureCostUsd: 0
+    - id: auto__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: auto
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: real-conversation-codex-90c7796ac6759c0ab3e1
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-90c7796ac6759c0ab3e1/sha256/63/636cf1beae24069d55d88f9f47ce0422b5f4baa990f69887df7a7ed3213ae739.json
+    metadata:
+      sourceEpisodeId: codex-90c7796ac6759c0ab3e1
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-d78497491b2cbbb825a9
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-d78497491b2cbbb825a9/sha256/e9/e9f2dcb394dfb6a549c5a0d1734349e3efb83b8205de7f938f60e2aad5db2317.json
+    metadata:
+      sourceEpisodeId: codex-d78497491b2cbbb825a9
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-f6d9f3e0d8944a4fc89c
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-f6d9f3e0d8944a4fc89c/sha256/00/003d20e0b36163aae23cad2c23356f5fdd5631bb54dddd3b48bab5951769297d.json
+    metadata:
+      sourceEpisodeId: codex-f6d9f3e0d8944a4fc89c
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-d44423199f0c3644bcd7
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-d44423199f0c3644bcd7/sha256/40/40a2d32a706e57e54aaa5092d60becc104634e9b716faf7ae064a908eac24929.json
+    metadata:
+      sourceEpisodeId: codex-d44423199f0c3644bcd7
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-5e320bb2e30760f37490
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-5e320bb2e30760f37490/sha256/57/5779709b04755b4b21226ea3a1086c173a3fb598cc9b388d780ffdd060cd6101.json
+    metadata:
+      sourceEpisodeId: codex-5e320bb2e30760f37490
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-b102b310b737f902b506
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-b102b310b737f902b506/sha256/81/81efb3c7ff33488b7d613e171f380fc3cb1ff0784538c7cc0e90dfeaf11ec7c9.json
+    metadata:
+      sourceEpisodeId: codex-b102b310b737f902b506
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-88b654fdb08aa7c78998
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-88b654fdb08aa7c78998/sha256/33/332a924f0e6628db89310c84151624f055fd5ab6b4010add525295daf8cadc2b.json
+    metadata:
+      sourceEpisodeId: codex-88b654fdb08aa7c78998
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-619b831b8ec265c8f32d
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-619b831b8ec265c8f32d/sha256/62/624cca6845b1d2d408e4d2b9e30fa493593aef83abb6ada91e1b6b44e19b6226.json
+    metadata:
+      sourceEpisodeId: codex-619b831b8ec265c8f32d
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-781846119dd1484522de
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-781846119dd1484522de/sha256/d1/d14607856822285f3ff5f4f5a6e755cff324612552e0935bb4de35d8a76576cb.json
+    metadata:
+      sourceEpisodeId: codex-781846119dd1484522de
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-e495f3144ab68528e519
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-e495f3144ab68528e519/sha256/7c/7c4caea0599b15f38270cc2697caff574d9fa038dccc6762e1a73ff619ec5dae.json
+    metadata:
+      sourceEpisodeId: codex-e495f3144ab68528e519
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-78c7dbc12d49788088c3
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-78c7dbc12d49788088c3/sha256/2a/2a1c12c754f623a01468ca133c40015d69fd9e7f74be5bb90616b6f595c0248b.json
+    metadata:
+      sourceEpisodeId: codex-78c7dbc12d49788088c3
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-cb323451e0efd3a784d6
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-cb323451e0efd3a784d6/sha256/e9/e9033074b1f5f3ff435722d6584f0d3654d678eb38cc1ccdad713c414c46839a.json
+    metadata:
+      sourceEpisodeId: codex-cb323451e0efd3a784d6
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-671d41781b9ae563e1fc
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-671d41781b9ae563e1fc/sha256/d5/d5be1c81f1d38b638bf1cbe575c22603d2af8e3a4aec05360024519209fc8207.json
+    metadata:
+      sourceEpisodeId: codex-671d41781b9ae563e1fc
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-c6028ba28a45f031f681
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-c6028ba28a45f031f681/sha256/15/1578f99f0d8bb1d088cbc56903425422d29047f3d23e70874b0ff9e77c79acc0.json
+    metadata:
+      sourceEpisodeId: codex-c6028ba28a45f031f681
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-42158ec6a7b708bacd6f
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-42158ec6a7b708bacd6f/sha256/43/43109f63c420dfea2e500e414edace908fab72e625191036f7ba7324ab68eada.json
+    metadata:
+      sourceEpisodeId: codex-42158ec6a7b708bacd6f
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-1f48b73779da66d268e9
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-1f48b73779da66d268e9/sha256/85/851e8b39d21ad917bb8a9a6f7f61a86b527f1910b0b10129f17695eb7a9509e9.json
+    metadata:
+      sourceEpisodeId: codex-1f48b73779da66d268e9
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-d943729972a2175b7a70
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-d943729972a2175b7a70/sha256/67/675539a974669d5a021518a17e985024889c9d145ee691a72b0d1eda79e04326.json
+    metadata:
+      sourceEpisodeId: codex-d943729972a2175b7a70
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-347f01ad45e4adb65b2e
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-347f01ad45e4adb65b2e/sha256/55/55939f5a660e6088c7fc8df80a6169d41ce95ea41399bd92ac7baf386bf9eceb.json
+    metadata:
+      sourceEpisodeId: codex-347f01ad45e4adb65b2e
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-5e645e1fd8c8396cd1b6
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-5e645e1fd8c8396cd1b6/sha256/65/650e29c0967e85e1f1253bf7fc5badd2be2bdbfdca5e9f3c46c60e0ec7c7b6f7.json
+    metadata:
+      sourceEpisodeId: codex-5e645e1fd8c8396cd1b6
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-f87eeaf070093b70f39c
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-f87eeaf070093b70f39c/sha256/04/04523ca523fc7ff2974dae85b4982431fbcc91b6777654dfbd97a82612ced573.json
+    metadata:
+      sourceEpisodeId: codex-f87eeaf070093b70f39c
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-58d36071fee6d9bc6661
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-58d36071fee6d9bc6661/sha256/c8/c83ada341e25899e57a0b8c4f799af54cf5216fb601287482333bb171faf8979.json
+    metadata:
+      sourceEpisodeId: codex-58d36071fee6d9bc6661
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-fca5e2fe37e9b707c227
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-fca5e2fe37e9b707c227/sha256/2a/2adb18caf6de708e9429cd8ef98ac56ec4a10cedbc66b44984bc4e833921a404.json
+    metadata:
+      sourceEpisodeId: codex-fca5e2fe37e9b707c227
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-686d400ba0d5951b63bf
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-686d400ba0d5951b63bf/sha256/f0/f0601cede385b9d8c832385a4fb25a394d95469606d16b46637043404124cb39.json
+    metadata:
+      sourceEpisodeId: codex-686d400ba0d5951b63bf
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: reference
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-1852a374b9e6c3d4dae8
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-1852a374b9e6c3d4dae8/sha256/3d/3d807cec2ef6803596951990018fd35e250b1eb27efefb90bcb5a9a26774f480.json
+    metadata:
+      sourceEpisodeId: codex-1852a374b9e6c3d4dae8
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-c0b9739d5795fe2442f1
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-c0b9739d5795fe2442f1/sha256/3e/3ea99cf0394644eef7fefc82ab049988b3d11ae5945e8509dc6f16021e46bc45.json
+    metadata:
+      sourceEpisodeId: codex-c0b9739d5795fe2442f1
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-fc7383f61fb41568d80e
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-fc7383f61fb41568d80e/sha256/dc/dcb2463fc5e5049a900fb663beff0011cc2e2e2a7cd9c9c80692692c535d238b.json
+    metadata:
+      sourceEpisodeId: codex-fc7383f61fb41568d80e
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-47ede235f4f910bd757c
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-47ede235f4f910bd757c/sha256/4a/4aca8cfbba4a4850dc3ef579477527a6b924c89b39a1a43f847083c91e500efc.json
+    metadata:
+      sourceEpisodeId: codex-47ede235f4f910bd757c
+      repositoryId: velum-labs/velum
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-445a5cd0c33e72dfd871
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-445a5cd0c33e72dfd871/sha256/38/382b59f56e3236aff4baf24e1180ede1970865703c545b2102fc24861ad51e80.json
+    metadata:
+      sourceEpisodeId: codex-445a5cd0c33e72dfd871
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-f2d96201f5d5dacb4b81
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-f2d96201f5d5dacb4b81/sha256/2c/2cd439c74635455c169062667bb9ec5f12ea19032078c76efffaa4b79be42c68.json
+    metadata:
+      sourceEpisodeId: codex-f2d96201f5d5dacb4b81
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-3fb59c6355716cc843df
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-3fb59c6355716cc843df/sha256/bf/bff2abb020a43778c440985b6cc44d644259a9a02ba995ff3fc4a72c789f341a.json
+    metadata:
+      sourceEpisodeId: codex-3fb59c6355716cc843df
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-2a36c149e34e55027b34
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-2a36c149e34e55027b34/sha256/c1/c1384361dd9891bb0725991f3d4f6605ed4b75cae6f8665b4550e0c5df74889c.json
+    metadata:
+      sourceEpisodeId: codex-2a36c149e34e55027b34
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-c583d0bc98035ae5ffeb
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-c583d0bc98035ae5ffeb/sha256/59/59fa10f515980e5129e982eb796784ca3f33cd81693796ebf9fcc8a495f9b005.json
+    metadata:
+      sourceEpisodeId: codex-c583d0bc98035ae5ffeb
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-8b720289bdc13d3ce56e
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-8b720289bdc13d3ce56e/sha256/f0/f08982f8bc02355f1e3b2f593f02d9919ce5e9fcdec5ce0b2900512fbce20187.json
+    metadata:
+      sourceEpisodeId: codex-8b720289bdc13d3ce56e
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-250fe22327c75e9fc28a
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-250fe22327c75e9fc28a/sha256/6c/6ce70e7c573b8cf552167a67a357452c6c35fe4b0eba1a3a2778bc91128cd7dd.json
+    metadata:
+      sourceEpisodeId: codex-250fe22327c75e9fc28a
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: validation
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-da69b866e0e88c15b42c
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-da69b866e0e88c15b42c/sha256/51/519d7db39d4ac06d3f63f0ac1d7097a0dd4883ba5a9f9e04dc22bfe65b1b5a7f.json
+    metadata:
+      sourceEpisodeId: codex-da69b866e0e88c15b42c
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-0a43141066aa2a9c74cc
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-0a43141066aa2a9c74cc/sha256/2a/2a58bf7da90f2190fbdbc7af797c1e262871bc73e7592fd136eec189488dbd66.json
+    metadata:
+      sourceEpisodeId: codex-0a43141066aa2a9c74cc
+      repositoryId: velum-labs/ori
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-9b802e3b4677781fe77c
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-9b802e3b4677781fe77c/sha256/9b/9b7af524caaba6c271f2634818466a8b82e0c2b3684b69b6b1f564473811b543.json
+    metadata:
+      sourceEpisodeId: codex-9b802e3b4677781fe77c
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-b5b435bb2035cde6fa3d
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-b5b435bb2035cde6fa3d/sha256/28/283a4c9098cda3922aed386488fc29e39e4d73d8ebacffce4e63342d82f6e43a.json
+    metadata:
+      sourceEpisodeId: codex-b5b435bb2035cde6fa3d
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-52e4b907a4e05269da7a
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-52e4b907a4e05269da7a/sha256/d6/d6b93117b1c1d6fa32a809c05a53e46fa9b15a9e7336adbe584a5d23657373c8.json
+    metadata:
+      sourceEpisodeId: codex-52e4b907a4e05269da7a
+      repositoryId: velum-labs/ori
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-67e55227bbac15e73bb8
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-67e55227bbac15e73bb8/sha256/aa/aa23a822e33eb8d8369184d3a58f14ea6ab9dc275a6e71bd8f01183039b67984.json
+    metadata:
+      sourceEpisodeId: codex-67e55227bbac15e73bb8
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-24f3f5c14ae9288489ab
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-24f3f5c14ae9288489ab/sha256/ed/edb9a35661f63f971626c44a22590ed1bda0c8980c9dd4155c33f507e20e3475.json
+    metadata:
+      sourceEpisodeId: codex-24f3f5c14ae9288489ab
+      repositoryId: velum-labs/factory
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-d1cb1e7fcb9dd3af7db3
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-d1cb1e7fcb9dd3af7db3/sha256/86/86aa484668060ec51a672977e3faa6c800bf5fae764a4c84f5e5318c5e854110.json
+    metadata:
+      sourceEpisodeId: codex-d1cb1e7fcb9dd3af7db3
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: true
+  - id: real-conversation-codex-771cb5eb09a262d76081
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-771cb5eb09a262d76081/sha256/19/19c7984b1dcb670d456f65c506b75009c9654ae1eb0b1a22521ca89414a45673.json
+    metadata:
+      sourceEpisodeId: codex-771cb5eb09a262d76081
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-71d47132abf35d16d394
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-71d47132abf35d16d394/sha256/6a/6a7c8a72361385403e3ada4ed2a3d2fc91c98c00e5b8f6f05a2d5a181bf506f4.json
+    metadata:
+      sourceEpisodeId: codex-71d47132abf35d16d394
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: false
+  - id: real-conversation-codex-faa8fb7347270f23ce24
+    inputArtifact: inputs/onboarding-optimization-real-auto-45-v1/real-conversation-codex-faa8fb7347270f23ce24/sha256/85/85333dcfb09a94a2e7299111f2961c8245e3ac8e144350d4c90225b14cee0ae3.json
+    metadata:
+      sourceEpisodeId: codex-faa8fb7347270f23ce24
+      repositoryId: velum-labs/routekit
+      cohort: real-conversation
+      split: test
+      contextual: true
+      diagnostic: false
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_mean_cosine_similarity
+    - composition_active_area_f1
+    - composition_top_area_agreement
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 1
+budget:
+  providerMaximumUsd: 3.26
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false

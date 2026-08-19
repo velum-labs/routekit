@@ -1,0 +1,813 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-final-84x4x3-v1
+objective: Evaluate human, previous unconstrained, validation-selected, and repaired registries on an untouched chronological final test with an independent judge.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: a84c7cb838e788caddce662abc02ad09e9ff9491
+dataset:
+  id: onboarding-optimization-final-84x4x3-v1
+  hash: ff7d28e8886dbd9c94bd752948cd142d9f83c40abe4dc459d0c87b309808bf63
+  role: development
+matrix:
+  treatments:
+    - id: human__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: human__claude
+      executor: hosted-model
+      configuration:
+        model: anthropic/claude-sonnet-5
+        evaluationRole: composition_independent_reference
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.015
+      estimatedInfrastructureCostUsd: 0
+    - id: human__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: previous_unconstrained__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: previous_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: previous_unconstrained__claude
+      executor: hosted-model
+      configuration:
+        model: anthropic/claude-sonnet-5
+        evaluationRole: composition_independent_reference
+        comparisonGroup: previous_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.015
+      estimatedInfrastructureCostUsd: 0
+    - id: previous_unconstrained__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: previous_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: selected__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: selected
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: selected__claude
+      executor: hosted-model
+      configuration:
+        model: anthropic/claude-sonnet-5
+        evaluationRole: composition_independent_reference
+        comparisonGroup: selected
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.015
+      estimatedInfrastructureCostUsd: 0
+    - id: selected__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: selected
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: repaired__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: repaired
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: repaired__claude
+      executor: hosted-model
+      configuration:
+        model: anthropic/claude-sonnet-5
+        evaluationRole: composition_independent_reference
+        comparisonGroup: repaired
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.015
+      estimatedInfrastructureCostUsd: 0
+    - id: repaired__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: repaired
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: final-backstage-backstage-heldout-pr-34014
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-34014/sha256/10/1046a2cf3215fc84bb57197f54d692bbd656f77aff3313e384c33ab36e854c7c.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-34014
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-11T14:17:14Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35170
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35170/sha256/dc/dc7faee2ffbc858000e3b2f8c3361e8d109db5ab172d90fa1c870f8d9d4c900f.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35170
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T14:20:09Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35169
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35169/sha256/e9/e9374c489c57c89a4109de63cb6bfc9e1ea5dfc5611f87ed693730e994fcbaeb.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35169
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T14:21:16Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35173
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35173/sha256/97/976c49f34a6cfd0f3b70190df24869ca28ed711d46c68453653482b067a99a81.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35173
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T14:23:21Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35168
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35168/sha256/b3/b3524728c4e9f8c871cd1960714cc5101df6e435a7be21bc52bae2e5cedf5c28.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35168
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T14:27:25Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35175
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35175/sha256/c6/c617585b1f01ebedd7afbe1e7fd43a7c40ad15c112c6d47301d417984ee666ef.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35175
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T14:29:23Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-34965
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-34965/sha256/36/362da5bbe4f68ed4d1014ff807c1b0c0aba01e2eee5e886604a48f1783858d1a.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-34965
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T15:16:35Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35059
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35059/sha256/da/dafb8c3c34adc4f4722d9f2b110cae4850350bc43e534814e07bb68b33fb4f6a.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35059
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T16:22:09Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35191
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35191/sha256/4b/4b46f60d7b5bfeb0df90b60da3a5f6646325d306167556713f9b294d3dd6d8ac.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35191
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T21:29:01Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35176
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35176/sha256/54/5424f1a7e3c2a9a66dff6c788f1750da124c3ffc446307da3259b7dd91d11c6e.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35176
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-12T22:11:37Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35193
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35193/sha256/ae/aeb8857c255520bbdb88dffc5c047caeceff5b1f73f4f2e1d46b38ee43d1c012.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35193
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-14T11:50:49Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35013
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35013/sha256/f7/f7f5ff060e4fa4aa9582ca3d491025090a71600348285064d4f1421b7c4f1e1b.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35013
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-14T11:52:43Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35199
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35199/sha256/ae/aeb454029692335df8ab134b532793029f6ccf9582ae28180ef76263f768934d.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35199
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-14T12:50:06Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35187
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35187/sha256/fb/fb73bd42b42439a616cd84300500f690b9efcdb7629d4886ef189e92ec19dd4d.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35187
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-14T13:36:10Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35017
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35017/sha256/51/51c7b688d80c480c1503c18cb0968d8e53023f61d2d63d7a0bc3b09584c86205.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35017
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-14T14:07:58Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35209
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35209/sha256/41/411da0383bb14db82e876dffe35e1d6de1f8afcfab92c91fa08f43e61dfe8599.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35209
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-14T15:45:34Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35096
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35096/sha256/86/8627d925a3b51c367ce5260a127cb9d6828b8f6afe0badfc1acd88567a711e55.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35096
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-14T17:21:58Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35207
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35207/sha256/ad/ade60a5444c94191f9a74f5ad2ea8b53212ef2631ab132bfd4c58406b21afb53.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35207
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-17T09:07:42Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35205
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35205/sha256/cd/cde8bdcd0335027e6f55b473d6a90fbb49a10d285ddf1a3616420bde82986025.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35205
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-17T09:43:16Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35222
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35222/sha256/37/370095810d45a616bb496e2d36b8e98e604f3a992e4317cda6f9ef2ae8ea4cae.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35222
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-17T09:55:29Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35226
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35226/sha256/e9/e96dd5497221798abda7a4704011a94e2972122838627fcec0eb1b73ecd0f502.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35226
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-17T10:56:24Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-34890
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-34890/sha256/b5/b597e06c50af2d636342366b267097b538508a817e36c8be0466f93cf6aa6960.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-34890
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-17T13:46:06Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-34891
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-34891/sha256/ef/ef345cf6fbf5e36230e04cee9b933bb84ab9c3169dceb1c1e060a66988bc955e.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-34891
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-17T16:27:55Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-34892
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-34892/sha256/26/2660a712420ed7c28332be517cc040ccc99f68f060eda3fb61b4d94065d38d7f.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-34892
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-17T18:29:48Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35230
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35230/sha256/e1/e15534bfe2998f1a65f890e15206eb2af5e57d18a1b3484b119aa32531f3692f.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35230
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-17T19:17:40Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-34635
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-34635/sha256/08/0877ecb19ea58aa6beb0e590189b98d0a1e4b2f2a8f9cc6c7cd3151443396126.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-34635
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-18T07:23:43Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-35229
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-35229/sha256/db/db53d742ca5bbaddf6b72adae3c9cba1d4c128f60e77e85e66995ac54333dfc4.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35229
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-18T08:44:35Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-backstage-backstage-heldout-pr-34480
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-backstage-backstage-heldout-pr-34480/sha256/00/00d2a6e0e75fee2a36709da53af209b025402c981757bf55c6ab822d18c5918d.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-34480
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-18T21:03:05Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130785
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130785/sha256/cb/cb2d7d6ab296ae5f4e9ac145fb77e3f48239627109ee206e6bb6d9b11fb40cf0.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130785
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T16:16:18Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130806
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130806/sha256/97/97685aec2d795f93b2ee08288e4c2f46bb615d70c190b403ce0b2d2fd400b50f.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130806
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T16:59:36Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130505
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130505/sha256/ce/ce8b746af54e0147ab8be99158e38084ea3f0bc64dc0a381c6ebf6a028138ddc.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130505
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T17:28:39Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130957
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130957/sha256/dd/dde4db33a61616c361b6aae6e17245e00a3faeba751a87cbaaba188c30ba2b44.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130957
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T18:27:14Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130628
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130628/sha256/e8/e8acbc75205097151912663e1a603da818f133066fab5a8dda332a2dbd045976.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130628
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T19:38:05Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130964
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130964/sha256/de/dea39c4d5dfd1656b94adc53b722ad8ab57658a40e9d5991b96972339999e397.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130964
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T20:51:56Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130982
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130982/sha256/10/10ad79d56a0c276e3f45578ff0befaa4fffb83973a589cb221505baf2e1363c7.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130982
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T21:16:46Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130633
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130633/sha256/4c/4ce32cd26985715d895aace0f2a2e5cb79b3f5895398fb373cd8c6f7aa3c08de.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130633
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T21:17:28Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130968
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130968/sha256/30/30d29ed2978438cc0f72ed3884d7fa81b3ea46f8385297368b82dd82189e4f5f.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130968
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T22:06:16Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130735
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130735/sha256/82/82c5fe42ef962f42083670b8ab0c81aa14ae2df616421d633f1ecc4ce32ae9e0.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130735
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T22:15:27Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130904
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130904/sha256/13/13b775e34e9064baff8107533e6c29265bd665918533da1c2f013702d78d251b.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130904
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T06:42:25Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130887
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130887/sha256/36/36fb9b43765a7fa839fb4460313b8cfe6d0d927278d5a1ddb47ecc480c0fd7ef.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130887
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T07:34:36Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130952
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130952/sha256/de/de9208d365e92e3bb0e25e9d280da4dc0741a37a446d3167465f004f2de0e950.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130952
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T07:39:54Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130357
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130357/sha256/97/9761581167dbfecb4c7d63f2e6496103a89a8379b1c2ef83bac26fd9ddf16b3d.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130357
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T07:53:55Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130930
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130930/sha256/be/beb60d3950b3b09cf753e20585e5b1aa1ea5745b8d26a770083cb239bdad9d99.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130930
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T08:07:25Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130908
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130908/sha256/10/102f4ada6bbc12c04729664ba63058270d8a427e52ab3c48844ca09d1ec05a10.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130908
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T08:39:04Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-131010
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-131010/sha256/c2/c27a8d6bf2ccf698fabe716c2394cb9d077f82b6fcb8bbbf2e92d6d1a37bd739.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-131010
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T09:36:01Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130849
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130849/sha256/c4/c401ae048fbc70b0436da784f7af3280c93300850197c0ff3beb282fb14d381f.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130849
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T09:46:17Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130858
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130858/sha256/64/6426397f7ce3375dc6e77b546daeba876676121797565af730e79facd25f2e24.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130858
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T09:58:24Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130954
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130954/sha256/b8/b86910e44b7f7910bdc152ccea8364d15ffeabe3a84dacf8ee594401e69c7c1b.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130954
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T10:14:52Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-131014
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-131014/sha256/32/323c6a55c2aecca0e9c244547e1c56783d0bfe83099cb020aec7be55af19cf51.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-131014
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T10:45:21Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-131009
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-131009/sha256/d7/d7668abe2d9541d453afdc99ab8acc88a3c45a2f64e5051f26a05da2f1f917a7.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-131009
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T10:48:26Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130919
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130919/sha256/9a/9ad1df88bdb31e705019f96260d1758a21cc31c4a885c47dd4dfca9876e0cc5f.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130919
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T10:52:17Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-131022
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-131022/sha256/0f/0f52acf6946275734726d58b93638ea8bbe853dae5b2c241714c2f86f6271574.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-131022
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T11:25:38Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130723
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130723/sha256/fa/fa3449487bb9f09a4dc30b9a490651506ed5087274b4873ee5b982a401bf05a9.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130723
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T11:52:25Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130875
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130875/sha256/30/30ce6af9d1d3a640bfee0f19cb83b847fde46f9d4ebbea774857167f6e2a0b49.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130875
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T12:01:37Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130906
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130906/sha256/6a/6ac731d117290c0e70a8423d650c598a6a34c3f50168a3f09a46d76624609bdf.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130906
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T12:19:09Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-grafana-grafana-heldout-pr-130539
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-grafana-grafana-heldout-pr-130539/sha256/fd/fd53285d301edcfac9d3ccca6dbb771293f11b5cbf9936feb4c27e1ffb07f856.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130539
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-19T12:43:39Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140916
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140916/sha256/1f/1f8aa40ceb59e0cb4f46cf308011c3cc48dd3fe896561e3e968258be25645f76.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140916
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T15:35:57Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140892
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140892/sha256/54/54f4c16b4e8dbfc1ebb529f7988a77eee0366babdb4a70f068d6bd78e565511f.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140892
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T16:54:01Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140990
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140990/sha256/f7/f7961523ab2a0d14078a29939a082d83a21adb466bca6e04b24ed09ee035c948.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140990
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T16:54:12Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140921
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140921/sha256/e5/e58210099a158306cc5b1647a48935f5653a0fde37a05e2388218c87d95e0c59.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140921
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T18:32:00Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140966
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140966/sha256/7e/7e11a98b6f5003ca71b4d7a158558bac1fce0068a08e76c71ca845fd9fc3675e.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140966
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T18:32:08Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140882
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140882/sha256/8a/8a3f52184646acc9086120b97b8b58b0873c97dc6ce41b8197c16e037de68aff.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140882
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T19:26:02Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140982
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140982/sha256/b9/b9ab862f202c2bcea89f7fbe84aada5aa92d61fc18ac5787dacae4cd26657a82.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140982
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-29T13:18:01Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141012
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141012/sha256/c4/c42a27aeb3f74078bb4eebc748f1d1e65fc42b2a97d7b9bc967a51d998a49f67.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141012
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-29T14:36:02Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141034
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141034/sha256/5f/5fa0b1ed5ef6755366a346b6ac57b6fcc23dbbf75e71574be9ee92a225e1195f.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141034
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-29T17:36:01Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141048
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141048/sha256/0a/0a7bb128db0313e1ebebc83e0c31682670b98c398cb64802aac5b2ca01dd152d.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141048
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-30T13:21:41Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141075
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141075/sha256/f3/f3ca118a3eb3fcf7f15525ccaca4b6cccde42df659eeffd05532be2d1b00f766.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141075
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-31T14:37:42Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141066
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141066/sha256/fd/fdea41e8657a9b2bb088447b8ef8f8f11588f4aa9160ad78bf44c2f33f86c7d8.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141066
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-31T17:13:41Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141082
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141082/sha256/e8/e8cb3438c5b67d8de7cf4e9716ef5d5a338b2fdb771d2d30fbf9fdaf1c245087.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141082
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-31T18:49:43Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141131
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141131/sha256/f0/f0afe8bb300845670838f6904b3376ecf02fa14af26a1f1fc6423d37117255fe.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141131
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-03T13:47:16Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141145
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141145/sha256/e1/e1158ad8f32329effd54acc3a540338a0e3324fab0b497c865c0d9333d0206c1.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141145
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-04T12:28:30Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141060
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141060/sha256/4e/4ee34ef1f2a392f753ed254fbcb8f92442faa9ba208b4020a9dfbb92334a64e4.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141060
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-04T16:54:32Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140694
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140694/sha256/35/3555681e4202bb3941c84fc0195b6ac1132ef7720044bda86e1026c66c67ec90.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140694
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-05T03:38:29Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141209
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141209/sha256/9a/9a6b82f801377a0683715843dec31c145a87d4521a0e451f62bd52cac6c7c37e.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141209
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-05T23:18:33Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141146
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141146/sha256/83/83b739e8e2e7eaff675b425a288361e738bded9b41088b3db5e1962c094be321.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141146
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-06T02:22:34Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141273
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141273/sha256/64/64c6b9800c3e272dd8581a104bf196694eab39cb7faa95b951cc14e904fd3fc4.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141273
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-08T20:19:59Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141292
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141292/sha256/15/15d6ce8226661b1f2d7876b7f01e19b9fe5da5e480b3a9c13fdf13c9d6967662.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141292
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-10T15:00:12Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-140925
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-140925/sha256/98/980c0af953ac907e29805c614ba6b2e8d19e0afde74ddd271030cce294b740bb.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140925
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-11T15:33:16Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141324
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141324/sha256/4d/4d189cc7c8081735a468d682d8f3696d8673df07c78542671d3d023c727e7341.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141324
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-11T20:33:18Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141296
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141296/sha256/e8/e81b2823a72eb0be199a8ee38c2771c01e2498b3175ecdf821b62d3ffc3ed203.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141296
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-12T11:19:18Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141104
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141104/sha256/45/450abf5670b7cd7491aa7a6b36182167432b51f7167cf99a18bedd48af22470c.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141104
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-17T12:28:22Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141105
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141105/sha256/71/71353de801b4048046ff565a9bf4d76ef643dc929311363604570f2f8f53245a.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141105
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-17T13:26:19Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141194
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141194/sha256/08/08ae3c9c78230f495b0ca19a5f1d49181dfbf467ea69fa8731083277a48820d7.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141194
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-18T13:31:08Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+  - id: final-kubernetes-kubernetes-heldout-pr-141440
+    inputArtifact: inputs/onboarding-optimization-final-84x4x3-v1/final-kubernetes-kubernetes-heldout-pr-141440/sha256/77/776a8b6e76ffe3629e3770e836ff69f3eb28a9151a1fe250dd8a2964a873a00d.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-141440
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-08-18T14:41:10Z
+      split: nested-final-test
+      registrySelectionFrozenBeforeTaskExposure: true
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_mean_cosine_similarity
+    - composition_active_area_f1
+    - composition_top_area_agreement
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 4
+budget:
+  providerMaximumUsd: 24.34
+  vercelMaximumUsd: 0.75
+dataAccess:
+  lockedTest: false

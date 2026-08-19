@@ -1,0 +1,423 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-natural-hard-48x3-v1
+objective: Measure selected and repaired registries on a frozen natural hard-case benchmark relative to human registries.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: a84c7cb838e788caddce662abc02ad09e9ff9491
+dataset:
+  id: onboarding-optimization-natural-hard-48x3-v1
+  hash: 789268136cbd2180c1130f5c83fdcb13c19bffe254ac2e426e6a661227b0a67f
+  role: development
+matrix:
+  treatments:
+    - id: human__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: human__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: selected__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: selected
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: selected__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: selected
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: repaired__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: repaired
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: repaired__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: repaired
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: natural-hard-grafana-grafana-pr-80511
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-grafana-grafana-pr-80511/sha256/e1/e182dbfb76af1e823ba567bdf2c630f5933158fb3ff015150488d71ef787a718.json
+    metadata:
+      sourceEpisodeId: grafana-grafana-pr-80511
+      repositoryId: grafana/grafana
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134516/sha256/1f/1f1bce022d41cb47607924ff1e62329702f230ce6a617f668057a0ffa7f5e643.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134516
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-grafana-grafana-pr-101285
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-grafana-grafana-pr-101285/sha256/3a/3aff5c3bbf2827590d48ec0036de5735159f208d61bfccd9028797db12f0738c.json
+    metadata:
+      sourceEpisodeId: grafana-grafana-pr-101285
+      repositoryId: grafana/grafana
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134769
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134769/sha256/15/15fb789dcfb1dec8684f04711862f64a93c6ad40e89f8a1f9a651498867c0047.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134769
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-136502
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-136502/sha256/fb/fb1416ee8b6daf7e62f564aba773575a9c56752b608b3be44770f4abef1f24e0.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-136502
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-138367
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-138367/sha256/3c/3c04639ad07a3641a201278f2681cda9e631eb8695147417c829935ac66f6b92.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-138367
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-140684
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-140684/sha256/a3/a30ed28df10b9f29cdae4434dfa379cfbd16700aa8070c302f1c30df2d4decc6.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-140684
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-135735
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-135735/sha256/f4/f46c861e91290d279bf6d1e1726036ff951ad1dd2bd297c544084f820782baba.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-135735
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-140723
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-140723/sha256/00/00700d02f8e0cada47488964275cd6b79fea967073d1c1c02635258ac07fd340.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-140723
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-139862
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-139862/sha256/8c/8cd33d647a8b7629223bc6a0b5f4eef147306487d8d5e6553d4f329aad93b2b6.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-139862
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-140821
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-140821/sha256/3b/3b4d1d2064e4d34f58a026781b340cb100b02d896a071b501ab69fa71e006388.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-140821
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-140925
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-140925/sha256/70/7075c72d981760826a5e643f7637b46d7786ebdadafe7d46cf2d79c672c47aae.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-140925
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-grafana-grafana-pr-105422
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-grafana-grafana-pr-105422/sha256/95/95150d6f10702b958f068d7172ca2eb7f40ebf0641a191b0594b9292b80732f9.json
+    metadata:
+      sourceEpisodeId: grafana-grafana-pr-105422
+      repositoryId: grafana/grafana
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-132061
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-132061/sha256/6a/6a37b88bfd2cec7945bdcd793df89bcc9c345fa3baab1b503a5b8b9a2ac88a35.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-132061
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-grafana-grafana-pr-116038
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-grafana-grafana-pr-116038/sha256/43/43097c329cfaaae9f1f402dfcf0e48635f2516b336f9ad2f6186f6ab7aa4ece2.json
+    metadata:
+      sourceEpisodeId: grafana-grafana-pr-116038
+      repositoryId: grafana/grafana
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-133896
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-133896/sha256/39/39f9f1c96b2611250cc50d1164c4f5217a296f5cd9509b98d8d29fb6efcbb6a2.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-133896
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-grafana-grafana-pr-118686
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-grafana-grafana-pr-118686/sha256/a5/a5fbb8c256a1433c4db34097be2bf5aa2832e38b68e36d6c61665481f6144eb0.json
+    metadata:
+      sourceEpisodeId: grafana-grafana-pr-118686
+      repositoryId: grafana/grafana
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134404
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134404/sha256/2c/2c9c451e59086d0ad7cfdb4d5d09c5f4bef522dbd9aec67569705773c5a75dd8.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134404
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-grafana-grafana-pr-119124
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-grafana-grafana-pr-119124/sha256/f2/f26cfd7cfa040a602762b2b2c5f100ee334334d7c7131038cdfc72b88813f761.json
+    metadata:
+      sourceEpisodeId: grafana-grafana-pr-119124
+      repositoryId: grafana/grafana
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134935
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134935/sha256/95/95219c7e7d1dc75508dce5c7b3a37791f4344044705c27dbaa2f357aef44c8ee.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134935
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134422
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134422/sha256/54/546134f6ec4fd661b6fffd6a5c83e17a14d43977d53823d08cbe1117e3cd078f.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134422
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-135625
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-135625/sha256/2d/2d871d12ef6d131ad9d717a38adef63ce85432523aa7c50644808b53c769e586.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-135625
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-135749
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-135749/sha256/4f/4f9c3a5d2be838ffd187e478f692a06d2ac09199ebcefb6d3339a96cefd918df.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-135749
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-137008
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-137008/sha256/d1/d140b79a2b280a386754f682277301fb5dfc99717f3d59662ff2ce415efc6c8f.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-137008
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-137224
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-137224/sha256/c2/c2cbf4af76f1a4ce8754d554679e8b462340c05d294d12d16a1b15f6b4bf3c42.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-137224
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134997
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134997/sha256/90/9092d5d044024f7fe2aa7ad2e0587af84d044823c24544c3e68418ab5ea46af1.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134997
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-137715
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-137715/sha256/60/60d284d3dda878142835e281e103d83d7b1fe3251972b0f96a4508cb4b10be7c.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-137715
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-138408
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-138408/sha256/f0/f0730116bce1b50375b65c87e244910cb374eff977fea690f835abef2298e858.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-138408
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-140033
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-140033/sha256/33/3381d4dca2c50f6ed61f8568cdcd413894475909653849424340e5e5292a7109.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-140033
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134936
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134936/sha256/c5/c595c53e35beda5c220f4ee650277a8315c462443168fbb2bcd34bad605880bd.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134936
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-grafana-grafana-pr-128725
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-grafana-grafana-pr-128725/sha256/11/11dec522d6579d458e600d1753844a49c08270568348a541ca845f94cc46b4f8.json
+    metadata:
+      sourceEpisodeId: grafana-grafana-pr-128725
+      repositoryId: grafana/grafana
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-128799
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-128799/sha256/d5/d54cef70bbb0ca3602ba5511f5fbb71d0389e9c8a6f0b6b9406c15a8af5eeb44.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-128799
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-129418
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-129418/sha256/1f/1f35751dde53d5cf82bfc3fe7300ea7c622cb8c2f6880f26b8644e38ef7c7b81.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-129418
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-129594
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-129594/sha256/20/2028c8984f0d8f38b6b5d70db998eeb4b40d52c314b986c1aba439479cf3e407.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-129594
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-132838
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-132838/sha256/ac/aca356dfbe691d0c9a0f82d1d8bdc5d9e5558a0d65ace7184732321a994de907.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-132838
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-133667
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-133667/sha256/ca/cab543280989545c7bc0fdda1ee3af8dd4dfd1de7f22de214dc0e0a860a8b9d9.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-133667
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-133893
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-133893/sha256/81/81400c77b2cca283642aff6f89a1977c9977ae7dc7eba1d28182f67a408badf0.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-133893
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134274
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134274/sha256/47/4718c00f2f2f070b6b357f15f18258ba0406f85e53eb4808e275d6ea739f1133.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134274
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134390
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134390/sha256/04/04f0e84963985786c882f44afc43f0bd93fcf8707c1b4e9be8098d50f92019dd.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134390
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-134632
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-134632/sha256/60/600608ffb420735edf246797190ec108590bc7b598e21de2c41b96060894c149.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-134632
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-135100
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-135100/sha256/c6/c616df5824909d78419b85e9a65b4e5927320ce2084fe7cf20d8a5eb18b484ae.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-135100
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-135400
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-135400/sha256/cc/cc9001cdc65618afd5ed7d68736230d0a66b59cce87ed4b0dc4da5ef777a3451.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-135400
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-135807
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-135807/sha256/fc/fc63bd6aedd2a9c26adde09698fb3285e526812c6b883d94cade70a4c2439792.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-135807
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-136633
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-136633/sha256/79/793394e7c0212df6e5c8bb8f2f94c678758e47a1424c9e222899b1e42367d37b.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-136633
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-139261
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-139261/sha256/e4/e48c710771e0d637d7a29208395245368da90885d441149580aee67b4fd69c1c.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-139261
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-139667
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-139667/sha256/2b/2b89c0ccdc487dc22226834d7b0c70fefca7810d808c4ebd4f0b7d9c664ebfac.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-139667
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-139842
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-139842/sha256/db/db9e8463fabd7217b7c2e012af77bcdf45874babc8112c922b6b1037344aeb2d.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-139842
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+  - id: natural-hard-kubernetes-kubernetes-pr-139714
+    inputArtifact: inputs/onboarding-optimization-natural-hard-48x3-v1/natural-hard-kubernetes-kubernetes-pr-139714/sha256/ef/eff1c88ac26523b083da1dd70d709242e6933996edb74263faf4eea4707a1411.json
+    metadata:
+      sourceEpisodeId: kubernetes-kubernetes-pr-139714
+      repositoryId: kubernetes/kubernetes
+      cohort: natural-hard
+      split: validation
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_mean_cosine_similarity
+    - composition_active_area_f1
+    - composition_top_area_agreement
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 3
+budget:
+  providerMaximumUsd: 7.95
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false
