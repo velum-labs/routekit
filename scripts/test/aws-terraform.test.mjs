@@ -279,6 +279,35 @@ test("Ubuntu gateways receive pinned EFS utilities through SSM rather than apt",
   );
 });
 
+test("gateway user data retains the public nginx streaming and timeout contract", () => {
+  const compute = read("deploy/aws/compute.tf");
+  const bootstrap = read("deploy/aws/templates/node.sh.tftpl");
+  const location = read("deploy/aws/templates/nginx-routekit-tailnet-location.conf");
+  const guide = read("deploy/aws/README.md");
+
+  assert.match(
+    compute,
+    /nginx_routekit_location_b64\s*=\s*base64encode\(file\("\$\{path\.module\}\/templates\/nginx-routekit-tailnet-location\.conf"\)\)/
+  );
+  assert.match(bootstrap, /install -d -m 0755 \/etc\/nginx\/snippets/);
+  assert.match(bootstrap, /base64 -d >\/etc\/nginx\/snippets\/routekit-tailnet-location\.conf/);
+  assert.match(bootstrap, /chmod 0644 \/etc\/nginx\/snippets\/routekit-tailnet-location\.conf/);
+
+  for (const directive of [
+    "proxy_http_version 1.1;",
+    "proxy_buffering off;",
+    "proxy_request_buffering off;",
+    "proxy_read_timeout 600s;",
+    "proxy_send_timeout 600s;",
+    "send_timeout 600s;"
+  ]) {
+    assert.match(location, new RegExp(`^${directive.replaceAll(".", "\\.")}$`, "m"));
+  }
+
+  assert.match(guide, /include \/etc\/nginx\/snippets\/routekit-tailnet-location\.conf;/);
+  assert.match(guide, /gateway user-data changes replace the instance/);
+});
+
 test("fresh gateways fail closed until their exact workload JWT verifier is synchronized", () => {
   const bootstrap = read("deploy/aws/templates/node.sh.tftpl");
   const compute = read("deploy/aws/compute.tf");

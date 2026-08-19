@@ -40,27 +40,28 @@ resource "aws_instance" "node" {
 
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/templates/node.sh.tftpl", {
-    node_name               = "${var.name_prefix}-${each.key}"
-    node_kind               = each.value.kind
-    node_version            = var.node_version
-    routekit_version        = var.routekit_version
-    t3_version              = var.t3_version
-    codex_version           = var.codex_version
-    claude_code_version     = var.claude_code_version
-    routekit_uid            = var.routekit_uid
-    admin_user              = var.admin_user
-    routekit_active         = each.value.active
-    operator_users          = join(" ", var.operator_users)
-    service_user            = each.value.service_user
-    tailscale_client_id     = local.tailscale_clients[each.value.identity].client_id
-    tailscale_audience      = local.tailscale_clients[each.value.identity].audience
-    tailscale_tag           = each.value.ts_tag
-    efs_id                  = each.value.kind == "gateway" ? aws_efs_file_system.routekit.id : ""
-    efs_state_access_point  = each.value.kind == "gateway" ? aws_efs_access_point.state.id : ""
-    efs_config_access_point = each.value.kind == "gateway" ? aws_efs_access_point.config.id : ""
-    t3_home_volume_id       = each.value.kind == "t3" ? aws_ebs_volume.t3_home[each.key].id : ""
-    t3_home_volume_compact  = each.value.kind == "t3" ? replace(aws_ebs_volume.t3_home[each.key].id, "-", "") : ""
-    aws_region              = var.aws_region
+    node_name                   = "${var.name_prefix}-${each.key}"
+    node_kind                   = each.value.kind
+    node_version                = var.node_version
+    routekit_version            = var.routekit_version
+    t3_version                  = var.t3_version
+    codex_version               = var.codex_version
+    claude_code_version         = var.claude_code_version
+    routekit_uid                = var.routekit_uid
+    admin_user                  = var.admin_user
+    routekit_active             = each.value.active
+    operator_users              = join(" ", var.operator_users)
+    service_user                = each.value.service_user
+    tailscale_client_id         = local.tailscale_clients[each.value.identity].client_id
+    tailscale_audience          = local.tailscale_clients[each.value.identity].audience
+    tailscale_tag               = each.value.ts_tag
+    efs_id                      = each.value.kind == "gateway" ? aws_efs_file_system.routekit.id : ""
+    efs_state_access_point      = each.value.kind == "gateway" ? aws_efs_access_point.state.id : ""
+    efs_config_access_point     = each.value.kind == "gateway" ? aws_efs_access_point.config.id : ""
+    t3_home_volume_id           = each.value.kind == "t3" ? aws_ebs_volume.t3_home[each.key].id : ""
+    t3_home_volume_compact      = each.value.kind == "t3" ? replace(aws_ebs_volume.t3_home[each.key].id, "-", "") : ""
+    aws_region                  = var.aws_region
+    nginx_routekit_location_b64 = base64encode(file("${path.module}/templates/nginx-routekit-tailnet-location.conf"))
   })
 
   tags = {
