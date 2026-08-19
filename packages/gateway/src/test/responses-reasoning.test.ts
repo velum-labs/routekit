@@ -380,8 +380,12 @@ test("Responses routes discovered Claude efforts to adaptive Anthropic egress", 
       })
     });
     assert.equal(unsupported.status, 400);
+    const error = (await unsupported.json()) as {
+      error?: { message?: string; param?: string };
+    };
+    assert.equal(error.error?.param, "reasoning.effort");
     assert.equal(
-      ((await unsupported.json()) as { error?: { message?: string } }).error?.message,
+      error.error?.message,
       'reasoning effort "max" is not supported by model "claude-code/claude-fable-5"'
     );
     assert.equal(requests.length, 1);
