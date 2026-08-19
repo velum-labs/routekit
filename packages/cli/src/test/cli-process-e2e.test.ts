@@ -88,7 +88,7 @@ test("real routekit command surfaces execute independently", () => {
 
     const legacyInstall = runCli(["install", "codex"], input);
     assert.equal(legacyInstall.status, 1);
-    assert.match(legacyInstall.stderr, /unknown command/i);
+    assert.match(legacyInstall.stderr, /unknown subcommand/i);
 
     const setupHelp = runCli(["setup", "--help"], input);
     assert.equal(setupHelp.status, 0, setupHelp.stderr);
@@ -97,7 +97,7 @@ test("real routekit command surfaces execute independently", () => {
     for (const fusionOnly of ["prompts", "ensemble"]) {
       const rejected = runCli([fusionOnly], input);
       assert.equal(rejected.status, 1);
-      assert.match(rejected.stderr, /unknown command/i);
+      assert.match(rejected.stderr, /unknown subcommand/i);
     }
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -296,7 +296,7 @@ test("config init validates option combinations and Bedrock defaults", () => {
 
     const conflict = runCli(["config", "init", "--empty", "--provider", "openai"], input);
     assert.equal(conflict.status, 1);
-    assert.match(conflict.stderr, /cannot be used with option/i);
+    assert.match(conflict.stderr, /conflicts with/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -346,7 +346,7 @@ test("config migrate is not part of the clean-break command surface", () => {
   try {
     const result = runCli(["config", "migrate"], input);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /unknown command ['"]migrate['"]/i);
+    assert.match(result.stderr, /unknown subcommand ['"]migrate['"]/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

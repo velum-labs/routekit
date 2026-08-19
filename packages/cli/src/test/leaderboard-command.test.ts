@@ -2,18 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildProgram } from "../cli.js";
-import { renderLeaderboard } from "../commands/leaderboard.js";
+import { child, runProgram } from "./effect-cli-test.js";
+import { renderLeaderboard } from "../effect/commands/leaderboard.js";
 
 test("leaderboard rejects account dimension and keeps principal/model/provider", async () => {
-  const help = buildProgram()
-    .commands.find((command) => command.name() === "leaderboard")
-    ?.helpInformation();
-  assert.ok(help);
-  assert.match(help, /principal, model, or provider/);
-  assert.doesNotMatch(help, /--by account|\baccount\b.*dimension/i);
+  const leaderboard = child(buildProgram(), "leaderboard");
+  assert.match(leaderboard.description ?? "", /principal, model, or provider/);
+  assert.doesNotMatch(leaderboard.description ?? "", /\baccount\b.*dimension/i);
 
   await assert.rejects(
-    buildProgram().parseAsync(["node", "routekit", "leaderboard", "--by", "account"]),
+    runProgram(buildProgram(), ["leaderboard", "--by", "account"]),
     /--by must be one of: principal, model, provider/
   );
 });

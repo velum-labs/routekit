@@ -61,7 +61,7 @@ test("documented safe CLI commands remain executable", () => {
       encoding: "utf8",
       env: cliEnv
     });
-    assert.match(output, /Usage:/);
+    assert.match(output, /USAGE/);
   }
   // The cliproxy subtree is gone from the public accounts surface.
   const accountsHelp = help(["accounts", "--help"]);

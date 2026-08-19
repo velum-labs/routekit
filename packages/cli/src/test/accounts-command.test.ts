@@ -16,8 +16,10 @@ import {
   captureLoginCredential,
   claudeProfileKeychainService
 } from "@velum-labs/routekit-accounts";
+import { commandChildren, commandOptions } from "@velum-labs/routekit-cli-core";
 
 import { buildProgram } from "../cli.js";
+import { child, runProgram } from "./effect-cli-test.js";
 
 test("accounts login captures isolated Codex auth without writing daemon-owned state", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-accounts-login-"));
@@ -218,9 +220,7 @@ test("managed Claude login uses isolated state and rejects failures and duplicat
 
 test("accounts login rejects non-interactive modes before starting OAuth", async () => {
   await assert.rejects(
-    buildProgram().parseAsync([
-      "node",
-      "routekit",
+    runProgram(buildProgram(), [
       "--no-input",
       "accounts",
       "login",
@@ -234,9 +234,7 @@ test("accounts login rejects non-interactive modes before starting OAuth", async
 
 test("accounts login rejects unknown kinds before contacting the daemon", async () => {
   await assert.rejects(
-    buildProgram().parseAsync([
-      "node",
-      "routekit",
+    runProgram(buildProgram(), [
       "accounts",
       "login",
       "not-a-kind",
@@ -254,7 +252,7 @@ test("accounts login rejects unknown kinds before contacting the daemon", async 
 
 test("accounts login rejects retained internal connectors before OAuth or daemon work", async () => {
   await assert.rejects(
-    buildProgram().parseAsync(["node", "routekit", "accounts", "login", "gemini"]),
+    runProgram(buildProgram(), ["accounts", "login", "gemini"]),
     /not offered at first launch.*claude-code, codex/
   );
 });
@@ -272,19 +270,15 @@ test("daemon enrollment rejects hidden and duplicate account labels before OAuth
 
 test("one unified accounts surface: no connector subcommands leak to the CLI", () => {
   const program = buildProgram();
-  const accounts = program.commands.find((command) => command.name() === "accounts");
-  assert.ok(accounts);
-  const subcommands = accounts.commands.map((command) => command.name()).sort();
+  const accounts = child(program, "accounts");
+  const subcommands = commandChildren(accounts).map((command) => command.name).sort();
   assert.deepEqual(subcommands, ["add", "list", "login", "remove", "rename", "status"]);
-  const login = accounts.commands.find((command) => command.name() === "login");
-  assert.ok(login);
-  assert.match(login.helpInformation(), /--no-browser/);
-  assert.match(login.description(), /claude-code, codex/);
-  assert.doesNotMatch(login.description(), /gemini|grok|kimi|cliproxy/i);
-  const rename = accounts.commands.find((command) => command.name() === "rename");
-  assert.ok(rename);
-  assert.match(rename.description(), /claude-code or codex/);
-  const status = accounts.commands.find((command) => command.name() === "status");
-  assert.ok(status);
-  assert.match(status.description(), /pooled account and connector status/);
+  const login = child(accounts, "login");
+  assert.ok(commandOptions(login).some((option) => option.name === "no-browser"));
+  assert.match(login.description ?? "", /claude-code, codex/);
+  assert.doesNotMatch(login.description ?? "", /gemini|grok|kimi|cliproxy/i);
+  const rename = child(accounts, "rename");
+  assert.match(rename.description ?? "", /claude-code or codex/);
+  const status = child(accounts, "status");
+  assert.match(status.description ?? "", /pooled account and connector status/);
 });

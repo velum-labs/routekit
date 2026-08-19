@@ -98,6 +98,18 @@ export default {
       }
     },
     {
+      name: "production-cli-does-not-import-commander",
+      comment: "The RouteKit CLI command tree is owned by effect/unstable/cli.",
+      severity: "error",
+      from: {
+        path: "^packages/(cli|cli-core)/src/",
+        pathNot: testSourcePattern
+      },
+      to: {
+        path: "node_modules/commander(/|$)"
+      }
+    },
+    {
       name: "no-cross-package-src-imports",
       comment:
         "Workspace packages must import each other through @velum-labs/routekit* package entry points, not relative paths into another package's src tree.",

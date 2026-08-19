@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { buildProgram } from "../cli.js";
-import { isModelRouteInfo } from "../commands/models.js";
+import { child, runProgram } from "./effect-cli-test.js";
+import { isModelRouteInfo } from "../effect/commands/models.js";
 import { completionCandidates } from "../completion.js";
 
 const execFileAsync = promisify(execFile);
@@ -85,19 +86,18 @@ test("route info validation rejects stale daemon payloads", () => {
 });
 
 test("providers add rejects retained internal providers before daemon work", async () => {
-  const providers = buildProgram().commands.find((command) => command.name() === "providers");
-  const add = providers?.commands.find((command) => command.name() === "add");
-  assert.ok(add);
-  assert.match(add.description(), /first-launch supported provider/);
-  assert.doesNotMatch(add.description(), /registry/i);
+  const providers = child(buildProgram(), "providers");
+  const add = child(providers, "add");
+  assert.match(add.description ?? "", /first-launch supported provider/);
+  assert.doesNotMatch(add.description ?? "", /registry/i);
 
   await assert.rejects(
-    buildProgram().parseAsync(["node", "routekit", "providers", "add", "google"]),
+    runProgram(buildProgram(), ["providers", "add", "google"]),
     /not offered at first launch.*openai, anthropic, bedrock, openrouter, codex, claude-code/
   );
 
   await assert.rejects(
-    buildProgram().parseAsync(["node", "routekit", "providers", "remove", "not-a-provider"]),
+    runProgram(buildProgram(), ["providers", "remove", "not-a-provider"]),
     (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       assert.match(message, /unknown provider.*first-launch providers/);

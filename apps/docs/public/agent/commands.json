@@ -4,16 +4,11 @@
   "surface": "cli",
   "documentationPolicy": "Describes current behavior on main, including changes scheduled for the next package release.",
   "freshness": {
-    "source": "The checked-out Commander command tree plus reviewed agent safety policy.",
+    "source": "The checked-out Effect command tree plus reviewed agent safety policy.",
     "check": "CLI tests fail when this manifest differs from the command tree.",
     "regenerate": "pnpm docs:generate-agent-manifests"
   },
   "globalOptions": [
-    {
-      "flags": "-v, --version",
-      "description": "print the RouteKit CLI version",
-      "value": "none"
-    },
     {
       "flags": "--json",
       "description": "emit a machine-readable JSON result on stdout (implies non-interactive)",
@@ -22,8 +17,7 @@
     {
       "flags": "--no-input",
       "description": "never prompt; prompts resolve to their defaults",
-      "value": "none",
-      "negated": true
+      "value": "none"
     },
     {
       "flags": "--yes",
@@ -36,14 +30,14 @@
       "value": "none"
     },
     {
-      "flags": "--remote <name>",
-      "description": "target a named remote gateway",
-      "value": "required"
-    },
-    {
       "flags": "--local",
       "description": "force the local RouteKit daemon",
       "value": "none"
+    },
+    {
+      "flags": "--remote <value>",
+      "description": "target a named remote gateway",
+      "value": "required"
     }
   ],
   "commands": [
@@ -65,7 +59,7 @@
       ],
       "options": [
         {
-          "flags": "--name <name>",
+          "flags": "--name <value>",
           "description": "account label",
           "value": "required"
         }
@@ -156,15 +150,14 @@
       ],
       "options": [
         {
-          "flags": "--name <name>",
+          "flags": "--name <value>",
           "description": "account label (native subscription kinds)",
           "value": "required"
         },
         {
           "flags": "--no-browser",
           "description": "prefer a browserless login flow (device code / copyable URL)",
-          "value": "none",
-          "negated": true
+          "value": "none"
         }
       ],
       "category": "subscriptions",
@@ -394,45 +387,45 @@
         "routekit",
         "claude"
       ],
-      "usage": "routekit claude [model] [toolArgs...]",
+      "usage": "routekit claude <model> <tool-args...>",
       "summary": "launch Claude Code through RouteKit",
       "arguments": [
         {
           "name": "model",
-          "required": false,
+          "required": true,
           "variadic": false,
           "description": "live namespaced provider/model id"
         },
         {
-          "name": "toolArgs",
-          "required": false,
+          "name": "tool-args",
+          "required": true,
           "variadic": true,
           "description": "arguments passed to Claude Code"
         }
       ],
       "options": [
         {
-          "flags": "--gateway-url <url>",
+          "flags": "--gateway-url <value>",
           "description": "connect to an existing RouteKit gateway",
           "value": "required"
         },
         {
-          "flags": "--effort <id>",
+          "flags": "--effort <value>",
           "description": "opaque reasoning effort for the selected model",
           "value": "required"
         },
         {
-          "flags": "--auth-token <token>",
+          "flags": "--auth-token <value>",
           "description": "gateway authentication token",
           "value": "required"
         },
         {
-          "flags": "--auth-token-env <name>",
+          "flags": "--auth-token-env <value>",
           "description": "read gateway authentication token from an environment variable",
           "value": "required"
         },
         {
-          "flags": "--cwd <dir>",
+          "flags": "--cwd <value>",
           "description": "tool working directory",
           "value": "required"
         }
@@ -480,7 +473,7 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--claude-config-dir <dir>",
+          "flags": "--claude-config-dir <value>",
           "description": "Claude Code configuration directory",
           "value": "required"
         },
@@ -492,8 +485,7 @@
         {
           "flags": "--no-token",
           "description": "install configuration without issuing or changing a gateway token",
-          "value": "none",
-          "negated": true
+          "value": "none"
         }
       ],
       "category": "coding-tools",
@@ -542,7 +534,7 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--claude-config-dir <dir>",
+          "flags": "--claude-config-dir <value>",
           "description": "Claude Code configuration directory",
           "value": "required"
         }
@@ -583,45 +575,45 @@
         "routekit",
         "codex"
       ],
-      "usage": "routekit codex [model] [toolArgs...]",
+      "usage": "routekit codex <model> <tool-args...>",
       "summary": "launch Codex through RouteKit (Responses-only; best-effort model filtering)",
       "arguments": [
         {
           "name": "model",
-          "required": false,
+          "required": true,
           "variadic": false,
           "description": "live namespaced provider/model id"
         },
         {
-          "name": "toolArgs",
-          "required": false,
+          "name": "tool-args",
+          "required": true,
           "variadic": true,
           "description": "arguments passed to Codex"
         }
       ],
       "options": [
         {
-          "flags": "--gateway-url <url>",
+          "flags": "--gateway-url <value>",
           "description": "connect to an existing RouteKit gateway",
           "value": "required"
         },
         {
-          "flags": "--effort <id>",
+          "flags": "--effort <value>",
           "description": "opaque reasoning effort for the selected model",
           "value": "required"
         },
         {
-          "flags": "--auth-token <token>",
+          "flags": "--auth-token <value>",
           "description": "gateway authentication token",
           "value": "required"
         },
         {
-          "flags": "--auth-token-env <name>",
+          "flags": "--auth-token-env <value>",
           "description": "read gateway authentication token from an environment variable",
           "value": "required"
         },
         {
-          "flags": "--cwd <dir>",
+          "flags": "--cwd <value>",
           "description": "tool working directory",
           "value": "required"
         }
@@ -669,7 +661,7 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--codex-home <dir>",
+          "flags": "--codex-home <value>",
           "description": "Codex home directory",
           "value": "required"
         },
@@ -681,8 +673,7 @@
         {
           "flags": "--no-token",
           "description": "install configuration without issuing or changing a gateway token",
-          "value": "none",
-          "negated": true
+          "value": "none"
         }
       ],
       "category": "coding-tools",
@@ -731,7 +722,7 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--codex-home <dir>",
+          "flags": "--codex-home <value>",
           "description": "Codex home directory",
           "value": "required"
         }
@@ -778,8 +769,7 @@
         {
           "name": "shell",
           "required": true,
-          "variadic": false,
-          "description": "bash | zsh | fish"
+          "variadic": false
         }
       ],
       "options": [],
@@ -860,10 +850,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--from <path>",
+          "flags": "--from <value>",
           "description": "router YAML to import as the complete canonical config",
-          "value": "required",
-          "mandatory": true
+          "value": "required"
         }
       ],
       "category": "configuration",
@@ -916,18 +905,12 @@
           "visibility": "hidden"
         },
         {
-          "flags": "--provider <provider>",
+          "flags": "--provider <value>",
           "description": "API provider starter (openai, anthropic, openrouter, bedrock)",
-          "value": "required",
-          "choices": [
-            "openai",
-            "anthropic",
-            "openrouter",
-            "bedrock"
-          ]
+          "value": "required"
         },
         {
-          "flags": "--default-model <provider/model>",
+          "flags": "--default-model <value>",
           "description": "set the starter's namespaced default model",
           "value": "required"
         },
@@ -1085,10 +1068,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "-n, --lines <count>",
+          "flags": "-n, --lines <value>",
           "description": "number of trailing lines",
-          "value": "required",
-          "default": "50"
+          "value": "required"
         },
         {
           "flags": "-f, --follow",
@@ -1173,7 +1155,7 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--drain-grace <seconds>",
+          "flags": "--drain-grace <value>",
           "description": "grace for in-flight requests (default: $ROUTEKIT_DRAIN_GRACE or 30)",
           "value": "required"
         }
@@ -1220,30 +1202,27 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--host <host>",
+          "flags": "--host <value>",
           "description": "bind host",
-          "value": "required",
-          "default": "127.0.0.1"
+          "value": "required"
         },
         {
-          "flags": "--port <port>",
+          "flags": "--port <value>",
           "description": "bind port",
-          "value": "required",
-          "default": "8080"
+          "value": "required"
         },
         {
-          "flags": "--auth-token <token>",
+          "flags": "--auth-token <value>",
           "description": "authentication token (required for non-loopback hosts)",
           "value": "required"
         },
         {
-          "flags": "--no-portless",
-          "description": "disable the stable local route",
-          "value": "none",
-          "negated": true
+          "flags": "--portless",
+          "description": "enable the stable local route",
+          "value": "none"
         },
         {
-          "flags": "--drain-grace <seconds>",
+          "flags": "--drain-grace <value>",
           "description": "grace for in-flight requests on shutdown/upgrade (default: $ROUTEKIT_DRAIN_GRACE or 30)",
           "value": "required"
         }
@@ -1376,7 +1355,7 @@
           "value": "none"
         },
         {
-          "flags": "--drain-grace <seconds>",
+          "flags": "--drain-grace <value>",
           "description": "grace for in-flight requests (default: $ROUTEKIT_DRAIN_GRACE or 30)",
           "value": "required"
         }
@@ -1457,20 +1436,19 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--answer <text>",
+          "flags": "--repository <value>",
+          "description": "repository root",
+          "value": "required"
+        },
+        {
+          "flags": "--answer <value>",
           "description": "answer to the current question",
           "value": "required"
         },
         {
-          "flags": "--answer-file <path>",
+          "flags": "--answer-file <value>",
           "description": "file containing the answer to the current question",
           "value": "required"
-        },
-        {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
         }
       ],
       "category": "evaluate",
@@ -1512,16 +1490,14 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--digest <sha256>",
-          "description": "exact routing-basis digest",
-          "value": "required",
-          "mandatory": true
+          "flags": "--repository <value>",
+          "description": "repository root",
+          "value": "required"
         },
         {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
+          "flags": "--digest <value>",
+          "description": "exact routing-basis digest",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1563,16 +1539,14 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--digest <sha256>",
-          "description": "exact evaluation-proposal digest",
-          "value": "required",
-          "mandatory": true
+          "flags": "--repository <value>",
+          "description": "repository root",
+          "value": "required"
         },
         {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
+          "flags": "--digest <value>",
+          "description": "exact evaluation-proposal digest",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1613,16 +1587,14 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--scope <scope>",
-          "description": "pilot or full",
-          "value": "required",
-          "default": "pilot"
+          "flags": "--repository <value>",
+          "description": "repository root",
+          "value": "required"
         },
         {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
+          "flags": "--scope <value>",
+          "description": "pilot or full",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1655,15 +1627,14 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--file <path>",
-          "description": "import a reviewed JSON workload-dimension proposal",
+          "flags": "--repository <value>",
+          "description": "repository root",
           "value": "required"
         },
         {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
+          "flags": "--file <value>",
+          "description": "import a reviewed JSON workload-dimension proposal",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1705,15 +1676,14 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--file <path>",
-          "description": "import a reviewed JSON evaluation proposal",
+          "flags": "--repository <value>",
+          "description": "repository root",
           "value": "required"
         },
         {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
+          "flags": "--file <value>",
+          "description": "import a reviewed JSON evaluation proposal",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1754,16 +1724,14 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--run <id>",
-          "description": "qualified run id",
-          "value": "required",
-          "mandatory": true
+          "flags": "--repository <value>",
+          "description": "repository root",
+          "value": "required"
         },
         {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
+          "flags": "--run <value>",
+          "description": "qualified run id",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1804,15 +1772,14 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--run <id>",
-          "description": "qualification run id",
+          "flags": "--repository <value>",
+          "description": "repository root",
           "value": "required"
         },
         {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
+          "flags": "--run <value>",
+          "description": "qualification run id",
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1844,26 +1811,24 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--plan <id>",
-          "description": "immutable execution plan id",
-          "value": "required",
-          "mandatory": true
+          "flags": "--repository <value>",
+          "description": "repository root",
+          "value": "required"
         },
         {
-          "flags": "--gateway-url <url>",
+          "flags": "--plan <value>",
+          "description": "immutable execution plan id",
+          "value": "required"
+        },
+        {
+          "flags": "--gateway-url <value>",
           "description": "external qualification-only gateway",
           "value": "required"
         },
         {
-          "flags": "--token-file <path>",
+          "flags": "--token-file <value>",
           "description": "private external gateway credential file",
           "value": "required"
-        },
-        {
-          "flags": "--repository <path>",
-          "description": "repository root",
-          "value": "required",
-          "default": "."
         }
       ],
       "category": "evaluate",
@@ -1906,10 +1871,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--repository <path>",
+          "flags": "--repository <value>",
           "description": "repository root",
-          "value": "required",
-          "default": "."
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1950,10 +1914,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--repository <path>",
+          "flags": "--repository <value>",
           "description": "repository root",
-          "value": "required",
-          "default": "."
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -1985,10 +1948,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--repository <path>",
+          "flags": "--repository <value>",
           "description": "repository root",
-          "value": "required",
-          "default": "."
+          "value": "required"
         }
       ],
       "category": "evaluate",
@@ -2019,25 +1981,22 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--by <dimension>",
+          "flags": "--by <value>",
           "description": "rank dimension: principal, model, or provider",
-          "value": "required",
-          "default": "principal"
+          "value": "required"
         },
         {
-          "flags": "--sort <metric>",
+          "flags": "--sort <value>",
           "description": "sort metric: cost, requests, tokens, errors, or latency",
-          "value": "required",
-          "default": "cost"
+          "value": "required"
         },
         {
-          "flags": "--limit <n>",
+          "flags": "--limit <value>",
           "description": "maximum rows to show",
-          "value": "required",
-          "default": "20"
+          "value": "required"
         },
         {
-          "flags": "--window <window>",
+          "flags": "--window <value>",
           "description": "live retained calls, or durable 1h / 24h / 7d rollups (defaults to longest retained window)",
           "value": "required"
         }
@@ -2121,7 +2080,7 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--provider <name>",
+          "flags": "--provider <value>",
           "description": "only show models from one provider",
           "value": "required"
         }
@@ -2319,27 +2278,27 @@
       ],
       "options": [
         {
-          "flags": "--strategy <strategy>",
-          "description": "sticky | round_robin | capacity_weighted",
+          "flags": "--strategy <value>",
+          "description": "",
           "value": "required"
         },
         {
-          "flags": "--switch-threshold <ratio>",
+          "flags": "--switch-threshold <value>",
           "description": "proactive utilization threshold",
           "value": "required"
         },
         {
-          "flags": "--probe-interval <milliseconds>",
+          "flags": "--probe-interval <value>",
           "description": "usage probe interval",
           "value": "required"
         },
         {
-          "flags": "--fallback-cooldown <seconds>",
+          "flags": "--fallback-cooldown <value>",
           "description": "fallback cooldown",
           "value": "required"
         },
         {
-          "flags": "--default-model <provider/model>",
+          "flags": "--default-model <value>",
           "description": "set the namespaced default model",
           "value": "required"
         }
@@ -2428,12 +2387,12 @@
         "providers",
         "status"
       ],
-      "usage": "routekit providers status [provider]",
+      "usage": "routekit providers status <provider>",
       "summary": "run live discovery for configured providers",
       "arguments": [
         {
           "name": "provider",
-          "required": false,
+          "required": true,
           "variadic": false
         }
       ],
@@ -2481,27 +2440,24 @@
       ],
       "options": [
         {
-          "flags": "--url <https-url>",
+          "flags": "--url <value>",
           "description": "public RouteKit gateway URL",
-          "value": "required",
-          "mandatory": true
+          "value": "required"
         },
         {
-          "flags": "--ssh <host>",
+          "flags": "--ssh <value>",
           "description": "SSH host used for remote administration",
-          "value": "required",
-          "mandatory": true
+          "value": "required"
         },
         {
-          "flags": "--join <join-credential>",
+          "flags": "--join <value>",
           "description": "enroll the SSH account as a peer first (pass - to read from stdin)",
           "value": "required"
         },
         {
-          "flags": "--no-use",
-          "description": "add without making this the active remote",
-          "value": "none",
-          "negated": true
+          "flags": "--use",
+          "description": "make this the active remote",
+          "value": "none"
         }
       ],
       "category": "remote",
@@ -2555,17 +2511,17 @@
       ],
       "options": [
         {
-          "flags": "--name <name>",
+          "flags": "--name <value>",
           "description": "remote name to enroll as (default: the host name)",
           "value": "required"
         },
         {
-          "flags": "--url <https-url>",
+          "flags": "--url <value>",
           "description": "public gateway URL to enroll once the host is running",
           "value": "required"
         },
         {
-          "flags": "--version <version>",
+          "flags": "--version <value>",
           "description": "RouteKit version to install (default: this CLI's version)",
           "value": "required"
         },
@@ -2580,10 +2536,9 @@
           "value": "none"
         },
         {
-          "flags": "--no-use",
-          "description": "enroll without making this the active remote",
-          "value": "none",
-          "negated": true
+          "flags": "--use",
+          "description": "make this the active remote after enrollment",
+          "value": "none"
         }
       ],
       "category": "remote",
@@ -2703,12 +2658,12 @@
         "remote",
         "show"
       ],
-      "usage": "routekit remote show [name]",
+      "usage": "routekit remote show <name>",
       "summary": "show and probe one remote gateway",
       "arguments": [
         {
           "name": "name",
-          "required": false,
+          "required": true,
           "variadic": false
         }
       ],
@@ -2741,12 +2696,12 @@
         "remote",
         "use"
       ],
-      "usage": "routekit remote use [name]",
+      "usage": "routekit remote use <name>",
       "summary": "select the active remote, or return to local mode",
       "arguments": [
         {
           "name": "name",
-          "required": false,
+          "required": true,
           "variadic": false
         }
       ],
@@ -2798,10 +2753,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--version <version>",
+          "flags": "--version <value>",
           "description": "version to install (default: latest)",
-          "value": "required",
-          "default": "latest"
+          "value": "required"
         },
         {
           "flags": "--dry-run",
@@ -2851,8 +2805,7 @@
         {
           "flags": "--no-browser",
           "description": "prefer browserless subscription login flows",
-          "value": "none",
-          "negated": true
+          "value": "none"
         }
       ],
       "category": "setup",
@@ -2899,30 +2852,27 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--host <host>",
+          "flags": "--host <value>",
           "description": "bind host",
-          "value": "required",
-          "default": "127.0.0.1"
+          "value": "required"
         },
         {
-          "flags": "--port <port>",
+          "flags": "--port <value>",
           "description": "bind port",
-          "value": "required",
-          "default": "8080"
+          "value": "required"
         },
         {
-          "flags": "--auth-token <token>",
+          "flags": "--auth-token <value>",
           "description": "authentication token (required for non-loopback hosts)",
           "value": "required"
         },
         {
-          "flags": "--no-portless",
-          "description": "disable the stable local route",
-          "value": "none",
-          "negated": true
+          "flags": "--portless",
+          "description": "enable the stable local route",
+          "value": "none"
         },
         {
-          "flags": "--drain-grace <seconds>",
+          "flags": "--drain-grace <value>",
           "description": "grace for in-flight requests on shutdown/upgrade (default: $ROUTEKIT_DRAIN_GRACE or 30)",
           "value": "required"
         }
@@ -2973,9 +2923,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--watch [seconds]",
+          "flags": "--watch <value>",
           "description": "refresh continuously (default: 5 seconds)",
-          "value": "optional"
+          "value": "required"
         }
       ],
       "category": "operations",
@@ -3306,13 +3256,12 @@
       ],
       "options": [
         {
-          "flags": "--plane <plane>",
+          "flags": "--plane <value>",
           "description": "data or control",
-          "value": "required",
-          "default": "data"
+          "value": "required"
         },
         {
-          "flags": "--created-by <who>",
+          "flags": "--created-by <value>",
           "description": "optional creator label recorded in the registry",
           "value": "required"
         }
@@ -3363,7 +3312,7 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--plane <plane>",
+          "flags": "--plane <value>",
           "description": "filter by data or control",
           "value": "required"
         }
@@ -3456,7 +3405,7 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--tool <tool>",
+          "flags": "--tool <value>",
           "description": "codex or claude",
           "value": "required"
         }
@@ -3497,9 +3446,9 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--watch [seconds]",
+          "flags": "--watch <value>",
           "description": "refresh continuously (default: 5 seconds)",
-          "value": "optional"
+          "value": "required"
         }
       ],
       "category": "operations",
@@ -3540,18 +3489,17 @@
       "arguments": [],
       "options": [
         {
-          "flags": "--provider <provider>",
+          "flags": "--provider <value>",
           "description": "subscription provider (only codex)",
-          "value": "required",
-          "mandatory": true
+          "value": "required"
         },
         {
-          "flags": "--label <label>",
+          "flags": "--label <value>",
           "description": "enrolled account label",
           "value": "required"
         },
         {
-          "flags": "--credit-id <id>",
+          "flags": "--credit-id <value>",
           "description": "specific reset credit id to redeem",
           "value": "required"
         }

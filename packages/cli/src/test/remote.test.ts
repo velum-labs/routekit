@@ -23,7 +23,7 @@ import { encodeJoinCredential } from "@velum-labs/routekit-runtime/tokens";
 import { RouteKitFailure, runRouteKitEffect } from "@velum-labs/routekit-runtime/effect";
 import { Effect } from "effect";
 import { activeCliSession, CliSession, runWithCliSession } from "../cli-session.js";
-import { resolveLauncherPreparation } from "../commands/launchers.js";
+import { resolveLauncherPreparationEffect } from "../effect/commands/launchers.js";
 import { parseControlRelayEnvelope, relayLocalControl } from "../adapters/control-relay.js";
 import { RemoteCredentialRepository } from "../repositories/remote-credential.js";
 import { RemoteRegistryRepository } from "../repositories/remote-registry.js";
@@ -33,6 +33,9 @@ import { redactSensitiveText } from "../adapters/ssh-exec.js";
 import { assertLocalTarget, selectedRemoteMetadata, setTargetSelection } from "../target.js";
 
 const execFileAsync = promisify(execFile);
+const resolveLauncherPreparation = (
+  ...args: Parameters<typeof resolveLauncherPreparationEffect>
+) => runRouteKitEffect(resolveLauncherPreparationEffect(...args));
 const remoteRegistry = new RemoteRegistryRepository();
 
 const activeRemote = () => remoteRegistry.active();

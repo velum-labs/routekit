@@ -31,13 +31,11 @@
   },
   "dependencies": {
     "@velum-labs/routekit-cli-ui": "workspace:*",
-    "commander": "catalog:",
     "effect": "catalog:"
   },
   "keywords": [
     "routekit",
     "cli",
-    "commander",
     "terminal"
   ],
   "scripts": {

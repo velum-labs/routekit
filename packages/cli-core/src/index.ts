@@ -9,15 +9,12 @@ export {
   completionScript,
   filterCompletionCandidates,
   isCompletionShell,
-  registerCompletion,
   visibleCommandNames,
   visibleLongFlags,
   walkCompletionTree
 } from "./completion.js";
 export type { CliRuntime, CommandContext, GlobalFlags } from "./context.js";
 export {
-  attachGlobalFlags,
-  contextFor,
   contextForFlags,
   emitJson,
   immutableCliRuntime,

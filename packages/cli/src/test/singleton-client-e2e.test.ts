@@ -198,7 +198,7 @@ test("concurrent product commands auto-start exactly one daemon and all use its 
       env
     );
     assert.equal(explicitOverride.code, 1);
-    assert.match(explicitOverride.stderr, /unknown option '--config'/);
+    assert.match(explicitOverride.stderr, /Unrecognized flag: --config/);
     const lifecycleEnvironmentOverride = await run(["status"], project, {
       ...env,
       ROUTEKIT_CONFIG: join(project, "other.yaml")

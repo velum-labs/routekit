@@ -30,17 +30,24 @@ if (!existsSync(cliModulePath)) {
 }
 
 const { buildProgram } = await import(pathToFileURL(cliModulePath).href);
-const { commandPath, flattenCommands, isActionableCommand } = await import(
+const {
+  commandArguments,
+  commandNames,
+  commandOptions,
+  effectCommandPath,
+  flattenEffectCommands
+} = await import(
+  pathToFileURL(path.join(root, "packages/cli-core/dist/index.js")).href
+);
+const { actionableCommandPaths } = await import(
   pathToFileURL(path.join(root, "packages/cli/dist/command-path.js")).href
 );
 const program = buildProgram();
 
 const commandsByPath = new Map(
-  flattenCommands(program).map((command) => [commandPath(command), command])
+  flattenEffectCommands(program).map((command) => [effectCommandPath(program, command), command])
 );
-const actionablePaths = [...commandsByPath.entries()]
-  .filter(([, command]) => isActionableCommand(command))
-  .map(([commandPath]) => commandPath);
+const actionablePaths = actionableCommandPaths(program);
 
 for (const internalPath of internalCommandPaths) {
   if (!actionablePaths.includes(internalPath)) {
@@ -73,30 +80,29 @@ if (missingPolicies.length > 0 || stalePolicies.length > 0) {
 }
 
 function argumentShape(argument) {
-  const value = `${argument.name()}${argument.variadic ? "..." : ""}`;
-  return argument.required ? `<${value}>` : `[${value}]`;
+  const value = `${argument.name}${argument.variadic ? "..." : ""}`;
+  return argument.optional ? `[${value}]` : `<${value}>`;
 }
 
 function serializeArgument(argument) {
   return {
-    name: argument.name(),
-    required: argument.required,
+    name: argument.name,
+    required: !argument.optional,
     variadic: argument.variadic,
     ...(argument.description ? { description: argument.description } : {})
   };
 }
 
 function serializeOption(option) {
+  const names = [
+    ...option.aliases.map((alias) => alias.length === 1 ? `-${alias}` : `--${alias}`),
+    `--${option.name}`
+  ];
   return {
-    flags: option.flags,
-    description: option.description,
-    value: option.required ? "required" : option.optional ? "optional" : "none",
-    ...(option.negate ? { negated: true } : {}),
-    ...(option.variadic ? { variadic: true } : {}),
-    ...(option.mandatory ? { mandatory: true } : {}),
-    ...(option.hidden ? { visibility: "hidden" } : {}),
-    ...(option.argChoices !== undefined ? { choices: [...option.argChoices] } : {}),
-    ...(option.defaultValue !== undefined ? { default: option.defaultValue } : {})
+    flags: `${names.join(", ")}${option.boolean ? "" : " <value>"}`,
+    description: option.description ?? "",
+    value: option.boolean ? "none" : "required",
+    ...(option.hidden ? { visibility: "hidden" } : {})
   };
 }
 
@@ -126,28 +132,29 @@ const commandManifest = {
   documentationPolicy:
     "Describes current behavior on main, including changes scheduled for the next package release.",
   freshness: {
-    source: "The checked-out Commander command tree plus reviewed agent safety policy.",
+    source: "The checked-out Effect command tree plus reviewed agent safety policy.",
     check: "CLI tests fail when this manifest differs from the command tree.",
     regenerate: "pnpm docs:generate-agent-manifests"
   },
-  globalOptions: program.options.map(serializeOption),
+  globalOptions: commandOptions(program).map(serializeOption),
   commands: Object.keys(commandPolicies)
     .sort((left, right) => left.localeCompare(right))
     .map((manifestPath) => {
       const command = commandsByPath.get(manifestPath);
       if (command === undefined) throw new Error(`missing command: ${manifestPath}`);
       const policy = commandPolicies[manifestPath];
-      const summary = commandSummaryOverrides[manifestPath] ?? command.description();
+      const summary = commandSummaryOverrides[manifestPath] ?? command.description;
       if (!summary) throw new Error(`command has no agent-facing summary: ${manifestPath}`);
-      const argumentSyntax = command.registeredArguments.map(argumentShape);
+      const arguments_ = commandArguments(command);
+      const argumentSyntax = arguments_.map(argumentShape);
       return {
         path: manifestPath,
         argv: ["routekit", ...manifestPath.split(" ")],
         usage: ["routekit", manifestPath, ...argumentSyntax].filter(Boolean).join(" "),
         summary,
-        ...(command.aliases().length > 0 ? { aliases: command.aliases() } : {}),
-        arguments: command.registeredArguments.map(serializeArgument),
-        options: command.options.map(serializeOption),
+        ...(commandNames(command).length > 1 ? { aliases: commandNames(command).slice(1) } : {}),
+        arguments: arguments_.map(serializeArgument),
+        options: commandOptions(command).map(serializeOption),
         category: policy.category,
         visibility: policy.visibility,
         safety: {

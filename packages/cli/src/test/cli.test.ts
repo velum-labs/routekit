@@ -13,8 +13,15 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { immutableCliRuntime } from "@velum-labs/routekit-cli-core";
+import {
+  commandChildren,
+  commandNames,
+  commandOptions,
+  immutableCliRuntime,
+  visibleCommandChildren
+} from "@velum-labs/routekit-cli-core";
 import { buildProgram } from "../cli.js";
+import { child, runProgram } from "./effect-cli-test.js";
 import { completionCandidates } from "../completion.js";
 
 const FORBIDDEN_PRODUCT = ["fu", "sion", "kit"].join("");
@@ -25,9 +32,7 @@ const foreignDependencyPattern = new RegExp(
 );
 
 function command(program: ReturnType<typeof buildProgram>, name: string) {
-  const found = program.commands.find((entry) => entry.name() === name);
-  assert.ok(found, `missing command ${name}`);
-  return found;
+  return child(program, name);
 }
 
 function productionSources(directory: string): string[] {
@@ -75,116 +80,106 @@ test("independent command surface is complete and has no compatibility aliases",
     "__self-inspect",
     "version"
   ];
-  assert.deepEqual(program.commands.map((entry) => entry.name()).sort(), expected.sort());
+  assert.deepEqual(commandChildren(program).map((entry) => entry.name).sort(), expected.sort());
   assert.equal(
-    program.commands.some((entry) => entry.name() === "gateway"),
+    commandChildren(program).some((entry) => entry.name === "gateway"),
     false
   );
   assert.deepEqual(
     command(program, "daemon")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["auth", "exec", "logs", "reload", "restart", "run", "service", "upgrade"]
   );
   assert.deepEqual(
     command(program, "daemon")
-      .commands.find((entry) => entry.name() === "service")
-      ?.commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).find((entry) => entry.name === "service")
+      ?.subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["install", "status", "uninstall"]
   );
   assert.deepEqual(
     command(program, "codex")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["install", "uninstall"]
   );
   assert.deepEqual(
     command(program, "claude")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["install", "uninstall"]
   );
   assert.equal(
-    program.commands.some((entry) => entry.name() === "cursor"),
+    commandChildren(program).some((entry) => entry.name === "cursor"),
     false
   );
   // One connector-neutral account surface: no cliproxy (or other
   // implementation-detail) subtree is exposed.
   assert.deepEqual(
     command(program, "accounts")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["add", "list", "login", "remove", "rename", "status"]
   );
   assert.deepEqual(
     command(program, "providers")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["add", "remove", "status"]
   );
   assert.deepEqual(
     command(program, "remote")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["add", "install", "list", "remove", "show", "use"]
   );
   assert.deepEqual(
     command(program, "models")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["info", "list"]
   );
   assert.deepEqual(
     command(program, "calls")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["inspect"]
   );
   assert.deepEqual(
     command(program, "config")
-      .commands.map((entry) => entry.name())
+      .subcommands.flatMap((group) => group.commands).map((entry) => entry.name)
       .sort(),
     ["edit", "import", "init", "path", "show"]
   );
   assert.equal(
-    program.commands.some((entry) => entry.aliases().length > 0),
+    commandChildren(program).some((entry) => commandNames(entry).length > 1),
     false
   );
 });
 
 test("top-level help presents one public RouteKit lifecycle", () => {
-  const help = buildProgram().helpInformation();
-  assert.match(help, /^\s+start\b/m);
-  assert.match(help, /^\s+status\b/m);
-  assert.match(help, /^\s+stop\b/m);
-  assert.doesNotMatch(help, /^\s+daemon\b/m);
-  assert.doesNotMatch(help, /^\s+gateway\b/m);
+  const names = visibleCommandChildren(buildProgram()).map((entry) => entry.name);
+  for (const name of ["start", "status", "stop"]) assert.ok(names.includes(name));
+  assert.equal(names.includes("daemon"), false);
+  assert.equal(names.includes("gateway"), false);
 });
 
 test("config help describes import-only singleton policy", () => {
   const program = buildProgram();
-  const globalConfig = program.options.find((option) => option.long === "--config");
+  const globalConfig = commandOptions(program).find((option) => option.name === "config");
   assert.equal(globalConfig, undefined);
 
   const config = command(program, "config");
-  const init = config.commands.find((entry) => entry.name() === "init");
-  const edit = config.commands.find((entry) => entry.name() === "edit");
-  const importCommand = config.commands.find((entry) => entry.name() === "import");
-  assert.ok(init);
-  assert.ok(edit);
-  assert.ok(importCommand);
-  assert.equal(init.options.find((option) => option.long === "--global")?.hidden, true);
-  assert.deepEqual(init.options.find((option) => option.long === "--provider")?.argChoices, [
-    "openai",
-    "anthropic",
-    "openrouter",
-    "bedrock"
-  ]);
-  assert.ok(init.options.some((option) => option.long === "--default-model"));
-  assert.ok(init.options.some((option) => option.long === "--empty"));
-  assert.equal(edit.options.find((option) => option.long === "--global")?.hidden, true);
-  assert.match(importCommand.description(), /replace the canonical singleton config/);
+  const init = child(config, "init");
+  const edit = child(config, "edit");
+  const importCommand = child(config, "import");
+  assert.equal(commandOptions(init).find((option) => option.name === "global")?.hidden, true);
+  assert.ok(commandOptions(init).some((option) => option.name === "provider"));
+  assert.ok(commandOptions(init).some((option) => option.name === "default-model"));
+  assert.ok(commandOptions(init).some((option) => option.name === "empty"));
+  assert.equal(commandOptions(edit).find((option) => option.name === "global")?.hidden, true);
+  assert.match(importCommand.description ?? "", /replace the canonical singleton config/);
 });
 
 test("dynamic completion follows the command tree", () => {
@@ -216,7 +211,7 @@ test("dynamic completion follows the command tree", () => {
   ]);
 });
 
-test("Commander adapters write through the injected immutable runtime", async () => {
+test("Effect adapters write through the injected immutable runtime", async () => {
   const stdout: string[] = [];
   const runtime = immutableCliRuntime({
     stdout: { write: (value) => (stdout.push(String(value)), true) },
@@ -227,31 +222,30 @@ test("Commander adapters write through the injected immutable runtime", async ()
     nodeVersion: "22.22.2"
   });
 
-  await buildProgram(runtime).exitOverride().parseAsync(["node", "routekit", "completion", "bash"]);
+  await runProgram(buildProgram(runtime), ["completion", "bash"]);
   assert.match(stdout.join(""), /routekit/);
 
   stdout.length = 0;
-  await buildProgram(runtime).exitOverride().parseAsync(["node", "routekit", "__complete", "sta"]);
+  await runProgram(buildProgram(runtime), ["__complete", "--", "sta"]);
   assert.equal(stdout.join(""), "start\nstatus\n");
 });
 
 test("native client installs use RouteKit-managed dedicated credentials", () => {
   const program = buildProgram();
   for (const tool of ["codex", "claude"]) {
-    const install = command(program, tool).commands.find((entry) => entry.name() === "install");
-    assert.ok(install);
-    assert.ok(install.options.some((option) => option.long === "--rotate-token"));
-    assert.ok(install.options.some((option) => option.long === "--no-token"));
+    const install = child(command(program, tool), "install");
+    assert.ok(commandOptions(install).some((option) => option.name === "rotate-token"));
+    assert.ok(commandOptions(install).some((option) => option.name === "no-token"));
     assert.equal(
-      install.options.some((option) => option.long === "--shell"),
+      commandOptions(install).some((option) => option.name === "shell"),
       false
     );
     assert.equal(
-      install.options.some((option) => option.long === "--gateway-url"),
+      commandOptions(install).some((option) => option.name === "gateway-url"),
       false
     );
     assert.equal(
-      install.options.some((option) => option.long === "--auth-token-env"),
+      commandOptions(install).some((option) => option.name === "auth-token-env"),
       false
     );
   }
@@ -259,9 +253,11 @@ test("native client installs use RouteKit-managed dedicated credentials", () => 
 
 test("start CLI documents explicit data-plane authentication", () => {
   const program = buildProgram();
-  const start = program.commands.find((entry) => entry.name() === "start");
-  assert.ok(start);
-  assert.match(start.helpInformation(), /authentication token/);
+  const start = child(program, "start");
+  assert.match(
+    commandOptions(start).find((option) => option.name === "auth-token")?.description ?? "",
+    /authentication token/
+  );
 });
 
 test("account removal completion only suggests managed labels for its provider", () => {

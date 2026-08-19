@@ -15,7 +15,6 @@ import {
   LAUNCH_PROVIDER_IDS,
   type LaunchProviderId
 } from "../../launch-support.js";
-import { numberOption } from "../../commands/context.js";
 import { routekitRoot } from "../root-command.js";
 
 const optionalString = (name: string) =>
@@ -23,6 +22,14 @@ const optionalString = (name: string) =>
     Flag.optional,
     Flag.map(Option.getOrUndefined)
   );
+
+function numberOption(value: string, label: string, input: { min: number; max: number }): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < input.min || parsed > input.max) {
+    throw new Error(`${label} must be between ${input.min} and ${input.max}`);
+  }
+  return parsed;
+}
 
 function parseKnownProvider(value: string): ProviderId {
   if (!PROVIDER_IDS.includes(value as ProviderId)) {

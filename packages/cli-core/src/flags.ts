@@ -1,4 +1,5 @@
-import type { Command } from "commander";
+import { commandOptions } from "./effect-command.js";
+import type * as Command from "effect/unstable/cli/Command";
 
 import { cyan, dim, glyph, uiStream, yellow } from "@velum-labs/routekit-cli-ui";
 
@@ -20,16 +21,11 @@ export function levenshtein(left: string, right: string): number {
   return distance[right.length] as number;
 }
 
-export function knownLongFlags(command: Command): string[] {
-  const flags = new Set<string>();
-  let current: Command | null = command;
-  while (current !== null) {
-    for (const option of current.options) {
-      if (option.long !== undefined && option.long !== null) flags.add(option.long);
-    }
-    current = current.parent;
-  }
-  return [...flags];
+export function knownLongFlags(command: Command.Command.Any): string[] {
+  return commandOptions(command).flatMap((option) => [
+    `--${option.name}`,
+    ...option.aliases.map((alias) => alias.length === 1 ? `-${alias}` : `--${alias}`)
+  ]);
 }
 
 export function findFlagTypos(
@@ -56,7 +52,7 @@ export function findFlagTypos(
 }
 
 export function warnPassthroughTypos(
-  command: Command,
+  command: Command.Command.Any,
   args: readonly string[],
   input: { productName: string; forwardedTo: string }
 ): void {

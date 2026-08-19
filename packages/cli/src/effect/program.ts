@@ -22,7 +22,7 @@ import { readStateSnapshot, routekitVersion } from "../state.js";
 import { makeAccountsCommand } from "./commands/accounts.js";
 import { makeCallsCommand } from "./commands/calls.js";
 import { makeConfigCommand } from "./commands/config.js";
-import { makeCredentialShellCommand, makeCredentialsCommand } from "./commands/credentials.js";
+import { makeCredentialsCommand } from "./commands/credentials.js";
 import { makeDaemonCommand } from "./commands/daemon.js";
 import { makeDoctorCommand } from "./commands/doctor.js";
 import { makeEvalCommand } from "./commands/eval.js";
@@ -77,7 +77,7 @@ function modelIds(): string[] {
   });
 }
 
-function dynamicValues(
+export function dynamicCompletionValues(
   path: readonly string[],
   argumentDepth: number,
   positional: readonly string[]
@@ -166,7 +166,7 @@ export function buildEffectProgram(
     ({ words }) =>
       Effect.sync(() => {
         runtime.stdout.write(
-          completionCandidates(program, words, dynamicValues)
+          completionCandidates(program, words, dynamicCompletionValues)
             .map((candidate) => `${candidate}\n`)
             .join("")
         );
@@ -179,7 +179,6 @@ export function buildEffectProgram(
       makeRemoteCommand(session, runtime),
       makePeerCommand(runtime),
       makeTokensCommand(runtime),
-      makeCredentialShellCommand(runtime),
       makeCredentialsCommand(runtime),
       makeAccountsCommand(runtime),
       makeProvidersCommand(runtime),

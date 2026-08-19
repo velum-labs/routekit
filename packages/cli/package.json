@@ -48,7 +48,6 @@
     "@velum-labs/routekit-telemetry-core": "workspace:*",
     "@velum-labs/routekit-tool-registry": "workspace:*",
     "@velum-labs/routekit-tools": "workspace:*",
-    "commander": "catalog:",
     "effect": "catalog:",
     "package-manager-detector": "catalog:",
     "shell-quote": "catalog:",
