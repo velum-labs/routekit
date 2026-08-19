@@ -1,0 +1,591 @@
+schemaVersion: 1
+experimentId: onboarding-optimization-validation-36x15-v1
+objective: Compare fifteen candidate registries on a nested chronological validation set without exposing final-test tasks.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: 1d24d051c3345e58533643bc034e3f59a45a2d51
+dataset:
+  id: onboarding-optimization-validation-36x15-v1
+  hash: 2bbc6385c74244a3295fcda15bacf8a54408b8fad0fc551a7bedfbecca563869
+  role: development
+matrix:
+  treatments:
+    - id: human__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: human__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: previous_unconstrained__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: previous_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: previous_unconstrained__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: previous_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: tasks_only_40_recent__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: tasks_only_40_recent
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: tasks_only_40_recent__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: tasks_only_40_recent
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_only__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: structure_only
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_only__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: structure_only
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_40_recent__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_40_recent
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_40_recent__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_40_recent
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_recent__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_40_recent
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_recent__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_40_recent
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_5_diverse__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_5_diverse
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_5_diverse__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_5_diverse
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_10_diverse__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_10_diverse
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_10_diverse__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_10_diverse
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_20_diverse__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_20_diverse
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_20_diverse__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_20_diverse
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_a__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_40_diverse_a
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_a__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_40_diverse_a
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_b__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_40_diverse_b
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_b__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_40_diverse_b
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_80_diverse__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_80_diverse
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_80_diverse__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_80_diverse
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_6areas__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_40_diverse_6areas
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_6areas__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_40_diverse_6areas
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_10areas__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_40_diverse_10areas
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_10areas__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_40_diverse_10areas
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_rules__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: hybrid_paths_40_diverse_rules
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.045
+      estimatedInfrastructureCostUsd: 0
+    - id: hybrid_paths_40_diverse_rules__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: hybrid_paths_40_diverse_rules
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.003
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: validation-backstage-backstage-heldout-pr-35102
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35102/sha256/a0/a051e5f13d7f4670da484307fc4e4e9919f09232bb368f31c1e5f8e8332d4601.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35102
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-05T07:25:19Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-32637
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-32637/sha256/2a/2a1fa6fd7b8ac282497c2303decf2dbcffb944fcaa0abd384cabb8f199d38534.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-32637
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-05T07:32:49Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35124
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35124/sha256/36/3634ab84ccd49c798e5f1e7de5e9e4fa79650b875cb304162c8ea87ac649c987.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35124
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-05T10:09:43Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-34335
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-34335/sha256/5b/5b887618fb5eb2f504c588157d15e4c5cfd062b576b216d229ef0d0f480dfe35.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-34335
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-05T14:22:30Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35029
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35029/sha256/94/944f4b9a5fafba1617fddb91feb097fab33b8be5bff2ab9a49c1fccc37e98a28.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35029
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-06T08:42:44Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35131
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35131/sha256/71/717958db5cbe056d60b3c611f44bbe75bd8398af600c85ac18579baa64c04647.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35131
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-06T14:46:36Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35139
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35139/sha256/ef/ef8bfce4b9b8538b9f1d4adc9c2242ccd561561e735607e7acd8196962e6077f.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35139
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-06T14:47:37Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35132
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35132/sha256/1b/1bcca9ecb65aad9da000457d70e5907c6192fa4f874c7c48e9f40dd33d4dd693.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35132
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-06T16:19:17Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35163
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35163/sha256/a8/a8cab8740f94244b319e0d926d686da2c9c0ba6d5302e40544a2d8bfbbd01f8d.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35163
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-10T10:19:22Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35172
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35172/sha256/8e/8e3b6ea08f28e0f5cb3f9ce0d66da179d91bb3396ccb734cd8a0c88ff963cd23.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35172
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-11T07:06:26Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35171
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35171/sha256/38/38c31dcb7deef412950b2f9c2f34ef35d6274173c0cb1585ce0cbe494c9e04e0.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35171
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-11T09:32:33Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-backstage-backstage-heldout-pr-35128
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-backstage-backstage-heldout-pr-35128/sha256/0d/0d8fd46c467df15de0e2b77ebcd79cc288a27609d895d3b96178191488dd20ca.json
+    metadata:
+      sourceTaskId: backstage-backstage-heldout-pr-35128
+      repositoryId: backstage/backstage
+      mergedAt: 2026-08-11T10:26:24Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130856
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130856/sha256/47/476b77f60c0934fd8cd6e448a7e0467a80ba64c2cc38d285e0549209229e527d.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130856
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T14:32:53Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130604
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130604/sha256/f7/f7a342b5c3ace7a597a7e0683bf970207319ae7ddcce375b7aae02cf6dd41088.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130604
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T14:35:37Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130699
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130699/sha256/68/689ed925966ebab1f24f95a2a1a44b2e5a9107e95b20aa0074168ecfc31888a4.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130699
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T14:52:19Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130327
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130327/sha256/ea/ea38cb81e662cb33ebd3a517157de8cbe6b7197277bc09f86ddb9c867543b411.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130327
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T15:03:26Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130912
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130912/sha256/da/dab84f13d22adcd8b610ada50521ba29a9613573f95d176d87233427eb501e35.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130912
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T15:14:33Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130609
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130609/sha256/33/3383a8bfb2507c3938b445279d04ed629ae1095c7fffff90f66beb246fc45b5a.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130609
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T15:22:22Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130928
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130928/sha256/c4/c445b99c593067ecc31acb2976bfc0320b10f50f93f191daf065f7ddc3ff1bb1.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130928
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T15:30:05Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130722
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130722/sha256/25/2566cc1aa830292303996b6196de0090280f21a5af128c32d73d31f8782c6eff.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130722
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T15:35:43Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130933
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130933/sha256/83/836577bce8fe8d7e0c3824d135e6d3e3a61009f40a22ae56f770485ffe03d9f4.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130933
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T15:53:12Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130616
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130616/sha256/6a/6a9478cda364833b57de6365988b5749bdbbc4414764527ec2998d205ef0d631.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130616
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T15:53:43Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130700
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130700/sha256/89/896f24114d712c575906337162776ad2115050b0d7ade8ae9f9d4a9d72e70432.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130700
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T15:56:24Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-grafana-grafana-heldout-pr-130852
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-grafana-grafana-heldout-pr-130852/sha256/f3/f33ee64e818db22cb9b507687c7ac1daf7203a07f16e4587efd01e6b40037330.json
+    metadata:
+      sourceTaskId: grafana-grafana-heldout-pr-130852
+      repositoryId: grafana/grafana
+      mergedAt: 2026-08-18T16:10:04Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140013
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140013/sha256/92/92f9bd7a5c615d0e7b1be15e25daf7ae78047b656c0b418207b295c2d3dde8c6.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140013
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-23T16:03:52Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140871
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140871/sha256/ae/ae3b5bf78be39593d1b1ab590730edc1bb51cd7cb98df9ceaa3eb381f9112853.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140871
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-24T02:33:57Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-139933
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-139933/sha256/f1/f1386c6dc591210a5308e395c8b09f6945547aea39e05237850cd9cae23c08d5.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-139933
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-24T04:09:49Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140759
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140759/sha256/3a/3a2d41b4dc7b67dd5f6ed0d6f84b3e797fd2c81d5433cc0c30b7a09991181f2f.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140759
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-24T04:09:59Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140886
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140886/sha256/a0/a03e87931979a1bede495cf04c4228e1be763d6a6d130760314521fa697d2b24.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140886
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-24T06:55:51Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140029
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140029/sha256/d2/d26c1410c1c9cb7c0f98d82c3d72bc15e26725c713f968cea242c0a199e0ef43.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140029
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-24T12:21:50Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-139795
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-139795/sha256/7e/7e50ab36ebe831445afc9f5525c603c983506b3a2c3b7416483a321820a36424.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-139795
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-26T08:01:53Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140959
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140959/sha256/ec/ecf7ae028f0cc8b2e8bad13c7529c634b6f1c0eb7ca75cbdf24ebaa37945e0c5.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140959
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-27T12:15:59Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-139864
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-139864/sha256/da/da23be15f619e5b4c425596efdde78a06d1510b98d9dfcec21dd8b1189a3da9f.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-139864
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-27T14:26:01Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140334
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140334/sha256/e2/e22bd2b45c4ac68183b221319258a0924580b0b545c4f8e36acaec4eb374cb37.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140334
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T01:03:57Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140289
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140289/sha256/91/915c8a1d5601fc623a9db1835f0b5a391deccd43b88e8e754d95c1f8626ebd5c.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140289
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T08:49:58Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+  - id: validation-kubernetes-kubernetes-heldout-pr-140960
+    inputArtifact: inputs/onboarding-optimization-validation-36x15-v1/validation-kubernetes-kubernetes-heldout-pr-140960/sha256/96/968ee2ca563959b156d86c7ddd725b0189d5784cc47be26e94c1cc05e21dfbca.json
+    metadata:
+      sourceTaskId: kubernetes-kubernetes-heldout-pr-140960
+      repositoryId: kubernetes/kubernetes
+      mergedAt: 2026-07-28T11:11:58Z
+      split: nested-validation
+      finalTaskTextExcludedFromSelection: true
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_mean_cosine_similarity
+    - composition_active_area_f1
+    - composition_top_area_agreement
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 15
+budget:
+  providerMaximumUsd: 29.81
+  vercelMaximumUsd: 0.75
+dataAccess:
+  lockedTest: false
