@@ -1,5 +1,28 @@
 # @velum-labs/routekit-tool-cursor
 
+## 1.0.0
+
+### Major Changes
+
+- 79fe1c7: Remove retired compatibility surfaces and introduce explicit resource ownership,
+  transactional router generations and remote enrollment, and cancellation-safe
+  harness sessions. Move router configuration ownership into config-core, add
+  validated provider boundary codecs and streaming, decompose routing and HTTP
+  endpoints into explicit ports, make daemon/CLI application services declarative,
+  and enforce intentional package APIs in CI.
+
+### Patch Changes
+
+- Updated dependencies [79fe1c7]
+- Updated dependencies [abd64a0]
+- Updated dependencies [abe8938]
+- Updated dependencies [661a99e]
+- Updated dependencies [3e3effd]
+  - @velum-labs/routekit-contracts@1.0.0
+  - @velum-labs/routekit-harness-core@1.0.0
+  - @velum-labs/routekit-runtime@1.0.0
+  - @velum-labs/routekit-tools@1.0.0
+
 ## 0.18.2
 
 ### Patch Changes

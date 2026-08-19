@@ -1,5 +1,22 @@
 # @velum-labs/routekit-registry
 
+## 1.0.0
+
+### Major Changes
+
+- 79fe1c7: Remove retired compatibility surfaces and introduce explicit resource ownership,
+  transactional router generations and remote enrollment, and cancellation-safe
+  harness sessions. Move router configuration ownership into config-core, add
+  validated provider boundary codecs and streaming, decompose routing and HTTP
+  endpoints into explicit ports, make daemon/CLI application services declarative,
+  and enforce intentional package APIs in CI.
+
+### Patch Changes
+
+- Updated dependencies [79fe1c7]
+- Updated dependencies [3e3effd]
+  - @velum-labs/routekit-contracts@1.0.0
+
 ## 0.18.2
 
 ## 0.18.1

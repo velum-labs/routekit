@@ -1,15 +1,28 @@
-# @velum-labs/routekit-harness-core
+# @velum-labs/routekit-eval-store
 
 ## 1.0.0
 
-### Major Changes
+### Minor Changes
 
-- 79fe1c7: Remove retired compatibility surfaces and introduce explicit resource ownership,
-  transactional router generations and remote enrollment, and cancellation-safe
-  harness sessions. Move router configuration ownership into config-core, add
-  validated provider boundary codecs and streaming, decompose routing and HTTP
-  endpoints into explicit ports, make daemon/CLI application services declarative,
-  and enforce intentional package APIs in CI.
+- 0e67bb3: Introduce the sole compositional eval-routing protocol, repository-scoped review artifacts and immutable plans, bounded eval sessions, atomic routing activation, and the public `routekit eval` workflow.
+- 3e3effd: Add compositional eval routing as RouteKit's sole automatic-routing protocol.
+  A model-blind classifier decomposes each request across a reviewed routing
+  basis, while deterministic code combines that decomposition with hard request
+  requirements, complete model-by-dimension evidence, and the user's quality,
+  cost, latency, balanced, or Pareto objective.
+
+  Expose the complete durable workflow through `routekit eval`: repository setup,
+  one-question-at-a-time onboarding, workload-dimension and evaluation proposals,
+  digest-bound review approvals, validation, immutable planning and estimates,
+  scoped qualification runs, structured results, and atomic routing activation.
+  Normal billed work uses RouteKit's configured local or remote target; explicit
+  external gateways may qualify evidence but cannot activate it.
+
+  Require complete manifest-bound comparison evidence, stable case identities,
+  strict normalized request decompositions, conservative quality measurements,
+  explicit unknown pricing, sanitized provenance, and fail-closed routing. Add
+  scoped eval sessions with explicit model and output limits, atomic project and
+  activation artifacts, and interruption-safe cleanup and reporting.
 
 ### Patch Changes
 
@@ -20,157 +33,10 @@
   The switching proxy and control listener now expose Effect construction, idle waits, retirement, drain, and close; daemon bootstrap consumes those Effects directly. Endpoint pipeline stages, Anthropic catalog merging, account acquisition revalidation, and auth-recovery waiters are Effect-native, with `Deferred` replacing Promise coordination. Promise adapters remain only where Node, Commander, Fetch/Web Streams, AsyncDisposable, cluster IPC, or standalone public hosts require them.
 
 - Updated dependencies [79fe1c7]
+- Updated dependencies [0e67bb3]
 - Updated dependencies [abd64a0]
 - Updated dependencies [abe8938]
 - Updated dependencies [661a99e]
 - Updated dependencies [3e3effd]
-  - @velum-labs/routekit-contracts@1.0.0
   - @velum-labs/routekit-runtime@1.0.0
-
-## 0.18.2
-
-### Patch Changes
-
-- Updated dependencies [55bf691]
-  - @velum-labs/routekit-runtime@0.18.2
-  - @velum-labs/routekit-contracts@0.18.2
-
-## 0.18.1
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.18.1
-- @velum-labs/routekit-runtime@0.18.1
-
-## 0.18.0
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.18.0
-- @velum-labs/routekit-runtime@0.18.0
-
-## 0.17.4
-
-### Patch Changes
-
-- Updated dependencies [d42282c]
-  - @velum-labs/routekit-contracts@0.17.4
-  - @velum-labs/routekit-runtime@0.17.4
-
-## 0.17.3
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.17.3
-- @velum-labs/routekit-runtime@0.17.3
-
-## 0.17.2
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.17.2
-- @velum-labs/routekit-runtime@0.17.2
-
-## 0.17.1
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.17.1
-- @velum-labs/routekit-runtime@0.17.1
-
-## 0.17.0
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.17.0
-- @velum-labs/routekit-runtime@0.17.0
-
-## 0.16.9
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.9
-- @velum-labs/routekit-runtime@0.16.9
-
-## 0.16.8
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.8
-- @velum-labs/routekit-runtime@0.16.8
-
-## 0.16.7
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.7
-- @velum-labs/routekit-runtime@0.16.7
-
-## 0.16.6
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.6
-- @velum-labs/routekit-runtime@0.16.6
-
-## 0.16.5
-
-### Patch Changes
-
-- Updated dependencies [448e004]
-  - @velum-labs/routekit-contracts@0.16.5
-  - @velum-labs/routekit-runtime@0.16.5
-
-## 0.16.4
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.4
-- @velum-labs/routekit-runtime@0.16.4
-
-## 0.16.3
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.3
-- @velum-labs/routekit-runtime@0.16.3
-
-## 0.16.2
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.2
-- @velum-labs/routekit-runtime@0.16.2
-
-## 0.16.1
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.1
-- @velum-labs/routekit-runtime@0.16.1
-
-## 0.16.0
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.16.0
-- @velum-labs/routekit-runtime@0.16.0
-
-## 0.15.1
-
-### Patch Changes
-
-- @velum-labs/routekit-contracts@0.15.1
-- @velum-labs/routekit-runtime@0.15.1
-
-## 0.15.0
-
-### Minor Changes
-
-- 5cd0e8c: improvements
-
-### Patch Changes
-
-- Updated dependencies [5cd0e8c]
-  - @velum-labs/routekit-contracts@0.15.0
-  - @velum-labs/routekit-runtime@0.15.0
+  - @velum-labs/routekit-eval-contracts@1.0.0

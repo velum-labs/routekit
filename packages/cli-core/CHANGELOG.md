@@ -1,5 +1,22 @@
 # @velum-labs/routekit-cli-core
 
+## 1.0.0
+
+### Major Changes
+
+- 79fe1c7: Remove retired compatibility surfaces and introduce explicit resource ownership,
+  transactional router generations and remote enrollment, and cancellation-safe
+  harness sessions. Move router configuration ownership into config-core, add
+  validated provider boundary codecs and streaming, decompose routing and HTTP
+  endpoints into explicit ports, make daemon/CLI application services declarative,
+  and enforce intentional package APIs in CI.
+- 3a969f1: Replace Commander command metadata and registration types with the Effect 4 CLI command tree, run each CLI invocation on one managed Effect runtime, and preserve dynamic completion and launcher argument passthrough at the process boundary.
+
+### Patch Changes
+
+- Updated dependencies [79fe1c7]
+  - @velum-labs/routekit-cli-ui@1.0.0
+
 ## 0.18.2
 
 ### Patch Changes
