@@ -70,15 +70,42 @@ async function completedExperiment(experimentId) {
   return snapshot;
 }
 
-async function outputsByTask(snapshot) {
+async function outputsByTask(snapshot, ignoreInvalid = false) {
   const store = new VercelBlobArtifactStore();
-  const entries = await Promise.all(
-    snapshot.jobs.map(async (record) => [
-      `${record.job.taskId}:${record.job.treatmentId}`,
-      responseObject(await readJsonArtifact(store, record.outputArtifact))
-    ])
-  );
+  const entries = (
+    await Promise.all(
+      snapshot.jobs.map(async (record) => {
+        try {
+          return [
+            `${record.job.taskId}:${record.job.treatmentId}`,
+            responseObject(await readJsonArtifact(store, record.outputArtifact))
+          ];
+        } catch (error) {
+          if (!ignoreInvalid) throw error;
+          return undefined;
+        }
+      })
+    )
+  ).filter(Boolean);
   return new Map(entries);
+}
+
+const [neutralSnapshot, neutralRetrySnapshot, generationSnapshot] = await Promise.all([
+  completedExperiment("onboarding-generalization-neutral-120-v1"),
+  completedExperiment("onboarding-generalization-neutral-retry-1-v1"),
+  completedExperiment("onboarding-generalization-registries-3-v2")
+]);
+const [neutralOutputs, neutralRetryOutputs, generationOutputs] = await Promise.all([
+  outputsByTask(neutralSnapshot, true),
+  outputsByTask(neutralRetrySnapshot),
+  outputsByTask(generationSnapshot)
+]);
+
+function neutralOutput(taskId) {
+  return (
+    neutralOutputs.get(`${taskId}:neutral_sol`) ??
+    neutralRetryOutputs.get(`${taskId}:neutral_sol_retry`)
+  );
 }
 
 function normalizeCards(cards) {
@@ -231,15 +258,6 @@ function mappingRequest(tail, cards, neutral, treatmentId) {
   );
 }
 
-const [neutralSnapshot, generationSnapshot] = await Promise.all([
-  completedExperiment("onboarding-generalization-neutral-120-v1"),
-  completedExperiment("onboarding-generalization-registries-3-v2")
-]);
-const [neutralOutputs, generationOutputs] = await Promise.all([
-  outputsByTask(neutralSnapshot),
-  outputsByTask(generationSnapshot)
-]);
-
 const generatedRegistries = new Map();
 for (const task of generationSnapshot.experiment.manifest.tasks) {
   generatedRegistries.set(task.metadata.repositoryId, {
@@ -294,7 +312,7 @@ for (const repository of source.repositories) {
     registries
   });
   for (const task of repository.evaluation) {
-    const neutral = neutralOutputs.get(`${task.taskId}:neutral_sol`);
+    const neutral = neutralOutput(task.taskId);
     if (!neutral) throw new Error(`missing neutral output for ${task.taskId}`);
     const tail = taskTail(repository.profile, task);
     const requests = {};
@@ -380,6 +398,7 @@ await writeJson(registryAuditFile, {
   sourceHash,
   constructionExperiments: [
     neutralSnapshot.experiment.experimentId,
+    neutralRetrySnapshot.experiment.experimentId,
     generationSnapshot.experiment.experimentId
   ],
   repositories: registryAudit

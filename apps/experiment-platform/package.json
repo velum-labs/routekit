@@ -36,6 +36,8 @@
     "onboarding:generalization:collect": "node cli/collect-onboarding-generalization-data.mjs",
     "onboarding:generalization:construction:prepare": "node cli/prepare-onboarding-generalization-construction.mjs",
     "onboarding:generalization:construction:manifests": "node cli/generate-onboarding-generalization-construction-manifests.mjs",
+    "onboarding:generalization:neutral-retry:prepare": "node cli/prepare-onboarding-generalization-neutral-retry.mjs",
+    "onboarding:generalization:neutral-retry:manifest": "node cli/generate-onboarding-generalization-neutral-retry-manifest.mjs",
     "onboarding:generalization:evaluation:prepare": "node cli/prepare-onboarding-generalization-evaluation.mjs",
     "onboarding:generalization:evaluation:manifests": "node cli/generate-onboarding-generalization-evaluation-manifests.mjs",
     "onboarding:generalization:aggregate": "node cli/aggregate-onboarding-generalization.mjs",
