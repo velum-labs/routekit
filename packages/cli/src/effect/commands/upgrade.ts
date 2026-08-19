@@ -24,7 +24,7 @@ import {
   readDaemonRecord
 } from "../../client.js";
 import { routekitHome } from "../../config.js";
-import { daemonSupervisorController } from "../../commands/gateway-service.js";
+import { daemonSupervisorController } from "./daemon-service.js";
 import { drainGraceMs } from "../../commands/serve-options.js";
 import { routekitVersion } from "../../state.js";
 import { routekitRoot } from "../root-command.js";
