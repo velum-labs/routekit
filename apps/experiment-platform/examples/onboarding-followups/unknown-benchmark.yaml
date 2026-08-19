@@ -1,0 +1,614 @@
+schemaVersion: 1
+experimentId: onboarding-unknown-benchmark-60-v1
+objective: Measure separate unknown probability against a vague other area and a positively defined shared area on covered, partly unknown, entirely unknown, and real tasks.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: c0b6854b0844ec239afeff7962541a0f162e5b18
+dataset:
+  id: onboarding-unknown-benchmark-60-v1
+  hash: 5cd6d0b5a6a21c0bb252c1079fc4ffc1f442649c9bc01b39817c2430c1e8159d
+  role: development
+matrix:
+  treatments:
+    - id: unknown_separate__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: unknown_separate
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: unknown_separate__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: unknown_separate
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: unknown_other__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: unknown_other
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: unknown_other__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: unknown_other
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: unknown_shared__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: unknown_shared
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: unknown_shared__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: unknown_shared
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: synthetic-composite-01
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-01/sha256/b7/b7ba5bae7b835800215e5af7aa3ee6685c91fa089e0e5082470e1572704be855.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-22561
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-02
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-02/sha256/b7/b7450ce5fade9b77315d1364b5acaf649747c3ba14e0561ecaebf4531ea18446.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24133
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-03
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-03/sha256/11/110e468624d77f5b6348cc2ec519e58a2beae0a75d2ba70af6f284a712702f13.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-24479
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-04
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-04/sha256/1f/1f52ed79aac8f1b04f2f7d33faf684980cee92d2fdc95983851c66a698968dc9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-25010
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-05
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-05/sha256/dc/dc2d8d9ec2e60832486ca9182ad4a5ba141050d88a3635d5a54a24afd6381731.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25548
+        - backstage-pr-25593
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-06
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-06/sha256/8c/8cf08e2fe006f48701ea50cb56ea597109918960439d3343b23a67bd18c49234.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25601
+        - backstage-pr-26223
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-07
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-07/sha256/2c/2cf6bfa1b85305033146fe9498536fa3828430fc7d9af90434cc686f45da967e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26406
+        - backstage-pr-26536
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-08
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-08/sha256/ae/ae43952a59a6a919fb1ae4a1b2af0ceaac05ba8602696c3f935dc170632a7ce3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26935
+        - backstage-pr-27407
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-09
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-09/sha256/e9/e91865f0428f9bb6248678ce716ab45e27afc450ed64e38e27e01bd6c8a84854.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28711
+        - backstage-pr-28769
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-10
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-10/sha256/ab/ab6818c4e4c66885b94501859da104543b45fb4d93939916b047846056b9fca3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28911
+        - backstage-pr-28964
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-11
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-11/sha256/67/673967bb613cbb8e8ff951bfbdee9d5bc3a0a5a5d2bfdd907cc075acb9edc08a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28997
+        - backstage-pr-30311
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-12
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-12/sha256/d5/d59ca4c9bdb0ecb921c1ba49daea51754db6fe331f7d297f2b1bce741329a4c3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-30988
+        - backstage-pr-32179
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-13
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-13/sha256/8f/8ffdc636d086584e077d6b1b21420cf6adb153c68d6fe47b78d8935af8f0605e.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-101285
+        - grafana-grafana-pr-105422
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-14
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-14/sha256/d0/d029a9a67486a3e01e673cb2c18363cd2fcb2e0213c2de9dcef8af4514287941.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-116038
+        - grafana-grafana-pr-118686
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-15
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-15/sha256/65/65a361abf2a45fed023d8330135119c4e4b73fe1792b96da83c59f61f8ee991f.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-80511
+        - grafana-grafana-pr-119124
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-16
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-16/sha256/7d/7d433e1c0ea9e8554ced193f828c43b29272f6bc797e7a9b05ace58766e6a36f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-132061
+        - kubernetes-kubernetes-pr-134936
+      expectedUnknownTarget: 0
+  - id: synthetic-composite-17
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-17/sha256/5d/5d0bd1599556f32dfca84ae16cd2901bd90018bc4fa7c3f8b2cfc68feb8498d1.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-133896
+        - kubernetes-kubernetes-pr-135100
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-18
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-18/sha256/8e/8e1c89ba742b1d9dd704f7c2c64f7bfaca4a4555e9e1cea99d464a21973dc0df.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134516
+        - kubernetes-kubernetes-pr-135400
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-19
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-19/sha256/4d/4dbfdad0915564a10995c9b51245ffb3b61b2b3f4dc34e9cdd6c0541df34d244.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134769
+        - kubernetes-kubernetes-pr-135807
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-20
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-20/sha256/23/23e622eb852bc8fe2e46adaf75d81e1ac86afc15f40295288772efe3a85c7153.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-136502
+        - kubernetes-kubernetes-pr-136633
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-21
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-21/sha256/f1/f1b0cf33e28879d83f251e052d2e3bd2685add264cbf58d501a885e3744c9afb.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-138367
+        - kubernetes-kubernetes-pr-139261
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-22
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-22/sha256/4c/4c2ef3e534a764f1ac2e7a2e33493db8c28b82b25191e3d22f300176186b9c3c.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-138408
+        - kubernetes-kubernetes-pr-139667
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-23
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-23/sha256/b0/b070bb1fce128958d88a600b970ff8fba4e4ae28f27d3bb0d563cc261e0ac2ce.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-140033
+        - kubernetes-kubernetes-pr-139714
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-24
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-24/sha256/0c/0cb46b0d5a9110aa4292a35253b384bdf8507a95bb30b668fdd6b67a8fe8445b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-23802
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-25
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-25/sha256/e0/e0f518e017d4531873a91a7468804988c0662f7bbeb2206d02d3199022e0f33c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22561
+        - backstage-pr-23901
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-26
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-26/sha256/8b/8b219718cf0834c38ae46a32073f0f44a045944568b3403f9088634ecdce3390.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24316
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-27
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-27/sha256/2a/2ad00559bec182c38a7bd85227fd90125b408f43a2b0dedb59197b0972f2028c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24133
+        - backstage-pr-25470
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-28
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-28/sha256/7f/7f3688ec88a7595a3bac75fdc0adcdacad29cef6d53d7995a3834cb12e0d50be.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-28792
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-29
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-29/sha256/07/074f07406cbc482f8261cef7751ebea006b67d55273b8f6c2c0108e0c1dea3f3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24479
+        - backstage-pr-30678
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-30
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-30/sha256/64/642492b26d0e1e40a84a100944762d4a31c55f9517b58a105765f1f3a8cde120.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-30743
+      expectedUnknownTarget: 0.5
+  - id: synthetic-composite-31
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-31/sha256/e3/e3dd6255eed45935a4773dd0abc07aa77efd930467dc8f3048dcea9124a63328.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-31255
+        - backstage-pr-33200
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-32
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-32/sha256/a7/a77ca70b16fa7db5560f24c9f8edbf5b5a77d761c973b7843c63a9b97208a4a7.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23802
+        - backstage-pr-34608
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-33
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-33/sha256/76/762b796f1bd60b92fe7f4a47080b2a4714cbc64111dbe1cf261615632dd23726.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135100
+        - kubernetes-kubernetes-pr-139842
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-34
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-34/sha256/cb/cb6a1d23aba64c3da8c2cd28083d7d95d20b904681f087c7b06c1ec2abe888c2.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-24316
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-35
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-35/sha256/fa/fa6386f2f4b84032f2fe8cef9ca2a0b5990023de3fb2e21772b182fd80ae94b6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-25470
+        - backstage-pr-28792
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-36
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-36/sha256/17/17c7e8f4c916ffaa9057aa6a5b14bcb3a60fbd8a10a50d1359f79352dab5198c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30678
+        - backstage-pr-31255
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-37
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-37/sha256/72/72070ba39ac4f695c9e18ede0eac3c79b8578bc6a013979de711e47e7455000b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30743
+        - backstage-pr-33200
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-38
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-38/sha256/2b/2ba7771e6afcd44758bb67ca4b0c82ef16efd6d8fbf5daba7943405e81005bff.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135400
+        - kubernetes-kubernetes-pr-135807
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-39
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-39/sha256/e7/e7aa9564838680f095539bc083b9cc302dd8d9327d5703b8cbe457970e406e46.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-136633
+        - kubernetes-kubernetes-pr-139261
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-40
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-40/sha256/a9/a99d420a83a93fe645cd67b7970f30e8c9cc259891cc8ef9077c47e1aaaea707.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-139667
+        - kubernetes-kubernetes-pr-139714
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-41
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-41/sha256/86/86f8193c625ddea1c1e77c22063ed5d4a5743f816df1be46ad47f5beb3624a96.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-34608
+      expectedUnknownTarget: 1
+  - id: synthetic-composite-42
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/synthetic-composite-42/sha256/35/357d09696734435b210bd966d01ec76ab8bee372b050d0f9258479c8cf5aeda7.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135400
+        - kubernetes-kubernetes-pr-139842
+      expectedUnknownTarget: 1
+  - id: grafana-grafana-pr-80511
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/grafana-grafana-pr-80511/sha256/b1/b137c63b4fc65a155f1ef7054af32c0ec6ccb21f8d4384af76bbae04da895f42.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: grafana-grafana-pr-101285
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/grafana-grafana-pr-101285/sha256/93/939f521e7702a327161e7d96264e4d13875218205bfc85f1b16da8c1a953cd99.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: grafana-grafana-pr-105422
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/grafana-grafana-pr-105422/sha256/30/3063d3d8d325cadb845ac1c96dab052b36e058932c0ceed3b4972a761a3aeeec.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: grafana-grafana-pr-116038
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/grafana-grafana-pr-116038/sha256/b9/b949031bb734c22df795c30672505f7c8814f289ab84b89d46c99e5849ad5c7f.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: grafana-grafana-pr-118686
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/grafana-grafana-pr-118686/sha256/bc/bc069e38e41dcfd1174e65b4200a1460f55abb787545db08e722b39d48fd8919.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: grafana-grafana-pr-119124
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/grafana-grafana-pr-119124/sha256/5c/5c744fd0bc51b714ecda031e229088345919ae7ec176a5cf4036792cc9e9dd1a.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/kubernetes-kubernetes-pr-134516/sha256/40/4092a1d95f492923fef7dce273b081a49600bc1bbb9c2896aa826deb444b3022.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: kubernetes-kubernetes-pr-134769
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/kubernetes-kubernetes-pr-134769/sha256/df/dfad62a6927859e469ebebc94d06686320c7d47c34f0df230e1644824902150d.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: kubernetes-kubernetes-pr-136502
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/kubernetes-kubernetes-pr-136502/sha256/b5/b5c5df63690b58d0496bcf417c7182ee62bb1b75dc9dafa5fda473a7438fabc5.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: kubernetes-kubernetes-pr-138367
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/kubernetes-kubernetes-pr-138367/sha256/72/7279daec4810554dccbd0096885d87f0690afb851df1f83199be67288fbec4aa.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: kubernetes-kubernetes-pr-132061
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/kubernetes-kubernetes-pr-132061/sha256/cb/cb598d60ceb88956e6b6ad49813c2ce8dbc23302ab751eb94b74466db94f0b6b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: kubernetes-kubernetes-pr-133896
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/kubernetes-kubernetes-pr-133896/sha256/63/63767e9b8f61bdff9c272446abce3418b40ae88c81243e13494700fc67b428c8.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      expectedUnknownTarget: null
+  - id: backstage-pr-22093
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/backstage-pr-22093/sha256/bb/bbdd6d5f8405f7f2625b977ac3fb73ca57e2b1d746aee7071a03221b7fe59549.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      expectedUnknownTarget: null
+  - id: backstage-pr-22561
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/backstage-pr-22561/sha256/c4/c4fe807b2e7b6619177718d8dd0651f9418643148effd39d5511e902e67f2a93.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      expectedUnknownTarget: null
+  - id: backstage-pr-22772
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/backstage-pr-22772/sha256/5b/5b582ba595a6261e5d7b39c8a9cbf25eb6816703a56fd2e22374353a5e53682a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      expectedUnknownTarget: null
+  - id: backstage-pr-23802
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/backstage-pr-23802/sha256/ab/ab9a2499a120622049e153b8ecdbf1a08854926c407811846466a3d5e3a0cbc2.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      expectedUnknownTarget: null
+  - id: backstage-pr-23901
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/backstage-pr-23901/sha256/62/62b105a798e282031b2c80b98674e1c0e6a1bac3a7ff7076f7bbaa2f27c11b85.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      expectedUnknownTarget: null
+  - id: backstage-pr-24316
+    inputArtifact: inputs/onboarding-unknown-benchmark-60-v1/backstage-pr-24316/sha256/6d/6de960e92e5c690a8b9a0a98bc9eafc69123a929bc58f555ce64f66e0cada909.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      expectedUnknownTarget: null
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_active_area_recall
+    - composition_false_positive_mass
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 4
+budget:
+  providerMaximumUsd: 10.4
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false

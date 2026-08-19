@@ -1,0 +1,376 @@
+schemaVersion: 1
+experimentId: onboarding-generation-comparison-real-58-v1
+objective: Compare unconstrained Sol generation, rule-guided Sol generation, and the existing human-reviewed registry on real tasks.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: c0b6854b0844ec239afeff7962541a0f162e5b18
+dataset:
+  id: onboarding-generation-comparison-real-58-v1
+  hash: e46ddc22543a841a6d3df03723674b4abe36e2ec9da4d6ede00f0a487732c97e
+  role: development
+matrix:
+  treatments:
+    - id: onboarding_unconstrained__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: onboarding_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: onboarding_unconstrained__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: onboarding_unconstrained
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: onboarding_rules__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: onboarding_rules
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: onboarding_rules__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: onboarding_rules
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: onboarding_human__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: onboarding_human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: onboarding_human__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: onboarding_human
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: grafana-grafana-pr-80511
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/grafana-grafana-pr-80511/sha256/33/3383d272b64f655602112982d892a81d570902158fe866ab42ce65e93f605da9.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-134516/sha256/93/93a19b0885e4d3eb6ae2b4ba52656b5a8573026a38ad0eadb8b12abf74fb8117.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-101285
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/grafana-grafana-pr-101285/sha256/f5/f5a51f5c237a8742072419f7548df60f639db4687627daf4aede5ca5575e8448.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134769
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-134769/sha256/93/937c6666899ff02c9493fff388c43881540793c57384717536f96212f11506c7.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-136502
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-136502/sha256/75/75812453f659da4ed65fad9aba4f677546336aa387264db5f48d5c970974640b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-138367
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-138367/sha256/d9/d957898f8c580f5fed9bcb9631e0f2f2a942dca3c803269eca906494e1e7e05e.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-105422
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/grafana-grafana-pr-105422/sha256/2f/2f85020eb04658c103d8a0ac3d7f2bbb4211a6a644e0874263d9552170abe922.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-132061
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-132061/sha256/b7/b7099157b4ece23bfb8fbfcfd58af27f5d0da414b26167e428e5e45f929e9767.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-116038
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/grafana-grafana-pr-116038/sha256/35/35c9e2b1a7efb5e1808bd70188beb2b10d559cb19ee486c82f5bfce07a8d80b9.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-133896
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-133896/sha256/bb/bbc90038851fe6b2471909b7ae29afddb620a575d209dad21b0097eb48c9ebe0.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-118686
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/grafana-grafana-pr-118686/sha256/23/2329844f994740a5f23aac6570ef5d7d4de76591d55621813c226c90b21cd324.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-119124
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/grafana-grafana-pr-119124/sha256/80/805f96cd966722c1aeaeea29815ff9b2715b4bffe28a6814818713ea56027d02.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-138408
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-138408/sha256/71/717fa0c756e21e24ab9c50a145830a295de069c87b25288fab0fe6348690bd04.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-140033
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-140033/sha256/9d/9d8e88f3a40ce2d8e25a2111ff71c3401d144bdf0aaba2b74b02348c6ecadaa3.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134936
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-134936/sha256/96/96b23a6711b297ecac6194bf9fe9b4afc9753be739af20ad7239a39e896bceb7.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-128725
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/grafana-grafana-pr-128725/sha256/3e/3e055c357cd22b0525e5c75b2464e6922c7503dd37850322111e633642a6c752.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135100
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-135100/sha256/27/2787d280d09412fe7c62bb7d49a9c13d417f08eac30af3c95670989dee67fd79.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135400
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-135400/sha256/5f/5f86ac40c7994d639fef5c7181ec5bf9a1e88515059a49eb12224d3d20b8a2e5.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135807
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-135807/sha256/cb/cbde52db286ab3c6eb491ddf03c3754e71957dbc6fef10c98cd1ead779a9fe7b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-136633
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-136633/sha256/67/67590fd78e83420d0af292dd0f4f893a1f12de79e4bfbb2257a97db8e6d6586d.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139261
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-139261/sha256/88/887fd327be184e0e3f960863d3263e1e456512c2020272abdbba8eaea557ee6f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139667
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-139667/sha256/f8/f8bc14c214015de8a3cc6f2583fff59d2b72cd254f159079c87138876b14b131.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139842
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-139842/sha256/ff/fff05376fa8d2fc7718556f20e8235e9a3f002607a50da620b814b4818d26a5f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139714
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/kubernetes-kubernetes-pr-139714/sha256/fd/fd139a376891b3be244c362b3db014ba2d09a283aad7c9240f7a7b5778b1598b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: backstage-pr-22093
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-22093/sha256/af/afeffbb1bb22f83274af9d33478b1e57ffe534c634f7cc51326f0c3c14378679.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22561
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-22561/sha256/c0/c03c0395c7a6e08f9d7b5201d3d013da0e6e5bbf9ace2d3df81012ae5c00fff1.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22772
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-22772/sha256/56/566c1751294c43ed1a519d140299f03fc61591229c100b498a48ab102583eab0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23802
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-23802/sha256/76/76f7fb6c9cd21bb12e2ec75e9e7e217b575269f062a576a42bb4c5144568add3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23901
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-23901/sha256/27/27a0f963072823e996269daa68c5afd4f905be71a81e7d2a548766be08b537a6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24316
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-24316/sha256/ca/ca7316975b7d966f5930a787752ee599143dfdca27d4493b30135c42d1ff9100.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24368
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-24368/sha256/d1/d134e6d1ad09737cf2262bf8e894e477b9f1ca7ba926d8e4a648f7593ad0b28b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24479
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-24479/sha256/14/1467171a53dbeabec1f4c82e11b32850ce7b06dee341750366c4946d77f35520.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24133
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-24133/sha256/65/65caa627b53b097fdb55ef968b080241f42063872f1303fbcf8decac922457af.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24870
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-24870/sha256/6f/6f7b1819058832aed7686a5f43ddeda0d989cb0cf8237d145d2f52180081e48b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25470
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-25470/sha256/d9/d9b4dc73197e711cc32d6ffac36bbfaddcb0fde40da81f1f3cb469a4ae5393ba.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25601
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-25601/sha256/97/973628a85b17a13fca56884724f816ff36344653bb41ab227d28f7b58d9abea8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25010
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-25010/sha256/11/117575cebf3eca2aeb05e0ac7e203dde2de1732f59df4e3d4d9f2710e2179dcb.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25548
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-25548/sha256/ee/ee58322bf63da29adc645f162291e240e0e3fb0c775ae73d58ff50daa29368b5.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25593
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-25593/sha256/97/97da9ab0071475f91016d5bd9dcbf8360a4b239ead597035721340da16aa74e7.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26223
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-26223/sha256/f8/f8b4e6d8568c075870420aebb15315da56051af048799256dc61648e4db1b4cb.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26406
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-26406/sha256/5e/5efbe45d2d1078568919826250db8182f4dcf813f86a43112a9e4d682d4f5ebd.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26536
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-26536/sha256/ed/ed22c81309e028d60a8577a99b6c03f311e2159704136f6ae4f48162cf1509a6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26935
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-26935/sha256/25/25649588a7a3da9d6a93f6a8bd2f5f9b26673680f70b672c47ea4edd337ec02f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-27407
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-27407/sha256/95/957c1573e1014e1b967dddeba4c608e9318f95ca58e98f52b9761eeca9638b08.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28711
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-28711/sha256/12/12e46e7a5e0928fbfbf8949e92e728babbf36c28053d6b6e3f24856642ec7cc8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28769
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-28769/sha256/61/618ba7032df7d41bd9da035eef19def7f992d75fa22658484914be81679d4eb4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28911
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-28911/sha256/81/816d41469a181999be3354bc03d1e62f298a11d63079351ebf2a20fecdfa749b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28964
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-28964/sha256/e5/e519564aa96f31c2dc380283107fa3ea4aa38c0a7e794c0d05f1ecbe074ccb28.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28997
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-28997/sha256/77/776b4bd531f01f3660435923a6d51b2d0ccc57458dba8ae5468fe51c97c92185.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28792
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-28792/sha256/87/873bcf9b288a61f93f5ba87f6c384138c004f75e59a16b6b448d2a67271d8870.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30311
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-30311/sha256/bb/bba367c6164fc34429e2ab6347642fde441a1c322dec581b468320636e33d9cb.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30743
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-30743/sha256/9e/9e29d7e5685d31bc65c6917b9a530a8dbcf7ff1087b8a76774480913ed2f7041.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30678
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-30678/sha256/67/677be30bed5ef87a329f5fe181a6cbefd0c096e6fb95467914e5948a86bca34d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30988
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-30988/sha256/a5/a558eb13f3eb0938f32577ac51d3e9c323440e6b6e23d76b65e075bc2eebccfe.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-31255
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-31255/sha256/e3/e3b9befad3d6c3f351d4c832e30990b2605ba44bc201b573f09dd1b40ffe780b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-32179
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-32179/sha256/ad/ad483cc650c40f273fe8cfce061235ca331ddecea177fb8a75b368252ce15992.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-33200
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-33200/sha256/ce/ce5c62aa21b527150ad9ba6056c5fa27f95e41c6747dfd89a05b94b1f94c777b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-34608
+    inputArtifact: inputs/onboarding-generation-comparison-real-58-v1/backstage-pr-34608/sha256/62/6255e181091652e3854c8d1f3a2fd5191374b032da275e84b77f00720aa01130.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_active_area_recall
+    - composition_false_positive_mass
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 4
+budget:
+  providerMaximumUsd: 10.05
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false

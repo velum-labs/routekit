@@ -1,0 +1,881 @@
+schemaVersion: 1
+experimentId: onboarding-area-card-ablation-100-v1
+objective: Determine the minimum useful Area Card by isolating summaries, real code snippets, anchor counts, positive examples, and negative boundaries.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: c0b6854b0844ec239afeff7962541a0f162e5b18
+dataset:
+  id: onboarding-area-card-ablation-100-v1
+  hash: 8e36739972c1ef53b918b105722767eafe9c4ce7e1b773f898efba38df68c22a
+  role: development
+matrix:
+  treatments:
+    - id: card_reference_sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: card_summaries__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: card_snippets__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: card_one_anchor__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: card_three_anchors__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: card_positive__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: card_positive_negative__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: card_complete__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: card_complete_snippets__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: cards
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: grafana-grafana-pr-80511
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/grafana-grafana-pr-80511/sha256/da/da62d6b9d79b70c4a0eb58d226771c22c8a87610802cb37b3a6ab769e493382c.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-134516/sha256/70/708b6c6c312d57954a9c2cd24dd8adba712b88c774441d632a86f28491a5767b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: grafana-grafana-pr-101285
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/grafana-grafana-pr-101285/sha256/ff/ff5e3f839c4d6c62ad3cb99ffbd333e107b4e925ff6f89e51b9fbee11171dbcc.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-134769
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-134769/sha256/cb/cbb644ff5692ad486d56feb840bc7030675c6d78785885e509d72001de6e517b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-136502
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-136502/sha256/b0/b028f309fb2fd96c1e0cf8d519007256bed7da1533c4db5e4cea9df4bed2ab32.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-138367
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-138367/sha256/9d/9ddfcaeabe34a574a97d867a7946b1d37100cb3414b64f6ff6bf7a9e329eb20f.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: grafana-grafana-pr-105422
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/grafana-grafana-pr-105422/sha256/84/847c7d947dd3f6a2e2938af2f6615b658c1d2ec44c46e557f7180104c269b16b.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-132061
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-132061/sha256/26/26d9da6447ae09d24166926c46922c209b8effa58c12344c0f3e3473b23dd052.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: grafana-grafana-pr-116038
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/grafana-grafana-pr-116038/sha256/c0/c05e6cc6624a02a5a54f074d3e701c815a83d96dee3e197aad15207e3526ddc7.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-133896
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-133896/sha256/5e/5e43c2bfea2455315374fade578dbb648f934f7ddc10cef7a4356e07b5cbf47a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: grafana-grafana-pr-118686
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/grafana-grafana-pr-118686/sha256/05/05440b6787c11052ca93874e78d2aa53d8f53935c5119eed8cbf654331ae8a70.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: grafana-grafana-pr-119124
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/grafana-grafana-pr-119124/sha256/f1/f1d79d04a51f41274fc4e681d9a343af33dfebed4be02e632d3896a4ef411e54.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-138408
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-138408/sha256/a8/a892ce02b297725d0519b27958519518d4dc69995b779c814bda57886fcc5113.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-140033
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-140033/sha256/f9/f970bfd7b364c30020d44399312e1fb35b06623e3c48d8a0fdc646537b617258.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-134936
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-134936/sha256/f8/f8b30792b773434e799f1e875ab71612ff695d93628eb210a3d68d28982ba856.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: grafana-grafana-pr-128725
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/grafana-grafana-pr-128725/sha256/e2/e252c08c4dd5d268c05b481720695025b63d1392375a936e5c116af206becc2a.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-135100
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-135100/sha256/ad/ad44769560f14f629a3d3bc202d01148f0c326c9443962133c8ae5bfa8889c84.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-135400
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-135400/sha256/5a/5a821a983c7ad1cbd66a6fe22dc7651366b43623f9871abb0eb9a2143a3c97ff.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-135807
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-135807/sha256/3c/3ca19bf9385797c51be15431468fac601746974cdda8966751ec09d32e4857b9.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-136633
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-136633/sha256/e2/e20f62f56a97f7ac5ae92f32bf9efea51ab9f0d52a237d1038a4eba949f9d299.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-139261
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-139261/sha256/c7/c71c85c2dad93ee595d367e8d72b89be68f5ce67ab925aa334629b80bb31bb59.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-139667
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-139667/sha256/11/1107806479f79940f4e65fb6831c1558712d8d452331fbde6a81db0335377d24.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-139842
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-139842/sha256/62/622e6dccfd341ba340f0099c543a8e36a356bcf6cfe270e2291c9f558ae9297e.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: kubernetes-kubernetes-pr-139714
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/kubernetes-kubernetes-pr-139714/sha256/78/781179970b0c78f2c0e7864b74a43596e7f90dcb014cf0e267b3e0970ad4f433.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+      snippetCards: 8
+  - id: backstage-pr-22093
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-22093/sha256/67/6775c47c41a8be75abc56c2470050f361f7f919e64f74332e79d2fcc05ed6b89.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-22561
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-22561/sha256/b5/b571739c36abe91f25ec0286839a1ea3fdd334ea62c31fbed4c47a5b34d4a43c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-22772
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-22772/sha256/5a/5aa57e0a07c0fab0af3f8671459b848aa0d3d5058cc4dedd83e66c80d998f6cb.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-23802
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-23802/sha256/46/462d44000a772b011093b16db94629858c4a23499d56d9f7cf6ff719593894f0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-23901
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-23901/sha256/90/90af202d268e7ec488b82b34725a71f0a8dd2c6d988bb09b5b994b679b36bb85.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-24316
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-24316/sha256/d8/d826c7f3b3b84db71c5e85b8e335204b3b3e59ab682da3bd4fc362ddc020eeb0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-24368
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-24368/sha256/02/021c3f0bfb8f5748d8f5dddb08352bd50a7e3f0b64715ee9f26e0541124e4b88.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-24479
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-24479/sha256/14/1426413a0ec93fdc61e81f8be0e0fee73ac52bbf328dbdd80196026c981dabf8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-24133
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-24133/sha256/37/371aec6bcd4bab1495f67503ad7bb3c80d8406776651e1d57630a6e49f7afe3a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-24870
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-24870/sha256/5b/5bf263ecd12bbe7e35f27be760a9b00f9acb7c040a1d1ddf7fc7fbbfeae28fa3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-25470
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-25470/sha256/61/610d8872d5280238c2241a94cef643098cf5fe9e8933e2f82f17220e536e36e0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-25601
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-25601/sha256/bd/bdfc7e0a13445063c41c26b698595f22da181905574da7a23af4334008b62069.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-25010
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-25010/sha256/95/95bd4e586fd517e27101ee6c938becc61245382c3548009c791f59cb076361b9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-25548
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-25548/sha256/84/84d21691e5d0a8032ef58c5153ff81bf7a23a7b8b7c5467f74167812857bb109.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-25593
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-25593/sha256/f7/f7efb6cf9c3a85d656753194b8a05f3731cd5bf4d0ed6f98a7973ed037f50ee8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-26223
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-26223/sha256/f1/f1eac915b5bba3652a9c44f2217d35674275d18f1589baa904e223ab7228bd52.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-26406
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-26406/sha256/c0/c03c819e46307a6f03d3bdd58a95e5018c1c8b63ee04faba6fa2a63619024810.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-26536
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-26536/sha256/05/05e1467725fb60a31d3bb151d87d94d678c3aec2e2387eb831fd2b02685d6646.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-26935
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-26935/sha256/d2/d286ad146e0765f73e9e5fc366ca02fbab785f21b7820c91c7fa641a5dd88baa.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-27407
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-27407/sha256/b1/b176a8ecf80283bc2f164fcf70779e5939fb59a1ee34b58769617bcdbf481729.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-28711
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-28711/sha256/1f/1f0465f47a56b45a7eeb578e191f05312a98e652a166426638754c014d75e4d2.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-28769
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-28769/sha256/f7/f737092342330d5e644ae8ded221cff4c8dde205e518fba536abd6112b32ea0e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-28911
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-28911/sha256/30/303ef1086f815ef40322ddba5bee6fdbf3266bab87723f61faf9caae6f1e9c3d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-28964
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-28964/sha256/9a/9a5b6351008abe531bcbb365abdc524b289fc703401823a159beabae05bd43ed.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-28997
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-28997/sha256/04/048965f871fa01294dba7b72ca2c817ee71fa3fddb570954fd1b60e28f2da672.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-28792
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-28792/sha256/b7/b73e93c75901ebbfc0d3f0822eee7b44ca4e8e87708f0c4b89aa17c41feec5c5.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-30311
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-30311/sha256/89/8959bf680f901fb5aecdfd2330f627147cc76f4337d3d9eaa53d6f1b383bedad.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-30743
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-30743/sha256/f7/f7d3257124b8a78d81c51a6324281b7fa6b9c681d3c7b75b26b1849c73f5f182.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-30678
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-30678/sha256/b4/b4c6049e4cd60d7a58e85686db4df70878e0e86ed4b53b589d2ef7c10e304cec.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-30988
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-30988/sha256/e9/e9e406a71895d88009b85167191957620d9c445d7af7cee36a28b0686a4d9fe6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-31255
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-31255/sha256/74/7412cd963bb823a174746090b937103b02a7f7288aa433ebde0de0722dfdf659.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-32179
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-32179/sha256/91/9159a0b46fe606f49f263f8d83449063c56206edb1bf0951fd2069b01bd62d20.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-33200
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-33200/sha256/a8/a8007fe5fd811348f4e75be610900148a515cc4488cfaa8121060716a69b4a2f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: backstage-pr-34608
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/backstage-pr-34608/sha256/c4/c4f62443d6dde3ac3bd812742caaf44f8900fb6023d50cb0105630716329da3a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+      snippetCards: 8
+  - id: synthetic-composite-01
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-01/sha256/01/01d968e68cbf406ce3bf08c44edf160bf3d7402b064bbeb58d609656d25e45b4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-22561
+      snippetCards: 8
+  - id: synthetic-composite-02
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-02/sha256/9e/9e9addf34cecd2f7b45c2a097d7ede4c321201efa801c3e0c6e05da17c9c0217.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24133
+      snippetCards: 8
+  - id: synthetic-composite-03
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-03/sha256/ed/ed6aee71745521dbbcc82299676387e77a1a8b2274ea420f0eea97153ee43c19.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-24479
+      snippetCards: 8
+  - id: synthetic-composite-04
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-04/sha256/2c/2c4b274f0b04a8bbf19974f700eb661b8923b52e5730ed128b41bb2885c0b27a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-25010
+      snippetCards: 8
+  - id: synthetic-composite-05
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-05/sha256/5f/5f6a1780438608d5d96ee010ff402591e76e2d86fac7d4426d2939f52294bd82.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25548
+        - backstage-pr-25593
+      snippetCards: 8
+  - id: synthetic-composite-06
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-06/sha256/6f/6f8af49667a57cc870dd440b1e7e90bfd977510738ce9325582947c8b9343fa5.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25601
+        - backstage-pr-26223
+      snippetCards: 8
+  - id: synthetic-composite-07
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-07/sha256/0b/0b0e50828ba055a3a3ab89d6269b9507f4ae457c7fe3d1bea60f7ec440684f8e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26406
+        - backstage-pr-26536
+      snippetCards: 8
+  - id: synthetic-composite-08
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-08/sha256/24/24872a908f5c85292cd81e9dac1131e743826be5b1baa4837a9255365e7870b7.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26935
+        - backstage-pr-27407
+      snippetCards: 8
+  - id: synthetic-composite-09
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-09/sha256/0c/0c404b7925f9c789b630716eb3543476535f08271cb054b257bdfde01c04c5c5.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28711
+        - backstage-pr-28769
+      snippetCards: 8
+  - id: synthetic-composite-10
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-10/sha256/f0/f005bca75a42abec6ba054050f397ed40fdaa0847ffb9a24ea3744aaeadd2f83.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28911
+        - backstage-pr-28964
+      snippetCards: 8
+  - id: synthetic-composite-11
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-11/sha256/7a/7a542b13eb5e1791ee4456d3a0b530fa202c40acd6bf5f38ce1b2ddaf762d2f1.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28997
+        - backstage-pr-30311
+      snippetCards: 8
+  - id: synthetic-composite-12
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-12/sha256/60/60c3e5929b3d2577ffa639a420bef21732fb73990446cf787fda87bc11f6ed60.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-30988
+        - backstage-pr-32179
+      snippetCards: 8
+  - id: synthetic-composite-13
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-13/sha256/0c/0cdcb1bbb2e85be918025c20c36be4934a9860b9868a2fa0cf864618f16b402d.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-101285
+        - grafana-grafana-pr-105422
+      snippetCards: 8
+  - id: synthetic-composite-14
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-14/sha256/98/983a29f28c8a88e99f81356bee0be6fb0b6b900c36da8b5e76a4e4210182b921.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-116038
+        - grafana-grafana-pr-118686
+      snippetCards: 8
+  - id: synthetic-composite-15
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-15/sha256/96/96115de849495f6bff6a110cc51eb48ffb9c2e4e48ebabddc944a738feeb18ac.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-80511
+        - grafana-grafana-pr-119124
+      snippetCards: 8
+  - id: synthetic-composite-16
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-16/sha256/89/898b9e84eefb1689606f076a73887597f2fb1c7272b178d64fb69f75695e09b0.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-132061
+        - kubernetes-kubernetes-pr-134936
+      snippetCards: 8
+  - id: synthetic-composite-17
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-17/sha256/4e/4eb4df7ec578758e207ea65bb3d9b951fd07b7389c217994ed1ce3aeda41cd87.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-133896
+        - kubernetes-kubernetes-pr-135100
+      snippetCards: 8
+  - id: synthetic-composite-18
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-18/sha256/a0/a05c8938b2f3e5c2d1311f35e343eaceb451a93dbaa6a8efbb3e10ef2a565a4d.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134516
+        - kubernetes-kubernetes-pr-135400
+      snippetCards: 8
+  - id: synthetic-composite-19
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-19/sha256/7f/7f6d43131b767925b8d6a12f57c5507081463430fb4e85580bfd48a6b13c5272.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134769
+        - kubernetes-kubernetes-pr-135807
+      snippetCards: 8
+  - id: synthetic-composite-20
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-20/sha256/ee/ee6f6ba9ecf42dede338c860443c753152e8087d16418e6d46decbbda51e6c9b.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-136502
+        - kubernetes-kubernetes-pr-136633
+      snippetCards: 8
+  - id: synthetic-composite-21
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-21/sha256/5b/5b7f9927a8224992c21519128b457fcb871291f805a11a2944c474e54e766853.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-138367
+        - kubernetes-kubernetes-pr-139261
+      snippetCards: 8
+  - id: synthetic-composite-22
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-22/sha256/d1/d1bdf4ab587550b5e9b19a4f86abc7b7e12b84b453037c1e5e6c5fce0354f856.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-138408
+        - kubernetes-kubernetes-pr-139667
+      snippetCards: 8
+  - id: synthetic-composite-23
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-23/sha256/55/5570dfbeb0b0a20bb186a1fccb82b18932ce866a3721a1d154cd3d252f68b1eb.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-140033
+        - kubernetes-kubernetes-pr-139714
+      snippetCards: 8
+  - id: synthetic-composite-24
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-24/sha256/70/702671cf99c29410c095a49ae8aa02e3378c4ff7e24410eadfa2f85f4589a7b8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-23802
+      snippetCards: 8
+  - id: synthetic-composite-25
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-25/sha256/2c/2c48c4a5b8362f39e149da0044569da6d04c10f4d1e0e77b64f8136df352f2f6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22561
+        - backstage-pr-23901
+      snippetCards: 8
+  - id: synthetic-composite-26
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-26/sha256/7b/7b489d684dcdc91062917b99dbb21354fbe7a09767dcb2157bf953175dbf45a7.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24316
+      snippetCards: 8
+  - id: synthetic-composite-27
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-27/sha256/30/301462ea0088b87a6d4ac879507960a89c79a29d5b4fce7dce57b8c1d142a4e0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24133
+        - backstage-pr-25470
+      snippetCards: 8
+  - id: synthetic-composite-28
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-28/sha256/5a/5adce3b11a2f8169927f26c025c48dbdb7e132705f9b1d3fc7445854b5d46fa0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-28792
+      snippetCards: 8
+  - id: synthetic-composite-29
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-29/sha256/d6/d6c57453d41bef5b8983b1442fd7cd5a06250f2d8940a253d2f6169b9fd28e6e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24479
+        - backstage-pr-30678
+      snippetCards: 8
+  - id: synthetic-composite-30
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-30/sha256/fe/fe699a36c7fea4a0d290eb6faa0f35bbb5b3083355b40a6cd6677f8d02a4de28.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-30743
+      snippetCards: 8
+  - id: synthetic-composite-31
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-31/sha256/a0/a034bf6093d98404e845262731240dcb77021249508ced23dfaae7f427b06bb9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-31255
+        - backstage-pr-33200
+      snippetCards: 8
+  - id: synthetic-composite-32
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-32/sha256/9f/9f7b10f9be60cf83b105e6c6c9562f0db7fc113cb3a643aab696d12ae15c52ee.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23802
+        - backstage-pr-34608
+      snippetCards: 8
+  - id: synthetic-composite-33
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-33/sha256/ff/ff5aa2875b3e739907541edd1ea605ebd566833a35c3f21efc1381ecc27dcb3e.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135100
+        - kubernetes-kubernetes-pr-139842
+      snippetCards: 8
+  - id: synthetic-composite-34
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-34/sha256/1d/1de70bd2577484af596e26f04119d48b98eb1b9c0d2d5b104f61dcc43b8e1fd1.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-24316
+      snippetCards: 8
+  - id: synthetic-composite-35
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-35/sha256/ac/ac01374831bddbaedd4060c0fcf11c5eb94c9ba8b9967ce3f5ee7b55367532ca.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-25470
+        - backstage-pr-28792
+      snippetCards: 8
+  - id: synthetic-composite-36
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-36/sha256/2e/2ee42856bfdf87aba2a65a0753059d15d65a724c92098035d6d85ebd28bf2265.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30678
+        - backstage-pr-31255
+      snippetCards: 8
+  - id: synthetic-composite-37
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-37/sha256/1d/1d46d483436f984c65e03dfadadaa7121ffe3b7f8364b597f400de97c834b467.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30743
+        - backstage-pr-33200
+      snippetCards: 8
+  - id: synthetic-composite-38
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-38/sha256/ca/ca899e6f7d1c520ae0c6016f8a4d3924003e8ee944bc69a08e2b8b95821cc7c2.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135400
+        - kubernetes-kubernetes-pr-135807
+      snippetCards: 8
+  - id: synthetic-composite-39
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-39/sha256/7b/7b439c23a4a190bf61c063cefc60a5faaaa31e784d3ea6f1890db718c995890c.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-136633
+        - kubernetes-kubernetes-pr-139261
+      snippetCards: 8
+  - id: synthetic-composite-40
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-40/sha256/95/95a1b1124f57539cf5f31689361c0437c8ea9e0e6d9e53addfe9996403dbdef0.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-139667
+        - kubernetes-kubernetes-pr-139714
+      snippetCards: 8
+  - id: synthetic-composite-41
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-41/sha256/80/80298bdf03f7d07149390e1fab3c62529091f395f2440082733225f5ffcb0f09.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-34608
+      snippetCards: 8
+  - id: synthetic-composite-42
+    inputArtifact: inputs/onboarding-area-card-ablation-100-v1/synthetic-composite-42/sha256/d5/d5b0463002f108fdff8133a8e7b8a5afbdbed918c637b94e329c00a38eb2905d.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135400
+        - kubernetes-kubernetes-pr-139842
+      snippetCards: 8
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_active_area_recall
+    - composition_false_positive_mass
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 4
+budget:
+  providerMaximumUsd: 9.45
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false

@@ -1,0 +1,526 @@
+schemaVersion: 1
+experimentId: onboarding-common-reference-backstage-60-v1
+objective: Compare shortlisted Backstage taxonomies against one frozen taxonomy-neutral responsibility reference per task.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: c0b6854b0844ec239afeff7962541a0f162e5b18
+dataset:
+  id: onboarding-common-reference-backstage-60-v1
+  hash: a1af856a509618a21176ec332fd39537dc14a6988669f5f1d83459f87a659a76
+  role: development
+matrix:
+  treatments:
+    - id: common_official8__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: common_official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: common_official8__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: common_official8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: common_coarse4__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: common_coarse4
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: common_coarse4__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: common_coarse4
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: common_parent_child9__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: common_parent_child9
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: common_parent_child9__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: common_parent_child9
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: common_redundant9__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: common_redundant9
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: common_redundant9__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: common_redundant9
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: common_factorized13__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: common_factorized13
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: common_factorized13__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: common_factorized13
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: backstage-pr-22093
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-22093/sha256/ed/edf83155e71bf172f582f96e23095bdf514d4b50460eb23fe710eb9e670c0b9e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22561
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-22561/sha256/86/86960f5487c890c529de5bdf13569873c69631e216bf3231143b9a502259c5ea.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22772
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-22772/sha256/da/da94c1b9e382ddb59628305f167c18e235dc9f10d48433e63cbd960b17f2192f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23802
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-23802/sha256/77/7797aba52e5ee2d9b7ff5d17e384b307ef2fd26145933679164dea47f6a86222.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23901
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-23901/sha256/14/14bb411b09015d15cede5001ea6662f2158ca9447b39db073c54b8a6585262db.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24316
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-24316/sha256/5c/5cfef1909986b09f0b89b133b327cc8a6a36a9d96246623fe943c335d103a919.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24368
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-24368/sha256/10/10a2c9856b3917e91e1d3e77a90b446e5914683f9d5d8f10b2ca6305368ec335.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24479
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-24479/sha256/ba/baf98d5d3711988c4f8ddcd1f8682afd67b64a75c0b0177ba456825c02d55803.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24133
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-24133/sha256/05/05f6b3d5f05a35380909bcc3c028f10337402579a5d9286d52abaf6c9e3b45f3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24870
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-24870/sha256/2e/2ea8c022d669c466af365ccf48423d49738f2995570d3140c6039bccd7133717.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25470
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-25470/sha256/08/082a511b82091090f1c3e87865dd33701cd7185d1ea1886ce147d296841ba2a9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25601
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-25601/sha256/4f/4fc1c356c64d3295bde909f54e014bf94db969a5900729894020116236037a68.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25010
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-25010/sha256/76/765c4057d8a82c3be3fab14d86af8217805bfeb1c0f4213d4bf37ac68108b470.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25548
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-25548/sha256/9f/9ffad5505e495615e11387aab17998925af46d42d5f2fa16eb080152b44c8f3d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25593
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-25593/sha256/65/65695b3c45a5df4c7a41d5c00adfd8d6abd523b7adef3bf6bf0a1e6b5645c84b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26223
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-26223/sha256/cb/cbd2fc9444093deab80eca9b3cffa863b0c9a07ec098bcfba5884d64f8b1c7a3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26406
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-26406/sha256/f1/f112c98ef0d2b9a5710a0a16f80186d4c14d38703185848c7cce725b99f227dc.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26536
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-26536/sha256/32/321393c8e6d9613a599045f47b124d0994e620ad2fe5bd7dc98b677fbc9c8fb9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26935
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-26935/sha256/91/916e5327cfd4612732ee2b210c398555172285bf77d8d1cc64c10a24186e7cda.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-27407
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-27407/sha256/25/255ce89b8e6166984b31954992e8caa10d928381870c4a7c19e355181d60d903.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28711
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-28711/sha256/a3/a36cb1b2ae2c03af38fd63d4b432eefe043862c1ed2db2a7d59014adc405d1b7.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28769
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-28769/sha256/55/55b2846fe9ebe7190d894064dace5a60391daca28e78a009d5d0e810f3122b42.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28911
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-28911/sha256/62/6292bb6186910c543436bd858105cd34b0fb1b9613fd7aeb2601b5e1cf36857f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28964
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-28964/sha256/e0/e0040e4a82df6bd64f5dc7c79b871cae9394019a82f00c0ca81edfa19d4950d1.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28997
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-28997/sha256/5d/5daa329b19867f372e83680b7e28f4b664cce5005fc6585b244e5d981c9d7e1c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28792
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-28792/sha256/6b/6b25fa8c0b51609ee5d6e48ce10f301ba06f0bb122465d483bf9cc761c0c7b1c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30311
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-30311/sha256/c8/c8f64a261205443afdd7108345f149a8c61bb33180eb41b4dad398a6df9e2ef6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30743
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-30743/sha256/ab/ab0d753ddd44f859f2a9371d1fdf057b68896e9511b2a91f0d69744a744ef629.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30678
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-30678/sha256/f6/f6575e74d5115aed833e2f255766e9f206c815839dde80e1f3b1d7362867a8c0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30988
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-30988/sha256/56/56ba8b7583a1e296a50af8c97a885301763c08443aa93a5dd4ac3778d831b5e0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-31255
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-31255/sha256/8b/8bf1bae1452b8188b2e51287131cbe4bb68d64b83d4c972ca26945d29bccdbe4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-32179
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-32179/sha256/ed/ed2ccf6a938dca0cfd112af9a53be1e4535a45cbbe569680eef0f41d49778172.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-33200
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-33200/sha256/9b/9beb8a1a547a28dad55f9134ad9b59e6f13f113733b1796cca364beeda84d9d4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-34608
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/backstage-pr-34608/sha256/94/94e3e27f7d341010e1a04dfcd3b30abd9123f7d8db6b792b1dafd2b5ea1a1c7a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: synthetic-composite-01
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-01/sha256/d6/d6ac116f30e6e6c0e000c50c6731c942c50aa02102228695c87ea5cb49f3455c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-22561
+  - id: synthetic-composite-02
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-02/sha256/a6/a63ac644119f125ae844ce4bd0f8abcd6581326b24bfd4ef9950635af923f00c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24133
+  - id: synthetic-composite-03
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-03/sha256/49/492173ba353ade896e61ee203a7e70f88a5aa8ba4309f3dec1437f803107a519.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-24479
+  - id: synthetic-composite-04
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-04/sha256/10/10558983eadf9f702a7b4d909a409b65db6c91fa4a31b7909b89fe46003806c0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-25010
+  - id: synthetic-composite-05
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-05/sha256/47/472ebf04875493b3dc001e7e58cc79c6e81078e08e77cbb6693f76c1f97f959d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25548
+        - backstage-pr-25593
+  - id: synthetic-composite-06
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-06/sha256/25/25d973de9842c8d7444cc7484b55ad8960186c0a1eda53c7cd7c6d0fd104ef51.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25601
+        - backstage-pr-26223
+  - id: synthetic-composite-07
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-07/sha256/2b/2b8f82d38481fac89be83e5004153572d83c55e2e0b65831e72f2f37e2f48436.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26406
+        - backstage-pr-26536
+  - id: synthetic-composite-08
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-08/sha256/42/420cfaa9391e67681f15bfc56e05786bf2f86312ea8d1220a257e3976d72492a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26935
+        - backstage-pr-27407
+  - id: synthetic-composite-09
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-09/sha256/0b/0bdba943615dafccb78c7d24b678ebf065358ea9e65a430cc72687fbbc73192f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28711
+        - backstage-pr-28769
+  - id: synthetic-composite-10
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-10/sha256/a0/a0dd6e4c5b98491d889585edaa0ecba2b62c6cf76e3c14c349bf0eddd37be05a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28911
+        - backstage-pr-28964
+  - id: synthetic-composite-11
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-11/sha256/bb/bb94a0108e22f46149b98300576a17bedf33eaa6931a00a997830291692ebd07.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28997
+        - backstage-pr-30311
+  - id: synthetic-composite-12
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-12/sha256/af/affcab5eff993787c40c29bc46267d7ec7b49204df70b0087287379d127ea744.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-30988
+        - backstage-pr-32179
+  - id: synthetic-composite-24
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-24/sha256/da/da1ef91d009591c2a2d149593f99e4df4359ef31bd9f94798de38ad01e9ee570.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-23802
+  - id: synthetic-composite-25
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-25/sha256/0e/0e66823e30112ea3d8bf46710b89e501a26618806c6aa8c842f9181b7ce9ba05.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22561
+        - backstage-pr-23901
+  - id: synthetic-composite-26
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-26/sha256/be/be78795a708333af6d066a76f20e5d700dfe21e3a7b9650e1b9c50a6e35d3d8a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24316
+  - id: synthetic-composite-27
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-27/sha256/e8/e859c6a59b4a506d8b1b6bdf76d0bf2766fd4e4297bfe1c4e0b618cdb526cb14.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24133
+        - backstage-pr-25470
+  - id: synthetic-composite-28
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-28/sha256/99/99eaad806033ecf3646e4e4f77b347876a497358e4f497f8dd75a36d2a700dcf.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-28792
+  - id: synthetic-composite-29
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-29/sha256/c7/c743def98ed8247b62b08733c26c10552b4e38f9e9ef77a154273b49671e4d7f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24479
+        - backstage-pr-30678
+  - id: synthetic-composite-30
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-30/sha256/18/1822a9447f036cb702d5e11a21e2f6d7cd5dbd5b96095fa6ef4483d598290111.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-30743
+  - id: synthetic-composite-31
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-31/sha256/ac/aca5059b28d8a7af3d5627dbfb12c979f373fd650878dcc127b869259a395076.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-31255
+        - backstage-pr-33200
+  - id: synthetic-composite-32
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-32/sha256/ed/ed740a38a6dbce0b299c9263d824012cf490b4a643d32ec606cb43d5a6e0c179.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23802
+        - backstage-pr-34608
+  - id: synthetic-composite-34
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-34/sha256/e7/e70330a2ca6f2e6809aa90708c1708e7a6a51220827ae5a5ba4297a9a7c824c3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-24316
+  - id: synthetic-composite-35
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-35/sha256/f3/f3bbafa28bec5ee6e3eade2b36fe7abc846ef41116e3e3b2e5b70a7a6da8faee.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-25470
+        - backstage-pr-28792
+  - id: synthetic-composite-36
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-36/sha256/a7/a70b98797ca226862d79d41e724c7360b3e27852ae9abd5e79ade3538375b358.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30678
+        - backstage-pr-31255
+  - id: synthetic-composite-37
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-37/sha256/dd/ddf9aa9e557bed615184f7668ec17b01b21e141d884087c8fcd205367a3e4318.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30743
+        - backstage-pr-33200
+  - id: synthetic-composite-41
+    inputArtifact: inputs/onboarding-common-reference-backstage-60-v1/synthetic-composite-41/sha256/1f/1ff7ddaa979546cf926f0e89cc3ccbd2d35671945b3241d3a92bdeb4b45dec03.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-34608
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_active_area_recall
+    - composition_false_positive_mass
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 4
+budget:
+  providerMaximumUsd: 17.32
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false

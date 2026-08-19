@@ -1,0 +1,826 @@
+schemaVersion: 1
+experimentId: onboarding-structure-matrix-100-v1
+objective: Compare controlled area counts, disjoint versus bounded overlap, leaf-only cuts, and parent-child mixtures across 100 development tasks.
+code:
+  image: routekit-experiment-runner@sha256:8fb5a47dbb6308c32742851e0d6aa1d661a78aec250a8521ed7faa4a3c094ac3
+  sourceCommit: c0b6854b0844ec239afeff7962541a0f162e5b18
+dataset:
+  id: onboarding-structure-matrix-100-v1
+  hash: 8a18d1dc8dae32069e26662408b2ff40fb7338eb35e0cd7456c32c599477767b
+  role: development
+matrix:
+  treatments:
+    - id: structure_k4__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: structure_k4
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_k4__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: structure_k4
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_k8_controlled__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: structure_k8_controlled
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_k8_controlled__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: structure_k8_controlled
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_k12_leaf__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: structure_k12_leaf
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_k12_leaf__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: structure_k12_leaf
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_k16_leaf__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: structure_k16_leaf
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_k16_leaf__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: structure_k16_leaf
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_disjoint8__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: structure_disjoint8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_disjoint8__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: structure_disjoint8
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_parent_child12__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: structure_parent_child12
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_parent_child12__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: structure_parent_child12
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_parent_child16__sol
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-sol
+        evaluationRole: composition_reference
+        comparisonGroup: structure_parent_child16
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.05
+      estimatedInfrastructureCostUsd: 0
+    - id: structure_parent_child16__luna
+      executor: hosted-model
+      configuration:
+        model: openai/gpt-5.6-luna
+        evaluationRole: composition_candidate
+        comparisonGroup: structure_parent_child16
+        timeoutSeconds: 240
+      estimatedProviderCostUsd: 0.005
+      estimatedInfrastructureCostUsd: 0
+  seeds:
+    - 181081
+tasks:
+  - id: grafana-grafana-pr-80511
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/grafana-grafana-pr-80511/sha256/35/35af19a903aca31346a283e62d9af918e7ffa625ba4781dd409b466d85007658.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134516
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-134516/sha256/0d/0d8a651556602298e31415a15a4647d9df0cc98288b2c97bc6477857cb3c3797.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-101285
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/grafana-grafana-pr-101285/sha256/42/42ec3ba3ffa180a52a25248b4c804da9910baef7f7f3ea160bbb9972891d6381.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134769
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-134769/sha256/fc/fc7ba91f2ba5865c597cf50e32e50f63e0a60bdfd72ae589b01b87d1e0314592.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-136502
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-136502/sha256/1a/1a0a5cdf312cd5caa16e012b16a55c20df67e12b20cbe329f1257657c77d0e48.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-138367
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-138367/sha256/4d/4ddd25193bdf12db74dc1aaab3c07d361ffb06d2473d354ca6bf1f40a57ee867.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-105422
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/grafana-grafana-pr-105422/sha256/3b/3b62a2f5bc57099272cec83b022eaf17e21a9159fffb8b600cf1fc11e8f61ff5.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-132061
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-132061/sha256/f3/f3fd2ae96d3846fa80cba22dd63e6af775ee45bec02f77e571c97367a66dbc31.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-116038
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/grafana-grafana-pr-116038/sha256/84/8458935f7ce2ed6b28e9986675d33baefee0526cea7b956418704919c487f2c3.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-133896
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-133896/sha256/6c/6ca1daed01c4a18f0a9d4be6e5c31369f2631ca9b3e76474f0bbab1557685017.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-118686
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/grafana-grafana-pr-118686/sha256/6d/6d5b13dfd36affc246a3999c56e77735f91520e1b2b1fe4fcf80a0c322aceb5e.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-119124
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/grafana-grafana-pr-119124/sha256/46/46e6231fcf55fc604d6fa64d45bb8bd5193fb6a29015bf25d259fb6d9eedd3c1.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-138408
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-138408/sha256/c0/c0d3597a96d085ea73672524258a07653285d4cc0b9336bfae3ed6d04a614f62.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-140033
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-140033/sha256/e0/e0507fdf48fc0838db159210c2a6156ad22498a988ae7bebda14dfef7296f3ee.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-134936
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-134936/sha256/5a/5a7947be90b6080f5d2abcf539a8874b447f692ebbfebf627c8199e602476360.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: grafana-grafana-pr-128725
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/grafana-grafana-pr-128725/sha256/fc/fc614579db95f3ad7730c18d7ac96c804c3f54607f0a0dacf1cc039e877eb68c.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135100
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-135100/sha256/28/283881be3e8d93fc5498369b3afd1ff429bf0614760997b91ecb564511d4fd14.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135400
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-135400/sha256/c5/c5c8ac87e033495fbbaf7bc6666cd637d41102db88b4b0f53dbd11cd5eea9f76.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-135807
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-135807/sha256/57/578db9c7e1103f684c658503fe4a795f3d7257f732c8a2ca92083e8757175d54.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-136633
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-136633/sha256/15/15baabed20606a365f0a366a3e70f53775cf0e92215d61e2719c21afe3340f07.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139261
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-139261/sha256/01/01fda71278485b99fa29de3bdba592b50921706c40bdfec92daf32ae3b475fc2.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139667
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-139667/sha256/65/650f0773e7322b97ab940ec88fe24cc3ac4f1ff2268735d49877e89e2fd12e54.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139842
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-139842/sha256/74/74d62587fc719811f823833e605d307bf0dea75de9c3bbb79156958dfc438f00.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: kubernetes-kubernetes-pr-139714
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/kubernetes-kubernetes-pr-139714/sha256/a6/a6c29081dbcadcf26917001865cea33aa0c0476b96a0f54b6891390265cbf89a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: natural_hard_real
+  - id: backstage-pr-22093
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-22093/sha256/34/3465f6e65e00d866c25724b012de8f758e1d7c85ade54765ce5b443fb3d6a4f6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22561
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-22561/sha256/5a/5ae44a3b75d51c7152a3aa347063d09fa90fd3b4ae51e876f1d721392f3eeacc.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-22772
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-22772/sha256/10/105712a14ef8975f32985910c797a1f58faf9bf320f20fdb5e7d4ee412563ee4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23802
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-23802/sha256/20/20449612c330f9ac7f7ca5997e5896f7a0b6bc2b4f264d204d30dba7b7df009b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-23901
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-23901/sha256/b1/b1c27927b48b97341710622bb578d43d9f25cf11c27e5ecf7fc48c60724b60a6.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24316
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-24316/sha256/36/36e964ee3f0a96b219814d80893abf64dc9c1721da2e53d293c794168fabe492.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24368
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-24368/sha256/de/de7c535561bac66a7351510959564d19ababfc959c28c4fa71128cfd328865e4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24479
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-24479/sha256/36/36257d6a5dae364778b04a2babb322ff8858f7812d222232de042cbf2bd863cc.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24133
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-24133/sha256/1a/1a7c7d47868cf054c3642347b7ed23904b6e57047425cd90fffee3b53c8a7ac9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-24870
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-24870/sha256/c9/c9527614f3024d0055d032bead346d94c9d9506cbf69e3efc76c4f55b30a3a94.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25470
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-25470/sha256/fb/fb0a58df8b6adb30e373bfdc1749d5d42919800dc76bb32a2f5f9025e8c528ae.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25601
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-25601/sha256/6f/6f7822d38c1f8557c2341f9bfc4bc818dc2a0bc32a86e876240e9a9f87d0f581.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25010
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-25010/sha256/f8/f8f4f2acdaf7fac6c99ae7f4b9aebd129f38f12ee9f459c7fa1514159e9ad7ad.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25548
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-25548/sha256/81/81dcfcc062b8b8116b68cc385f8470b7061e6f80f2163040f88670ec905a2895.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-25593
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-25593/sha256/a8/a8c1e341c59be34dd8e5adc0cabcf390ebe995cfaf366a0cf1d024a9c02854e9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26223
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-26223/sha256/84/84c54be2f281fd6b1f3c5f04b32d7fb1b781c5371d6424dd7f40bea98137dd22.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26406
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-26406/sha256/87/87e43fc2a8742ef2dad6fd71459853ad202cc7329fe91bd88bce6435b4cac23b.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26536
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-26536/sha256/3e/3e00ceba5f2be649be4b2efd5278836021f0ffc12478af5f7e4b30e33428a658.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-26935
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-26935/sha256/b1/b114d25198e8fa32a416e6bf8bcb3737bebff1deb9193c26a47d6ffa25b25de0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-27407
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-27407/sha256/93/933fd3ff6dddafad3187c872944183197edb42440ad7e190cd5b7dcb68fe978e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28711
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-28711/sha256/8d/8d42cfe630722d44c00e37a38a1f2a5b88b8f7932df855e0722c0f7f361fe826.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28769
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-28769/sha256/f2/f21e481fec91450b5a074ea6d65289ac7f72524919ef5ac7fae64cd4c323d138.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28911
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-28911/sha256/9f/9f89b13b98c41fe8f30d4057f89202ea18b8a3f5e9100a63ccdbc7e999869e1a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28964
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-28964/sha256/40/4039d6de2440ad3bb103121c4d4d42ebadd520a4c2611e6fa1a0adbcebd0a4d8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28997
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-28997/sha256/4a/4af80dffdcafae40e759670782f270c341fe539b360777b386376eb913a1c0ea.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-28792
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-28792/sha256/a4/a48e4775d3c493eb3df6ef7c67bc22653874328ef07955a9512cf69da88eb34d.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30311
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-30311/sha256/a0/a0cd010d5b30f6ad8451e979e000e17769f362705a6b3f5c453dc7813d5ae0c2.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30743
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-30743/sha256/c6/c664792e5b79ec931313f922c0ae205f4258cdfd822aaa101c40a9fe087d03d4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30678
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-30678/sha256/bb/bb620735d38f4c4c405dd310c538e72a49e0471c03d2518795c717cc58ac2dcf.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-30988
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-30988/sha256/cd/cd6d50b1e6a2a43949d5dc1a62f471113d77a21ea51c1a4d6df617e0bcf32f2c.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-31255
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-31255/sha256/88/88a9c40fea70bf64923769dc091bc52f1f253bda8357c3d65919eadc64d12ad8.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-32179
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-32179/sha256/5d/5dadb33cbdc8a6e5f4d9cca9a8ab6aebdf2410175e9bab1957f823cc6d241eab.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-33200
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-33200/sha256/4a/4a010e949a706d52a6d6655a4800e610bff68ee12526de0af78a5767f4a6e5c9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: backstage-pr-34608
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/backstage-pr-34608/sha256/53/532d1c383457a9ee687eb8c649689d766559fd9688f4818c91199aa8f3d2769a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: backstage_issue_real
+  - id: synthetic-composite-01
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-01/sha256/e1/e15cbe9fe30c013af27f1219b7a17cca6035b01a9c9f68caa24425181480dd10.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-22561
+  - id: synthetic-composite-02
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-02/sha256/d2/d2ca60934f466f480177525f9d056694dfe2b706615dc23de882c845996289c5.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24133
+  - id: synthetic-composite-03
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-03/sha256/1e/1e1b1b2d03b78da3f02c9492117002af787915210aca97ddd613d8a9d511a7d9.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-24479
+  - id: synthetic-composite-04
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-04/sha256/f3/f3ff15be1601e8e4ac17cdfc0f33b599b7fc89444b04d9b084d4cef0893e834a.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-25010
+  - id: synthetic-composite-05
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-05/sha256/d2/d24d9d4f181517f388a443bc38c4276366637055cea9c001adc0f4867c503b45.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25548
+        - backstage-pr-25593
+  - id: synthetic-composite-06
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-06/sha256/f9/f922788b510de64900b11b46efcb706e3e26556434ebb13d0f977bbf62522774.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-25601
+        - backstage-pr-26223
+  - id: synthetic-composite-07
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-07/sha256/75/754128091a836b3eb4aed2b0c04b734574d8cffdd8346ebfdaaa03d112832d73.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26406
+        - backstage-pr-26536
+  - id: synthetic-composite-08
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-08/sha256/2c/2c54b3f93855cd7fc5a50a7fa184b4295f96ca92fa81879ad9a867c56d9e98f4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-26935
+        - backstage-pr-27407
+  - id: synthetic-composite-09
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-09/sha256/7c/7c04477bf812e0295ba35097e39aad5c809b7ed2c1bffb98262c1c2c436059a3.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28711
+        - backstage-pr-28769
+  - id: synthetic-composite-10
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-10/sha256/de/de6ee7f852ab85379edaf02b57b3a383453df943e71eebd24a4abc104b3f0d06.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28911
+        - backstage-pr-28964
+  - id: synthetic-composite-11
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-11/sha256/d3/d3cdfa29d460e37e77892b9b23b24146d8ed8866c91881c9bb51f8c13f6e1c0f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-28997
+        - backstage-pr-30311
+  - id: synthetic-composite-12
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-12/sha256/1c/1c126adc10521ff3bdf85d46d27f1f357b87b304b721fbe1cca748f396ba6697.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - backstage-pr-30988
+        - backstage-pr-32179
+  - id: synthetic-composite-13
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-13/sha256/23/23399e981a8e5128264024e13d9d080c88ee36e905fc63f4c39dff93640dfbc3.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-101285
+        - grafana-grafana-pr-105422
+  - id: synthetic-composite-14
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-14/sha256/ac/ac79bc902742f210faf8e8a4b963da1d4019d5c43a09a9a379d64f2cabefce73.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-116038
+        - grafana-grafana-pr-118686
+  - id: synthetic-composite-15
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-15/sha256/52/52029985cba76f4da54e017c30d40a0f323012df672981c07b8b8483fd7b3b22.json
+    metadata:
+      repositoryId: grafana/grafana
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - grafana-grafana-pr-80511
+        - grafana-grafana-pr-119124
+  - id: synthetic-composite-16
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-16/sha256/3d/3df5f251a72b86ae31d0f85ee95d92c0c6c70a090359323c9bf0e17e008f1c07.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_known
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-132061
+        - kubernetes-kubernetes-pr-134936
+  - id: synthetic-composite-17
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-17/sha256/b5/b537890eb3108bdf62f26ea4d2248ab0908b17ec22f15c68307c1bff8f3e0924.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-133896
+        - kubernetes-kubernetes-pr-135100
+  - id: synthetic-composite-18
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-18/sha256/5b/5b14214af8da0982a39fa73971925448ecbf03c10470db48889cb378bbf1678a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134516
+        - kubernetes-kubernetes-pr-135400
+  - id: synthetic-composite-19
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-19/sha256/0a/0a70ed52e4c994ad9cd93ed98329f05b3de41865eb0a68bc59dba404d0dc86c4.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-134769
+        - kubernetes-kubernetes-pr-135807
+  - id: synthetic-composite-20
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-20/sha256/fe/fe3e05396035ed66f78d0d4fc2e18da1d943c6c764844daf6713dcb49e446dfa.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-136502
+        - kubernetes-kubernetes-pr-136633
+  - id: synthetic-composite-21
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-21/sha256/35/3562e882ae9cbcb66d11b1df03f28196d60d2c905ce1769c9fc2319bd0126cc8.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-138367
+        - kubernetes-kubernetes-pr-139261
+  - id: synthetic-composite-22
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-22/sha256/29/298d06ea6bc83a430fe547c853f065b3e9b4d7abaedce23b769678a7069a3edc.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-138408
+        - kubernetes-kubernetes-pr-139667
+  - id: synthetic-composite-23
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-23/sha256/47/47002b35e6aafe3837bc5626644a5ce0551d3edf4d2bae6ac8ba0d77210d83e0.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-140033
+        - kubernetes-kubernetes-pr-139714
+  - id: synthetic-composite-24
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-24/sha256/24/2403f69c3aeaa8e02b688734e33509e0c5031859a7acc816a7973f7d95609630.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22093
+        - backstage-pr-23802
+  - id: synthetic-composite-25
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-25/sha256/8c/8c3513139b22c555f16bab155ffb8337f4f7f4d3c7818fc82dbb46ff3c322064.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22561
+        - backstage-pr-23901
+  - id: synthetic-composite-26
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-26/sha256/09/091405760fc1e220e5f23a3f305a1f3db621c0c5a27b94f1e0fab7abc9f332ba.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-22772
+        - backstage-pr-24316
+  - id: synthetic-composite-27
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-27/sha256/4b/4bcb516724476276fa77823eeeed853c11bab51c4c845cc4436da95081a3460f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24133
+        - backstage-pr-25470
+  - id: synthetic-composite-28
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-28/sha256/52/5283b103935fb80021bf22e4a1172e509e5772dd72209577b58a6e21fb812119.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24368
+        - backstage-pr-28792
+  - id: synthetic-composite-29
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-29/sha256/86/868614e7724723b3a391cdb5de8bcd1ce44361986daf77ab405a803c81c36cc2.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24479
+        - backstage-pr-30678
+  - id: synthetic-composite-30
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-30/sha256/5f/5f7ec2fd1a5ef40d1df5d01ac80c0bc94ce4656b81eaac552dce3160bda0f466.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: known_unknown
+      sourceTaskIds:
+        - backstage-pr-24870
+        - backstage-pr-30743
+  - id: synthetic-composite-31
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-31/sha256/bb/bb58605bee80424e9ecd43b2fef9ac669616c05e6c2a619a38fe21840e84aeb0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-31255
+        - backstage-pr-33200
+  - id: synthetic-composite-32
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-32/sha256/14/14a01fc03f4080e45a1a77497c5e309955c4712c8de498b0b0967fe9c7ed944e.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23802
+        - backstage-pr-34608
+  - id: synthetic-composite-33
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-33/sha256/32/32b3f4edf54defa7c8b46e376e660b6ed729fdb4966cf639917990a913fb76eb.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135100
+        - kubernetes-kubernetes-pr-139842
+  - id: synthetic-composite-34
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-34/sha256/e3/e32fba10afbc9b8e77b5662a7df901178d74d4357ec55acf12fc14382a038328.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-24316
+  - id: synthetic-composite-35
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-35/sha256/06/06606f2c1be9500cfa06176d797ca121df8dbc55512f0fad98ae70a33444587f.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-25470
+        - backstage-pr-28792
+  - id: synthetic-composite-36
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-36/sha256/ee/eefb1ba8ccb05216107c76b7aa3ad15e72b707dec011d6cb1ad8e520f11998c5.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30678
+        - backstage-pr-31255
+  - id: synthetic-composite-37
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-37/sha256/10/10aec340b7d3b607c0606fd0f313448f010b5313b8592b86029b5336d21e81c0.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-30743
+        - backstage-pr-33200
+  - id: synthetic-composite-38
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-38/sha256/50/5037dee71b5d3f7ddc56e1ee15cfdbc250286e86544e0045bdfe602a0d5565c5.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135400
+        - kubernetes-kubernetes-pr-135807
+  - id: synthetic-composite-39
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-39/sha256/36/36aa1cdce7450abd5559a788d02b6418b9fb8c82e828ed98a6053d1b6bb0ad99.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-136633
+        - kubernetes-kubernetes-pr-139261
+  - id: synthetic-composite-40
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-40/sha256/16/16e52eb1f5132e9565d595ba13c5397268b41dba3febb9b40ae859f8aeb7b91a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-139667
+        - kubernetes-kubernetes-pr-139714
+  - id: synthetic-composite-41
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-41/sha256/9e/9e98f134bd34152bbc7ce056cb8f5f3eebc409f8772eea0e8436a3f59b94e9d4.json
+    metadata:
+      repositoryId: backstage/backstage
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - backstage-pr-23901
+        - backstage-pr-34608
+  - id: synthetic-composite-42
+    inputArtifact: inputs/onboarding-structure-matrix-100-v1/synthetic-composite-42/sha256/d9/d9b879eac8616e744ac5a40c09ee9deab7ad712039e27083241205b66cff433a.json
+    metadata:
+      repositoryId: kubernetes/kubernetes
+      cohort: synthetic_composite
+      syntheticKind: unknown_unknown
+      sourceTaskIds:
+        - kubernetes-kubernetes-pr-135400
+        - kubernetes-kubernetes-pr-139842
+schedule:
+  type: paired_interleave
+  maximumHostedCallsInFlight: 8
+  maximumSandboxes: 1
+selection:
+  primaryMetric: composition_mean_active_area_absolute_error
+  secondaryMetrics:
+    - composition_active_area_recall
+    - composition_false_positive_mass
+    - composition_unknown_absolute_error
+    - composition_contract_validity
+  maximumPromotedTreatments: 4
+budget:
+  providerMaximumUsd: 40.43
+  vercelMaximumUsd: 0.5
+dataAccess:
+  lockedTest: false
