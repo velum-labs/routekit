@@ -1,5 +1,15 @@
 # @velum-labs/routekit-tool-registry
 
+## 1.0.10
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.10
+- @velum-labs/routekit-tool-codex@1.0.10
+- @velum-labs/routekit-tool-cursor@1.0.10
+- @velum-labs/routekit-tool-opencode@1.0.10
+- @velum-labs/routekit-tools@1.0.10
+
 ## 1.0.9
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @velum-labs/routekit-runtime
 
+## 1.0.10
+
+### Patch Changes
+
+- 0a83607: Keep native OpenAI Responses SSE relays alive during quiet model phases and emit
+  a structured terminal error when an upstream stream ends before a Responses
+  terminal event.
+
 ## 1.0.9
 
 ## 1.0.8
