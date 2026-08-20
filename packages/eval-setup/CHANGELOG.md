@@ -1,5 +1,13 @@
 # @velum-labs/routekit-eval-setup
 
+## 1.0.4
+
+### Patch Changes
+
+- 9492ded: Make eval dimension authoring compatible with Anthropic structured outputs while preserving routing-basis count validation after parsing.
+  - @velum-labs/routekit-eval-contracts@1.0.4
+  - @velum-labs/routekit-runtime@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes
