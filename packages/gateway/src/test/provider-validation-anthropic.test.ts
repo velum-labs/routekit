@@ -59,6 +59,203 @@ test("Responses JSON schemas reach Anthropic as native structured output formats
   });
 });
 
+test("Anthropic structured outputs defer unsupported JSON Schema constraints", () => {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["minimum", "scores", "labels"],
+    properties: {
+      minimum: { type: "integer", minimum: 1, maximum: 16_384 },
+      scores: {
+        type: "array",
+        minItems: 20,
+        maxItems: 20,
+        items: { type: "number", minimum: 0, maximum: 1 }
+      },
+      labels: {
+        type: "array",
+        minItems: 1,
+        items: { type: "string", minLength: 1, maxLength: 128 }
+      }
+    }
+  };
+  const original = structuredClone(schema);
+  const outbound = anthropicMessages(
+    {
+      model: "claude-opus-5",
+      messages: [{ role: "user", content: "author evaluations" }],
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "routekit_evaluations", schema, strict: true }
+      }
+    },
+    "claude-opus-5"
+  );
+
+  assert.deepEqual(schema, original);
+  assert.deepEqual(outbound.output_config, {
+    format: {
+      type: "json_schema",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["minimum", "scores", "labels"],
+        properties: {
+          minimum: {
+            type: "integer",
+            description: "{minimum: 1, maximum: 16384}"
+          },
+          scores: {
+            type: "array",
+            items: {
+              type: "number",
+              description: "{minimum: 0, maximum: 1}"
+            },
+            description: "{minItems: 20, maxItems: 20}"
+          },
+          labels: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "string",
+              description: "{minLength: 1, maxLength: 128}"
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const nativeOutbound = anthropicMessages(
+    anthropicToChat(
+      {
+        model: "claude-opus-5",
+        messages: [{ role: "user", content: "author evaluations" }],
+        output_config: {
+          format: { type: "json_schema", schema }
+        }
+      },
+      "claude-opus-5"
+    ) as ChatBody,
+    "claude-opus-5"
+  );
+  assert.deepEqual(nativeOutbound.output_config, outbound.output_config);
+});
+
+test("Anthropic tool input schemas defer unsupported JSON Schema constraints", () => {
+  const parameters = {
+    type: "object",
+    additionalProperties: false,
+    required: ["limit", "scores"],
+    properties: {
+      limit: { type: "integer", minimum: 1, maximum: 16_384 },
+      scores: {
+        type: "array",
+        minItems: 20,
+        maxItems: 20,
+        items: { type: "number", minimum: 0, maximum: 1 }
+      }
+    }
+  };
+  const original = structuredClone(parameters);
+  const outbound = anthropicMessages(
+    {
+      model: "claude-opus-5",
+      messages: [{ role: "user", content: "score the inputs" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "score_inputs",
+            description: "score structured inputs",
+            parameters
+          }
+        }
+      ]
+    },
+    "claude-opus-5"
+  );
+
+  assert.deepEqual(parameters, original);
+  assert.deepEqual(outbound.tools, [
+    {
+      name: "score_inputs",
+      description: "score structured inputs",
+      input_schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["limit", "scores"],
+        properties: {
+          limit: {
+            type: "integer",
+            description: "{minimum: 1, maximum: 16384}"
+          },
+          scores: {
+            type: "array",
+            items: {
+              type: "number",
+              description: "{minimum: 0, maximum: 1}"
+            },
+            description: "{minItems: 20, maxItems: 20}"
+          }
+        }
+      }
+    }
+  ]);
+});
+
+test("Anthropic structured outputs keep only supported schema keywords and formats", () => {
+  const outbound = anthropicMessages(
+    {
+      model: "claude-opus-5",
+      messages: [{ role: "user", content: "return a structured value" }],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "routekit_supported_schema",
+          strict: true,
+          schema: {
+            type: "object",
+            minProperties: 1,
+            properties: {
+              identifier: {
+                type: "string",
+                pattern: "^[a-z]+$",
+                format: "regex"
+              },
+              createdAt: {
+                type: "string",
+                format: "date-time"
+              },
+              choice: {
+                oneOf: [{ const: "one" }, { const: "two" }]
+              }
+            },
+            required: ["identifier", "createdAt", "choice"],
+            additionalProperties: false
+          }
+        }
+      }
+    },
+    "claude-opus-5"
+  );
+  const schema = (
+    outbound.output_config as {
+      format: { schema: Record<string, unknown> };
+    }
+  ).format.schema;
+  const properties = schema.properties as Record<string, Record<string, unknown>>;
+
+  assert.equal(schema.minProperties, undefined);
+  assert.match(schema.description as string, /minProperties/u);
+  assert.equal(properties.identifier!.format, undefined);
+  assert.equal(properties.identifier!.pattern, "^[a-z]+$");
+  assert.match(properties.identifier!.description as string, /format/u);
+  assert.equal(properties.createdAt!.format, "date-time");
+  assert.equal(properties.choice!.oneOf, undefined);
+  assert.deepEqual(properties.choice!.anyOf, [{ const: "one" }, { const: "two" }]);
+});
+
 test("direct provider backends reject malformed reasoning controls before transport", async () => {
   const cases = [
     {
