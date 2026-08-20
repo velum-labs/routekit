@@ -65,6 +65,34 @@ const writeManifest = async (
   );
 };
 
+const writeShadowEvalSdk = async (root: string, hiddenTimeoutMs: number): Promise<void> => {
+  for (const name of ["routekit", "ori"]) {
+    const directory = path.join(root, "node_modules", name);
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      path.join(directory, "package.json"),
+      `${JSON.stringify({
+        name,
+        private: true,
+        type: "module",
+        exports: { "./eval": "./eval.js" }
+      })}\n`
+    );
+    await writeFile(
+      path.join(directory, "eval.js"),
+      [
+        "export const setupAgent = () => ({",
+        "  run: async () => {",
+        `    await new Promise((resolve) => setTimeout(resolve, ${String(hiddenTimeoutMs)}));`,
+        '    throw new Error("project SDK hidden timeout");',
+        "  }",
+        "});",
+        "export const setupJudge = () => ({ autoEvals: async () => {} });"
+      ].join("\n")
+    );
+  }
+};
+
 test("production runner estimates the exact imported nested-loop testdrive suite from its manifest", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-estimate-"));
   roots.push(root);
@@ -396,6 +424,110 @@ test("production runner applies the host timeout at node:test instead of a stale
     );
 
     assert.equal(result.models[0]?.cases[0]?.outcome, "passed");
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      gateway.close((error) => (error === undefined ? resolve() : reject(error)))
+    );
+  }
+});
+
+test("production runner isolates qualification from a project SDK with a shorter hidden abort", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-isolated-sdk-"));
+  roots.push(root);
+  await writeShadowEvalSdk(root, 20);
+  const suiteRoot = path.join(
+    root,
+    ".routekit",
+    "evals",
+    "plans",
+    "plan",
+    "dimensions",
+    "support"
+  );
+  await mkdir(suiteRoot, { recursive: true });
+  const suite = path.join(suiteRoot, "support.eval.ts");
+  await writeFile(
+    suite,
+    [
+      'import { test } from "node:test";',
+      'import { setupAgent, setupJudge } from "routekit/eval";',
+      'const judge = setupJudge({ agent: setupAgent({ model: "openai/judge" }), minScore: 0.8 });',
+      'test("support case", async () => {',
+      '  const run = await setupAgent({ model: "openai/cheap" }).run({ prompt: "Help", caseId: "support-case" });',
+      "  run.toComplete();",
+      '  await judge.autoEvals({ criteria: "Helpful", prompt: "Help", run });',
+      "});"
+    ].join("\n")
+  );
+  await writeManifest(suiteRoot, ["openai/cheap"], "openai/judge", ["support-case"]);
+
+  const calls: string[] = [];
+  const gateway = createServer((incoming, outgoing) => {
+    void (async () => {
+      const body = JSON.parse(await readBody(incoming)) as Readonly<Record<string, unknown>>;
+      calls.push(String(body.model));
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      const content =
+        body.model === "openai/judge"
+          ? JSON.stringify({ pass: true, reason: "helpful", score: 0.9 })
+          : "Helpful answer";
+      outgoing.writeHead(200, { "content-type": "application/json" });
+      outgoing.end(
+        JSON.stringify({
+          model: body.model,
+          choices: [{ message: { role: "assistant", content } }]
+        })
+      );
+    })();
+  });
+  await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  const address = gateway.address();
+  assert.ok(address !== null && typeof address !== "string");
+
+  try {
+    const shadowed = await Effect.runPromise(
+      withEvalService(
+        {
+          bearerCredential: "parent-only-token",
+          timeoutMs: 15_000
+        },
+        (service) =>
+          service.runComparison(
+            {
+              ...requestFor(suite, `http://127.0.0.1:${String(address.port)}`),
+              candidateModels: ["openai/cheap"],
+              timeoutMs: 20
+            },
+            "full"
+          )
+      ).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+    );
+    assert.equal(Exit.isFailure(shadowed), true);
+    assert.deepEqual(calls, []);
+
+    const started = Date.now();
+    const result = await Effect.runPromise(
+      withEvalService(
+        {
+          bearerCredential: "parent-only-token",
+          isolateExecutionFromProjectSdk: true,
+          timeoutMs: 15_000
+        },
+        (service) =>
+          service.runComparison(
+            {
+              ...requestFor(suite, `http://127.0.0.1:${String(address.port)}`),
+              candidateModels: ["openai/cheap"],
+              timeoutMs: 20
+            },
+            "full"
+          )
+      ).pipe(Effect.provide(NodeHttpClient.layerUndici))
+    );
+
+    assert.deepEqual(calls, ["openai/cheap", "openai/judge"]);
+    assert.equal(result.models[0]?.cases[0]?.outcome, "passed");
+    assert.ok(Date.now() - started >= 75, "the project SDK's 20ms abort must not bound execution");
   } finally {
     await new Promise<void>((resolve, reject) =>
       gateway.close((error) => (error === undefined ? resolve() : reject(error)))
