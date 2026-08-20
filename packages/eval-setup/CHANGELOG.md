@@ -1,5 +1,15 @@
 # @velum-labs/routekit-eval-setup
 
+## 1.0.9
+
+### Patch Changes
+
+- 0d4d984: Fix ENG-834 by increasing evaluation-authoring output headroom for twenty-case
+  suites and reporting max-token Responses truncation as an incomplete, failed
+  model call with its stop reason instead of an invalid-JSON authoring response.
+  - @velum-labs/routekit-eval-contracts@1.0.9
+  - @velum-labs/routekit-runtime@1.0.9
+
 ## 1.0.8
 
 ### Patch Changes
