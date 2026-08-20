@@ -27,7 +27,7 @@ const TOKEN_FILE_MAX_BYTES = 16 * 1024;
 const MODEL_CALL_ID_HEADER = "x-routekit-model-call-id";
 
 export type QualificationObservedCall = {
-  readonly callId: string;
+  readonly callId?: string;
   readonly role: "candidate" | "judge";
   readonly measurement?: EvalClassifierObservation["measurement"];
 };
@@ -51,15 +51,21 @@ export const observeQualificationCalls = (
   HttpClient.transform(client, (responseEffect, request) => {
     const role = qualificationRole(request.headers[EVAL_ATTRIBUTION_HEADER]);
     if (role === undefined) return responseEffect;
-    return responseEffect.pipe(
+    const pending = { role } satisfies QualificationObservedCall;
+    return Ref.update(observed, (current) => [...current, pending]).pipe(
+      Effect.andThen(responseEffect),
       Effect.tap((response) => {
         const callId = response.headers[MODEL_CALL_ID_HEADER]?.trim();
         if (callId === undefined || callId.length === 0) return Effect.void;
-        return Ref.update(observed, (current) =>
-          current.some((entry) => entry.callId === callId)
-            ? current
-            : [...current, { callId, role }]
-        );
+        return Ref.update(observed, (current) => {
+          const pendingIndex = current.indexOf(pending);
+          if (pendingIndex === -1 || current.some((entry) => entry.callId === callId)) {
+            return current;
+          }
+          const updated = [...current];
+          updated[pendingIndex] = { callId, role };
+          return updated;
+        });
       })
     );
   });

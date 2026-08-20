@@ -10,7 +10,7 @@ import {
   immutableCliRuntime
 } from "@velum-labs/routekit-cli-core";
 import { EVAL_ATTRIBUTION_HEADER, EVAL_POLICY } from "@velum-labs/routekit-eval-contracts";
-import { Effect, Ref } from "effect";
+import { Effect, Fiber, Ref } from "effect";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
 import { buildProgram } from "../cli.js";
@@ -185,6 +185,37 @@ test("qualification HTTP observation captures model call ids before comparison f
   assert.deepEqual(observed, [
     { callId: "model_call_before_timeout", role: "candidate" }
   ]);
+});
+
+test("qualification HTTP observation counts a call as soon as the request is issued", async () => {
+  const observed = await Effect.runPromise(
+    Effect.gen(function* () {
+      const calls = yield* Ref.make<readonly QualificationObservedCall[]>([]);
+      const client = observeQualificationCalls(
+        HttpClient.make(() => Effect.never),
+        calls
+      );
+      const request = client.execute(
+        HttpClientRequest.post("https://gateway.example.test/v1/chat/completions", {
+          headers: {
+            [EVAL_ATTRIBUTION_HEADER]: JSON.stringify({
+              purpose: "eval",
+              role: "candidate",
+              runId: "comparison-1",
+              caseId: "case-1"
+            })
+          }
+        })
+      );
+      const fiber = yield* Effect.forkChild(request);
+      yield* Effect.yieldNow;
+      const issued = yield* Ref.get(calls);
+      yield* Fiber.interrupt(fiber);
+      return issued;
+    })
+  );
+
+  assert.deepEqual(observed, [{ role: "candidate" }]);
 });
 
 test("eval authoring uses the selected remote data URL with the remote session credential", () => {
