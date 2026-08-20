@@ -1,5 +1,17 @@
 # @velum-labs/routekit-gateway
 
+## 1.0.7
+
+### Patch Changes
+
+- 34d315f: Advertise only the verified GPT-5.6 family in the Amazon Bedrock OpenAI catalog and correct the Bedrock documentation.
+  - @velum-labs/routekit-config-core@1.0.7
+  - @velum-labs/routekit-contracts@1.0.7
+  - @velum-labs/routekit-eval-contracts@1.0.7
+  - @velum-labs/routekit-eval-core@1.0.7
+  - @velum-labs/routekit-registry@1.0.7
+  - @velum-labs/routekit-runtime@1.0.7
+
 ## 1.0.6
 
 ### Patch Changes
