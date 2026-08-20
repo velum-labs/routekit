@@ -1,5 +1,20 @@
 # @velum-labs/routekit-gateway
 
+## 1.0.10
+
+### Patch Changes
+
+- 0a83607: Keep native OpenAI Responses SSE relays alive during quiet model phases and emit
+  a structured terminal error when an upstream stream ends before a Responses
+  terminal event.
+- Updated dependencies [0a83607]
+  - @velum-labs/routekit-runtime@1.0.10
+  - @velum-labs/routekit-eval-core@1.0.10
+  - @velum-labs/routekit-config-core@1.0.10
+  - @velum-labs/routekit-contracts@1.0.10
+  - @velum-labs/routekit-eval-contracts@1.0.10
+  - @velum-labs/routekit-registry@1.0.10
+
 ## 1.0.9
 
 ### Patch Changes
