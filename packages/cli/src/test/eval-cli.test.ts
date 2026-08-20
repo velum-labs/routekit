@@ -9,8 +9,9 @@ import {
   commandOptions,
   immutableCliRuntime
 } from "@velum-labs/routekit-cli-core";
-import { EVAL_POLICY } from "@velum-labs/routekit-eval-contracts";
-import { Effect } from "effect";
+import { EVAL_ATTRIBUTION_HEADER, EVAL_POLICY } from "@velum-labs/routekit-eval-contracts";
+import { Effect, Ref } from "effect";
+import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
 import { buildProgram } from "../cli.js";
 import {
@@ -20,7 +21,18 @@ import {
   evalAuthoringStructuredOutput,
   evalSessionGatewayUrl
 } from "../effect/eval-authoring-target.js";
-import { policyShowCommand } from "../effect/eval-cli.js";
+import {
+  DEFAULT_QUALIFICATION_TEST_TIMEOUT_MS,
+  evalQualificationCliError,
+  policyShowCommand,
+  qualificationComparisonRequest,
+  qualificationFailureDetail
+} from "../effect/eval-cli.js";
+import {
+  includeQualificationObservedCalls,
+  observeQualificationCalls,
+  type QualificationObservedCall
+} from "../effect/eval-execution-target.js";
 import { child, runProgram } from "./effect-cli-test.js";
 
 const command = (name: string) => {
@@ -48,6 +60,131 @@ const runJson = async (root: string, args: readonly string[]): Promise<unknown> 
 
 test("policy show command remains an Effect program with the isolation contract", async () => {
   assert.deepEqual(await Effect.runPromise(policyShowCommand), EVAL_POLICY);
+});
+
+test("qualification comparisons use a provider-safe timeout instead of node:test's 120s default", () => {
+  const request = qualificationComparisonRequest({
+    candidateModels: ["openai/candidate"],
+    dimensionId: "provider-protocol-translation",
+    gatewayUrl: "https://gateway.example.test",
+    judgeModel: "openai/judge",
+    suitePath: "/tmp/provider-protocol-translation.eval.ts"
+  });
+
+  assert.equal(DEFAULT_QUALIFICATION_TEST_TIMEOUT_MS, 600_000);
+  assert.notEqual(request.timeoutMs, 120_000);
+  assert.equal(request.timeoutMs, DEFAULT_QUALIFICATION_TEST_TIMEOUT_MS);
+  assert.equal(
+    qualificationComparisonRequest({
+      candidateModels: ["openai/candidate"],
+      dimensionId: "provider-protocol-translation",
+      gatewayUrl: "https://gateway.example.test",
+      judgeModel: "openai/judge",
+      suitePath: "/tmp/provider-protocol-translation.eval.ts",
+      timeoutMs: 900_000
+    }).timeoutMs,
+    900_000
+  );
+});
+
+test("failed qualification errors are non-zero and name dimension, timeout, and call ids", () => {
+  const failure = qualificationFailureDetail({
+    cause: new Error("test timed out"),
+    cleanupIncomplete: false,
+    comparison: {
+      dimensionId: "provider-protocol-translation",
+      timeoutMs: 600_000
+    },
+    observedCalls: [
+      { callId: "model_call_candidate", role: "candidate" },
+      { callId: "model_call_judge", role: "judge" }
+    ]
+  });
+  const error = evalQualificationCliError(failure, new Error("test timed out"));
+
+  assert.equal(error.exitCode, 1);
+  assert.equal(error.code, "eval_qualification_failed");
+  assert.match(error.message, /provider-protocol-translation/u);
+  assert.match(error.message, /timeout 600000ms/u);
+  assert.match(error.message, /model_call_candidate/u);
+  assert.match(error.message, /model_call_judge/u);
+  assert.match(String((error as Error & { cause?: unknown }).cause), /test timed out/u);
+});
+
+test("failed qualification ledger retains calls observed before interruption", () => {
+  const ledger = includeQualificationObservedCalls(
+    {
+      expectedCalls: 4,
+      observedCalls: 0,
+      observedCandidateRows: 0,
+      knownInputTokens: 0,
+      knownOutputTokens: 0,
+      unknownTokenMeasurements: 0,
+      knownPricedSubtotalUsd: 0,
+      unpricedCalls: 0
+    },
+    [
+      {
+        callId: "model_call_candidate",
+        role: "candidate",
+        measurement: { inputTokens: 100, outputTokens: 25, costUsd: 0.01 }
+      },
+      {
+        callId: "model_call_judge",
+        role: "judge"
+      }
+    ]
+  );
+
+  assert.deepEqual(ledger, {
+    expectedCalls: 4,
+    observedCalls: 2,
+    observedCandidateRows: 1,
+    knownInputTokens: 100,
+    knownOutputTokens: 25,
+    unknownTokenMeasurements: 1,
+    knownPricedSubtotalUsd: 0.01,
+    unpricedCalls: 1
+  });
+});
+
+test("qualification HTTP observation captures model call ids before comparison failure", async () => {
+  const observed = await Effect.runPromise(
+    Effect.gen(function* () {
+      const calls = yield* Ref.make<readonly QualificationObservedCall[]>([]);
+      const client = observeQualificationCalls(
+        HttpClient.make((request) =>
+          Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              Response.json(
+                {},
+                { headers: { "x-routekit-model-call-id": "model_call_before_timeout" } }
+              )
+            )
+          )
+        ),
+        calls
+      );
+      yield* client.execute(
+        HttpClientRequest.post("https://gateway.example.test/v1/chat/completions", {
+          headers: {
+            [EVAL_ATTRIBUTION_HEADER]: JSON.stringify({
+              purpose: "eval",
+              role: "candidate",
+              runId: "comparison-1",
+              caseId: "case-1"
+            })
+          }
+        })
+      );
+      return yield* Ref.get(calls);
+    })
+  );
+
+  assert.deepEqual(observed, [
+    { callId: "model_call_before_timeout", role: "candidate" }
+  ]);
 });
 
 test("eval authoring uses the selected remote data URL with the remote session credential", () => {
@@ -256,6 +393,7 @@ test("eval workflow defaults to repository state and configured RouteKit targets
   assert.ok(optionNames("run").includes("plan"));
   assert.ok(optionNames("run").includes("gateway-url"));
   assert.ok(optionNames("run").includes("token-file"));
+  assert.ok(optionNames("run").includes("timeout-ms"));
   assert.equal(optionNames("run").includes("url"), false);
   assert.equal(optionNames("run").includes("token"), false);
 

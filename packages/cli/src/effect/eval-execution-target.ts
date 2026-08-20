@@ -1,15 +1,17 @@
 import { lstat } from "node:fs/promises";
 
+import { EVAL_ATTRIBUTION_HEADER } from "@velum-labs/routekit-eval-contracts";
 import type {
   EvalClassifierObservation,
   EvalExecutionPlan,
   EvalRunCleanup,
+  EvalRunLedger,
   EvalRunTarget
 } from "@velum-labs/routekit-eval-setup";
-import { isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { RouteKitFailure } from "@velum-labs/routekit-runtime/effect";
+import { isLoopbackHost, trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { Effect, FileSystem, Redacted, Ref } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/unstable/http";
 
 import { cliTry } from "../cli-session.js";
 import { routekitClient } from "../client.js";
@@ -22,6 +24,81 @@ import { selectedRemoteMetadata } from "../target.js";
  */
 const QUALIFICATION_PER_CALL_INPUT_BYTES = 256 * 1024;
 const TOKEN_FILE_MAX_BYTES = 16 * 1024;
+const MODEL_CALL_ID_HEADER = "x-routekit-model-call-id";
+
+export type QualificationObservedCall = {
+  readonly callId: string;
+  readonly role: "candidate" | "judge";
+  readonly measurement?: EvalClassifierObservation["measurement"];
+};
+
+const qualificationRole = (
+  raw: string | undefined
+): QualificationObservedCall["role"] | undefined => {
+  if (raw === undefined) return undefined;
+  try {
+    const decoded = JSON.parse(raw) as { readonly role?: unknown };
+    return decoded.role === "candidate" || decoded.role === "judge" ? decoded.role : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const observeQualificationCalls = (
+  client: HttpClient.HttpClient,
+  observed: Ref.Ref<readonly QualificationObservedCall[]>
+): HttpClient.HttpClient =>
+  HttpClient.transform(client, (responseEffect, request) => {
+    const role = qualificationRole(request.headers[EVAL_ATTRIBUTION_HEADER]);
+    if (role === undefined) return responseEffect;
+    return responseEffect.pipe(
+      Effect.tap((response) => {
+        const callId = response.headers[MODEL_CALL_ID_HEADER]?.trim();
+        if (callId === undefined || callId.length === 0) return Effect.void;
+        return Ref.update(observed, (current) =>
+          current.some((entry) => entry.callId === callId)
+            ? current
+            : [...current, { callId, role }]
+        );
+      })
+    );
+  });
+
+export const includeQualificationObservedCalls = (
+  ledger: EvalRunLedger,
+  observed: readonly QualificationObservedCall[]
+): EvalRunLedger => {
+  let knownInputTokens = 0;
+  let knownOutputTokens = 0;
+  let unknownTokenMeasurements = 0;
+  let knownPricedSubtotalUsd = 0;
+  let unpricedCalls = 0;
+  for (const call of observed) {
+    const measurement = call.measurement;
+    if (measurement?.inputTokens === undefined || measurement.outputTokens === undefined) {
+      unknownTokenMeasurements += 1;
+    } else {
+      knownInputTokens += measurement.inputTokens;
+      knownOutputTokens += measurement.outputTokens;
+    }
+    if (measurement?.costUsd === undefined) {
+      unpricedCalls += 1;
+    } else {
+      knownPricedSubtotalUsd += measurement.costUsd;
+    }
+  }
+  return {
+    ...ledger,
+    observedCalls: ledger.observedCalls + observed.length,
+    observedCandidateRows:
+      ledger.observedCandidateRows + observed.filter((call) => call.role === "candidate").length,
+    knownInputTokens: ledger.knownInputTokens + knownInputTokens,
+    knownOutputTokens: ledger.knownOutputTokens + knownOutputTokens,
+    unknownTokenMeasurements: ledger.unknownTokenMeasurements + unknownTokenMeasurements,
+    knownPricedSubtotalUsd: ledger.knownPricedSubtotalUsd + knownPricedSubtotalUsd,
+    unpricedCalls: ledger.unpricedCalls + unpricedCalls
+  };
+};
 
 export type QualificationTarget = {
   readonly gatewayUrl: string;

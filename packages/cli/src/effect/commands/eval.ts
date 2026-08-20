@@ -8,6 +8,7 @@ import type { EvalExecutionPlan, EvalProjectStatus } from "@velum-labs/routekit-
 import { Effect, Option } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
 
+import { cliFailure } from "../../cli-session.js";
 import {
   type EvalWorkflowCliInput,
   evalAnswerCommand,
@@ -23,7 +24,6 @@ import {
   evalStatusCommand,
   evalValidateCommand
 } from "../eval-cli.js";
-import { cliFailure } from "../../cli-session.js";
 import { routekitRoot } from "../root-command.js";
 
 type RepositoryOptions = {
@@ -39,6 +39,9 @@ const optionalString = (name: string) =>
     Flag.optional,
     Flag.map(Option.getOrUndefined)
   );
+
+const optionalInteger = (name: string) =>
+  Flag.integer(name).pipe(Flag.optional, Flag.map(Option.getOrUndefined));
 
 const repository = optionalString("repository").pipe(
   Flag.withDefault("."),
@@ -258,6 +261,9 @@ export const makeEvalCommand = (
       ),
       tokenFile: optionalString("token-file").pipe(
         Flag.withDescription("private external gateway credential file")
+      ),
+      timeoutMs: optionalInteger("timeout-ms").pipe(
+        Flag.withDescription("per-test provider round-trip timeout in milliseconds")
       )
     },
     (options) =>
@@ -268,7 +274,8 @@ export const makeEvalCommand = (
             ...workflowInput(options),
             planId: options.plan,
             ...(options.gatewayUrl === undefined ? {} : { gatewayUrl: options.gatewayUrl }),
-            ...(options.tokenFile === undefined ? {} : { tokenFile: options.tokenFile })
+            ...(options.tokenFile === undefined ? {} : { tokenFile: options.tokenFile }),
+            ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs })
           })
         );
       })
