@@ -63,13 +63,16 @@ const dimensions = (count: number) =>
     id: `dimension-${String(index + 1)}`,
     description: `Production workload dimension ${String(index + 1)}`,
     includes: [`Requests that exercise dimension ${String(index + 1)}`],
-    excludes: ["Requests that exercise a different dimension"]
+    excludes: ["Requests that exercise a different dimension"],
+    inScopeRequest: `Handle a request for dimension ${String(index + 1)}.`,
+    nearMissRequest: `Handle a neighboring request outside dimension ${String(index + 1)}.`
   }));
 
 const proposeDimensions = (
   root: string,
   output: unknown,
-  requests: EvalAuthoringCompletion[] = []
+  requests: EvalAuthoringCompletion[] = [],
+  sourceInventory: readonly string[] = ["source.md"]
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -77,7 +80,7 @@ const proposeDimensions = (
       return yield* author.proposeDimensions({
         operationId: "eng-831",
         repositoryRoot: root,
-        sourceInventory: ["source.md"],
+        sourceInventory,
         configuration
       });
     }).pipe(
@@ -307,6 +310,118 @@ test("dimension authoring sends an Anthropic-compatible structured output schema
     assert.equal(dimensionsSchema?.type, "array");
     assert.equal(dimensionsSchema.minItems, 1);
     assert.equal(dimensionsSchema.maxItems, undefined);
+    const dimensionItems = dimensionsSchema.items as Record<string, unknown>;
+    assert.deepEqual(dimensionItems.required, [
+      "id",
+      "description",
+      "includes",
+      "excludes",
+      "inScopeRequest",
+      "nearMissRequest"
+    ]);
+    assert.match(requests[0]!.instructions, /Do not use layer-cake, overlapping, or correlated axes/u);
+    assert.match(requests[0]!.instructions, /independent routing axis/u);
+    assert.match(requests[0]!.instructions, /without needing another dimension/u);
+    assert.match(requests[0]!.instructions, /product behavior XOR how the repository is changed/u);
+    assert.match(requests[0]!.instructions, /implementation stacks/u);
+    assert.match(requests[0]!.instructions, /tests, documentation, CI, releases/u);
+    assert.match(requests[0]!.instructions, /eval\/classifier itself/u);
+    assert.match(requests[0]!.instructions, /tools, vision, context length/u);
+    assert.match(requests[0]!.instructions, /unknown weight absorb/u);
+    assert.match(requests[0]!.instructions, /sibling dimension or unknown, not paraphrase/u);
+  });
+});
+
+test("dimension authoring requires distinct non-empty contrast pairs", async () => {
+  await withRepository(async ({ root }) => {
+    const missingContrast = dimensions(5).map(({ nearMissRequest: _, ...dimension }) => dimension);
+    await assert.rejects(
+      proposeDimensions(root, { dimensions: missingContrast }),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.equal(error.detail, "dimension proposal failed validation");
+        return true;
+      }
+    );
+
+    for (const [inScopeRequest, nearMissRequest] of [
+      ["", "A neighboring request."],
+      ["   ", "A neighboring request."],
+      ["The same request.", " the same request. "]
+    ] as const) {
+      const invalid = dimensions(5);
+      invalid[0] = { ...invalid[0]!, inScopeRequest, nearMissRequest };
+      await assert.rejects(
+        proposeDimensions(root, { dimensions: invalid }),
+        (error: unknown) => {
+          assert.ok(error instanceof EvalProjectAuthoringError);
+          assert.equal(error.detail, "dimension proposal failed validation");
+          assert.match(String(error.cause), /contrast|inScopeRequest|nearMissRequest/u);
+          return true;
+        }
+      );
+    }
+  });
+});
+
+test("dimension authoring rejects repeated exclusive requests and mixed repository layers", async () => {
+  await withRepository(async ({ root }) => {
+    const repeatedExclusiveRequest = dimensions(5);
+    repeatedExclusiveRequest[1] = {
+      ...repeatedExclusiveRequest[1]!,
+      inScopeRequest: ` ${repeatedExclusiveRequest[0]!.inScopeRequest.toUpperCase()} `
+    };
+    await assert.rejects(
+      proposeDimensions(root, { dimensions: repeatedExclusiveRequest }),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.match(String(error.cause), /in-scope requests must be pairwise distinct/u);
+        return true;
+      }
+    );
+
+    const mixedProductAndProcess = dimensions(5);
+    mixedProductAndProcess[4] = {
+      ...mixedProductAndProcess[4]!,
+      id: "tests-and-release",
+      description: "Repository tests, CI, and release operations",
+      includes: ["Changes to tests, documentation, CI, and releases"]
+    };
+    await assert.rejects(
+      proposeDimensions(root, { dimensions: mixedProductAndProcess }),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.match(
+          String(error.cause),
+          /forbidden implementation, repository-layer, or eval axis/u
+        );
+        return true;
+      }
+    );
+  });
+});
+
+test("dimension authoring rejects an axis that includes almost every inventory file", async () => {
+  await withRepository(async ({ root }) => {
+    const sourceInventory = ["source.md", "alpha.ts", "beta.ts", "gamma.ts", "delta.ts"];
+    await Promise.all(
+      sourceInventory
+        .filter((sourcePath) => sourcePath !== "source.md")
+        .map((sourcePath) => writeFile(path.join(root, sourcePath), `${sourcePath}\n`))
+    );
+    const broadAxis = dimensions(5);
+    broadAxis[0] = {
+      ...broadAxis[0]!,
+      includes: [`Changes across ${sourceInventory.join(", ")}`]
+    };
+    await assert.rejects(
+      proposeDimensions(root, { dimensions: broadAxis }, [], sourceInventory),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.match(String(error.cause), /includes almost every inventory file/u);
+        return true;
+      }
+    );
   });
 });
 

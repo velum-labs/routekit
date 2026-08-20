@@ -8,8 +8,7 @@ import {
   type EvalComparisonRequest,
   type EvalPolicy,
   type PublishedRoutingActivation,
-  type RequestDecomposition,
-  WorkloadDimension
+  type RequestDecomposition
 } from "@velum-labs/routekit-eval-contracts";
 import { scoreRoutingCandidates } from "@velum-labs/routekit-eval-core";
 import {
@@ -31,6 +30,7 @@ import {
   EvalProjectAuthor,
   EvalProjectAuthorLive,
   type EvalProjectStatus,
+  EvalProposedDimensionSchema,
   EvalProjectStoreLive,
   EvalProjectWorkflow,
   EvalProjectWorkflowLive,
@@ -179,8 +179,8 @@ const readJsonFile = <A>(
   }) as Effect.Effect<A, unknown, FileSystem.FileSystem>;
 
 const DimensionsInput = Schema.Union([
-  Schema.Array(WorkloadDimension),
-  Schema.Struct({ dimensions: Schema.Array(WorkloadDimension) })
+  Schema.Array(EvalProposedDimensionSchema),
+  Schema.Struct({ dimensions: Schema.Array(EvalProposedDimensionSchema) })
 ]);
 
 const EvaluationsInput = Schema.Struct({

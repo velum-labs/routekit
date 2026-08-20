@@ -71,10 +71,24 @@ Treat proposals as review material, not activation evidence. Approval is bound
 to the exact artifact digest. If an artifact changes, validate and approve the
 new digest rather than reusing an old approval.
 
-A useful routing basis normally contains 5–10 separable workload dimensions.
-Each definition should include positive scope, exclusions, and boundary
-examples. Request-envelope capabilities such as tools, vision, context, and
-maximum output are hard requirements, not semantic workload dimensions.
+A useful routing basis normally contains 5–10 orthogonal workload dimensions.
+Each definition must include positive scope, exclusions, and a contrast pair:
+one request that should receive majority weight on the dimension and one
+same-workload near-miss that should route to a sibling dimension or unknown.
+Request-envelope capabilities such as tools, vision, context, and maximum
+output are hard requirements, not semantic workload dimensions.
+
+Reject the proposal instead of approving its digest when:
+
+- any dimension lacks an exclusive in-scope request or a distinct near-miss;
+- product-behavior axes are mixed with repository-change/process axes; or
+- a dimension is an implementation, tests/docs/CI/release, eval/classifier, or
+  other always-on layer that would receive high weight on almost every ticket.
+
+Unknown weight absorbs the remainder. Do not add catch-all axes to cover it.
+For a gateway product basis, protocol, selection, classification, and quota can
+share one classifier; repository operations belong in a second classifier or
+in tags, not in the same summed vector.
 
 Keep generated evaluations and sanitized structured results reviewable in the
 repository when the user approves committing them. Do not hand-edit immutable

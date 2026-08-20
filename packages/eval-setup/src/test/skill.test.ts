@@ -28,6 +28,10 @@ test("onboarding skill uses the public CLI and preserves approval boundaries", a
   ]) {
     assert.match(skill, new RegExp(term, "iu"));
   }
+  assert.match(skill, /exclusive in-scope request or a distinct near-miss/iu);
+  assert.match(skill, /product-behavior axes are mixed with repository-change\/process axes/iu);
+  assert.match(skill, /high weight on almost every ticket/iu);
+  assert.match(skill, /Unknown weight absorbs the remainder/u);
   assert.doesNotMatch(skill, /\beval prepare\b/u);
   assert.doesNotMatch(skill, /\barea catalog\b/iu);
   assert.doesNotMatch(skill, /Use RouteKit's `EvalSetup` operations/u);

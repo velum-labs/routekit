@@ -77,6 +77,17 @@ export class EvalProjectTransitionError extends Data.TaggedError("EvalProjectTra
   }
 }
 
+export class EvalDimensionContrastError extends Data.TaggedError("EvalDimensionContrastError")<{
+  readonly dimensionId: string;
+  readonly detail: string;
+}> {
+  override get message(): string {
+    return `RouteKit Eval cannot approve routing dimension ${JSON.stringify(
+      this.dimensionId
+    )}: ${this.detail}`;
+  }
+}
+
 export class EvalProjectArtifactError extends Data.TaggedError("EvalProjectArtifactError")<{
   readonly operation: "checking" | "reading" | "decoding" | "writing" | "listing";
   readonly path: string;
