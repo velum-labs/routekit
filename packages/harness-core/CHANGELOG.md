@@ -1,5 +1,13 @@
 # @velum-labs/routekit-harness-core
 
+## 1.0.11
+
+### Patch Changes
+
+- Updated dependencies [a148a71]
+  - @velum-labs/routekit-runtime@1.0.11
+  - @velum-labs/routekit-contracts@1.0.11
+
 ## 1.0.10
 
 ### Patch Changes
