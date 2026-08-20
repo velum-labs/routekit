@@ -73,6 +73,34 @@ test("switching proxy retirement preserves an admitted streaming response", asyn
   }
 });
 
+test("switching proxy header timeout does not abort an admitted response body", async () => {
+  const target = await heldTarget();
+  const proxy = await startSwitchingGatewayProxy({
+    target: target.url,
+    upstreamHeadersTimeoutMs: 25
+  });
+  try {
+    const response = await fetch(`${proxy.url()}/stream`);
+    const reader = response.body?.getReader();
+    assert.ok(reader !== undefined);
+    const first = await reader.read();
+    assert.match(Buffer.from(first.value ?? []).toString("utf8"), /first/);
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    target.release();
+    let remainder = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      remainder += Buffer.from(value ?? []).toString("utf8");
+    }
+    assert.match(remainder, /last/);
+  } finally {
+    target.release();
+    await Effect.runPromise(proxy.close);
+    await target.close();
+  }
+});
+
 test("switching proxy retirement deadline terminates a stream that never finishes", async () => {
   const target = await heldTarget();
   const proxy = await startSwitchingGatewayProxy({ target: target.url });

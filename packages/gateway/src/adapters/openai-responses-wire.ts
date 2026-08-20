@@ -6,6 +6,13 @@ import { gatewayTryPromise } from "../effect/gateway.js";
 const OPENAI_RESPONSES_CALL_ID_MAX_LENGTH = 64;
 const NORMALIZED_CALL_ID_PREFIX = "rk_";
 const ENCRYPTED_REASONING_PREFIX = "rk1.";
+const RESPONSES_KEEPALIVE_MS = 15_000;
+const TERMINAL_RESPONSES_EVENTS = new Set([
+  "response.completed",
+  "response.failed",
+  "response.incomplete",
+  "error"
+]);
 
 export type ResponsesReasoningOwner = {
   provider: string;
@@ -234,16 +241,84 @@ function wrapSseFrame(frame: string, delimiter: string, owner: ResponsesReasonin
   return `${rewritten.join(lineEnding)}${delimiter}`;
 }
 
+function responsesSseEventType(frame: string): string | undefined {
+  let eventType: string | undefined;
+  const data: string[] = [];
+  for (const line of frame.split(/\r?\n/)) {
+    if (line.startsWith("event:")) {
+      eventType = line.slice("event:".length).trim();
+      continue;
+    }
+    const value = sseDataValue(line);
+    if (value !== undefined) data.push(value);
+  }
+  if (eventType !== undefined && eventType.length > 0) return eventType;
+  if (data.length === 0 || data.join("\n") === "[DONE]") return undefined;
+  try {
+    const parsed = JSON.parse(data.join("\n")) as { type?: unknown };
+    return typeof parsed.type === "string" ? parsed.type : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function responsesStreamFailure(
+  status: number,
+  lastEvent: string | undefined,
+  started: number,
+  cause?: unknown
+): Uint8Array {
+  const durationMs = Date.now() - started;
+  const detail =
+    cause instanceof Error
+      ? `; cause=${cause.name}: ${cause.message.slice(0, 300)}`
+      : cause === undefined
+        ? ""
+        : `; cause=${String(cause).slice(0, 300)}`;
+  const message =
+    `RouteKit upstream Responses stream ended before a terminal event ` +
+    `(status=${status}, last_event=${lastEvent ?? "none"}, duration_ms=${durationMs})${detail}`;
+  return new TextEncoder().encode(
+    `event: error\ndata: ${JSON.stringify({
+      type: "error",
+      error: {
+        type: "upstream_stream_closed",
+        code: "upstream_stream_closed",
+        message
+      }
+    })}\n\n`
+  );
+}
+
 function wrapResponsesReasoningSse(
   source: ReadableStream<Uint8Array>,
-  owner: ResponsesReasoningOwner
+  owner: ResponsesReasoningOwner,
+  status: number,
+  keepaliveMs: number
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  const started = Date.now();
+  let lastEvent: string | undefined;
+  let terminal = false;
   return StreamPump.frames(source, {
+    keepaliveMs,
     onFrame(frame, delimiter, controller) {
+      const eventType = responsesSseEventType(frame);
+      if (eventType !== undefined) {
+        lastEvent = eventType;
+        terminal ||= TERMINAL_RESPONSES_EVENTS.has(eventType);
+      }
       controller.enqueue(encoder.encode(wrapSseFrame(frame, delimiter, owner)));
     },
-    onEnd() {}
+    onEnd(controller) {
+      if (!terminal) controller.enqueue(responsesStreamFailure(status, lastEvent, started));
+    },
+    keepalive(controller) {
+      if (!terminal) controller.enqueue(encoder.encode(": keepalive\n\n"));
+    },
+    onError(error, controller) {
+      if (!terminal) controller.enqueue(responsesStreamFailure(status, lastEvent, started, error));
+    }
   });
 }
 
@@ -253,7 +328,8 @@ function wrapResponsesReasoningSse(
  */
 export function wrapResponsesReasoningResponse(
   response: Response,
-  owner: ResponsesReasoningOwner
+  owner: ResponsesReasoningOwner,
+  options: { keepaliveMs?: number } = {}
 ): Effect.Effect<Response, Error> {
   if (!response.ok || response.body === null) return Effect.succeed(response);
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
@@ -262,11 +338,19 @@ export function wrapResponsesReasoningResponse(
     headers.delete("content-length");
     headers.delete("content-encoding");
     return Effect.succeed(
-      new Response(wrapResponsesReasoningSse(response.body, owner), {
-        status: response.status,
-        statusText: response.statusText,
-        headers
-      })
+      new Response(
+        wrapResponsesReasoningSse(
+          response.body,
+          owner,
+          response.status,
+          options.keepaliveMs ?? RESPONSES_KEEPALIVE_MS
+        ),
+        {
+          status: response.status,
+          statusText: response.statusText,
+          headers
+        }
+      )
     );
   }
   if (!contentType.includes("json")) return Effect.succeed(response);

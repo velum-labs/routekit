@@ -277,3 +277,80 @@ test("streaming Responses output wraps reasoning and preserves SSE framing", asy
     { owner: OWNER_A, ciphertext: "terminal" }
   ]);
 });
+
+test("native Responses streams emit keepalives while the provider is silent", async () => {
+  let upstream: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        upstream = controller;
+      }
+    }),
+    { headers: { "content-type": "text/event-stream" } }
+  );
+  const wrapped = await Effect.runPromise(
+    wrapResponsesReasoningResponse(response, OWNER_A, { keepaliveMs: 5 })
+  );
+  const reader = wrapped.body?.getReader();
+  assert.ok(reader !== undefined);
+  const first = await reader.read();
+  assert.equal(new TextDecoder().decode(first.value), ": keepalive\n\n");
+  upstream?.enqueue(
+    new TextEncoder().encode(
+      'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n'
+    )
+  );
+  upstream?.close();
+  const rest: Uint8Array[] = [];
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    rest.push(next.value);
+  }
+  assert.match(new TextDecoder().decode(Buffer.concat(rest)), /event: response\.completed/);
+});
+
+test("native Responses EOF surfaces terminal diagnostics instead of a silent close", async () => {
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n'
+          )
+        );
+        controller.close();
+      }
+    }),
+    { status: 200, headers: { "content-type": "text/event-stream" } }
+  );
+  const wrapped = await Effect.runPromise(wrapResponsesReasoningResponse(response, OWNER_A));
+  const text = await wrapped.text();
+  assert.match(text, /event: error/);
+  assert.match(text, /upstream_stream_closed/);
+  assert.match(text, /status=200/);
+  assert.match(text, /last_event=response\.output_text\.delta/);
+  assert.match(text, /duration_ms=\d+/);
+});
+
+test("native Responses read errors become a terminal SSE error event", async () => {
+  let upstream: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        upstream = controller;
+        controller.enqueue(
+          new TextEncoder().encode('event: response.created\ndata: {"type":"response.created"}\n\n')
+        );
+      }
+    }),
+    { status: 200, headers: { "content-type": "text/event-stream" } }
+  );
+  const wrapped = await Effect.runPromise(wrapResponsesReasoningResponse(response, OWNER_A));
+  const reading = wrapped.text();
+  upstream?.error(new Error("simulated socket reset"));
+  const text = await reading;
+  assert.match(text, /event: error/);
+  assert.match(text, /last_event=response\.created/);
+  assert.match(text, /simulated socket reset/);
+});
