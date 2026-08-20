@@ -142,6 +142,68 @@ test("Anthropic structured outputs defer unsupported JSON Schema constraints", (
   assert.deepEqual(nativeOutbound.output_config, outbound.output_config);
 });
 
+test("Anthropic tool input schemas defer unsupported JSON Schema constraints", () => {
+  const parameters = {
+    type: "object",
+    additionalProperties: false,
+    required: ["limit", "scores"],
+    properties: {
+      limit: { type: "integer", minimum: 1, maximum: 16_384 },
+      scores: {
+        type: "array",
+        minItems: 20,
+        maxItems: 20,
+        items: { type: "number", minimum: 0, maximum: 1 }
+      }
+    }
+  };
+  const original = structuredClone(parameters);
+  const outbound = anthropicMessages(
+    {
+      model: "claude-opus-5",
+      messages: [{ role: "user", content: "score the inputs" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "score_inputs",
+            description: "score structured inputs",
+            parameters
+          }
+        }
+      ]
+    },
+    "claude-opus-5"
+  );
+
+  assert.deepEqual(parameters, original);
+  assert.deepEqual(outbound.tools, [
+    {
+      name: "score_inputs",
+      description: "score structured inputs",
+      input_schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["limit", "scores"],
+        properties: {
+          limit: {
+            type: "integer",
+            description: "{minimum: 1, maximum: 16384}"
+          },
+          scores: {
+            type: "array",
+            items: {
+              type: "number",
+              description: "{minimum: 0, maximum: 1}"
+            },
+            description: "{minItems: 20, maxItems: 20}"
+          }
+        }
+      }
+    }
+  ]);
+});
+
 test("Anthropic structured outputs keep only supported schema keywords and formats", () => {
   const outbound = anthropicMessages(
     {

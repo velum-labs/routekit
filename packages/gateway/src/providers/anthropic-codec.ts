@@ -408,7 +408,9 @@ export function anthropicMessages(body: ChatBody, model: string): Record<string,
                   {
                     name: tool.function.name,
                     description: tool.function.description,
-                    input_schema: tool.function.parameters ?? { type: "object" }
+                    input_schema: anthropicStructuredOutputSchema(
+                      tool.function.parameters ?? { type: "object" }
+                    )
                   }
                 ]
           )
