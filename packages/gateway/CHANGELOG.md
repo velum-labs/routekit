@@ -1,5 +1,17 @@
 # @velum-labs/routekit-gateway
 
+## 1.0.8
+
+### Patch Changes
+
+- 1d5f0e5: Sanitize unsupported Anthropic structured-output constraints at provider egress while retaining eval authoring bounds through post-parse validation.
+  - @velum-labs/routekit-config-core@1.0.8
+  - @velum-labs/routekit-contracts@1.0.8
+  - @velum-labs/routekit-eval-contracts@1.0.8
+  - @velum-labs/routekit-eval-core@1.0.8
+  - @velum-labs/routekit-registry@1.0.8
+  - @velum-labs/routekit-runtime@1.0.8
+
 ## 1.0.7
 
 ### Patch Changes
