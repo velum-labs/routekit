@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit-telemetry-core",
   "private": false,
-  "version": "1.0.12",
+  "version": "1.0.13",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/velum-labs/routekit.git",
