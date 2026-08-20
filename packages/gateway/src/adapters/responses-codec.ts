@@ -861,17 +861,27 @@ export function chatToResponses(
   toolRegistry: ResponsesToolRegistry = EMPTY_TOOL_REGISTRY,
   searches: readonly ExecutedSearch[] = []
 ): Record<string, unknown> {
-  const message = openai.choices?.[0]?.message;
+  const choice = openai.choices?.[0];
+  const message = choice?.message;
+  const incompleteReason =
+    choice?.finish_reason === "length" ||
+    choice?.finish_reason === "max_tokens" ||
+    choice?.finish_reason === "max_output_tokens"
+      ? "max_output_tokens"
+      : choice?.finish_reason === "content_filter"
+        ? "content_filter"
+        : undefined;
   // Gateway-executed searches happened before the terminal step's output.
   const output = [...searches.map(executedSearchItem), ...buildOutput(message, toolRegistry)];
   return {
     id: `resp_${openai.id ?? randomId()}`,
     object: "response",
     created_at: Math.floor(Date.now() / 1000),
-    status: "completed",
+    status: incompleteReason === undefined ? "completed" : "incomplete",
     model,
     output,
     usage: chatUsageToResponses(openai.usage),
+    ...(incompleteReason === undefined ? {} : { incomplete_details: { reason: incompleteReason } }),
     ...(openai.provider_cost !== undefined ? { provider_cost: openai.provider_cost } : {})
   };
 }

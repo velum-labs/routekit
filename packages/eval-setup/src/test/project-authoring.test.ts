@@ -10,6 +10,7 @@ import { Effect, Layer } from "effect";
 import { EvalProjectAuthoringError } from "../errors.js";
 import {
   EVAL_AUTHORING_CASES_PER_DIMENSION,
+  EVAL_AUTHORING_EVALUATION_OUTPUT_TOKENS,
   type EvalAuthoringCompletion,
   EvalAuthoringTransport,
   EvalProjectAuthor,
@@ -168,7 +169,8 @@ const proposeEvaluations = (
     readonly suite?: EvalDimensionSuite;
     readonly decomposition?: EvalDecompositionBenchmark;
     readonly composition?: EvalCompositionSuite;
-  }
+  },
+  requests: EvalAuthoringCompletion[] = []
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -189,6 +191,7 @@ const proposeEvaluations = (
               EvalAuthoringTransport.of({
                 complete: (input) =>
                   Effect.sync(() => {
+                    requests.push(input);
                     if (input.schemaName === "routekit_dimension_suite") {
                       const dimension = basis.dimensions.find((candidate) =>
                         input.operationId.endsWith(`:${candidate.id}`)
@@ -211,10 +214,7 @@ const proposeEvaluations = (
     )
   );
 
-const collectSchemaNumberKeyword = (
-  value: unknown,
-  keyword: "minItems" | "maxItems"
-): number[] => {
+const collectSchemaNumberKeyword = (value: unknown, keyword: "minItems" | "maxItems"): number[] => {
   if (typeof value !== "object" || value === null) return [];
   if (Array.isArray(value)) {
     return value.flatMap((item) => collectSchemaNumberKeyword(item, keyword));
@@ -390,6 +390,28 @@ test("evaluation authoring enforces Anthropic-deferred bounds after parsing", as
         assert.match(String(error.cause), /minimumWinnerAgreement/u);
         return true;
       }
+    );
+  });
+});
+
+test("evaluation authoring budgets enough output for all twenty requested cases", async () => {
+  await withRepository(async ({ root }) => {
+    const requests: EvalAuthoringCompletion[] = [];
+    const proposal = await proposeEvaluations(root, {}, requests);
+
+    assert.equal(proposal.suites.length, basis.dimensions.length);
+    assert.equal(requests.length, basis.dimensions.length + 2);
+    assert.ok(
+      requests.every(
+        (request) => request.maximumOutputTokens === EVAL_AUTHORING_EVALUATION_OUTPUT_TOKENS
+      )
+    );
+    assert.ok(
+      requests.every(
+        (request) =>
+          request.instructions.includes("exactly 20") &&
+          request.instructions.includes("Keep each case concise")
+      )
     );
   });
 });

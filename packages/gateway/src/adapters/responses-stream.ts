@@ -169,7 +169,7 @@ export function openAiSseToResponses(
   let nextOutputIndex = 0;
   let messageOutputIndex = -1;
   let finished = false;
-  let sawFinishReason = false;
+  let finishReason: string | undefined;
   let usage: Usage | undefined;
   let providerCost: unknown;
   let sequenceNumber = 0;
@@ -192,7 +192,8 @@ export function openAiSseToResponses(
 
   const baseResponse = (
     status: string,
-    output: Record<string, unknown>[]
+    output: Record<string, unknown>[],
+    incompleteReason?: string
   ): Record<string, unknown> => ({
     id: responseId,
     object: "response",
@@ -201,6 +202,9 @@ export function openAiSseToResponses(
     model,
     output,
     usage: status === "completed" ? chatUsageToResponses(usage) : null,
+    ...(status === "incomplete" && incompleteReason !== undefined
+      ? { incomplete_details: { reason: incompleteReason } }
+      : {}),
     ...(status === "completed" && providerCost !== undefined ? { provider_cost: providerCost } : {})
   });
 
@@ -431,7 +435,8 @@ export function openAiSseToResponses(
 
   const finalize = (
     controller: Controller,
-    terminal: "completed" | "incomplete" = "completed"
+    terminal: "completed" | "incomplete" = "completed",
+    incompleteReason?: string
   ): void => {
     if (finished) return;
     finished = true;
@@ -517,8 +522,26 @@ export function openAiSseToResponses(
     controller.enqueue(
       terminal === "completed"
         ? emit("response.completed", { response: baseResponse("completed", assembleOutput()) })
-        : emit("response.incomplete", { response: baseResponse("incomplete", assembleOutput()) })
+        : emit("response.incomplete", {
+            response: baseResponse("incomplete", assembleOutput(), incompleteReason)
+          })
     );
+  };
+
+  const finalizeFromFinishReason = (controller: Controller): void => {
+    if (
+      finishReason === "length" ||
+      finishReason === "max_tokens" ||
+      finishReason === "max_output_tokens"
+    ) {
+      finalize(controller, "incomplete", "max_output_tokens");
+      return;
+    }
+    if (finishReason === "content_filter") {
+      finalize(controller, "incomplete", "content_filter");
+      return;
+    }
+    finalize(controller, finishReason === undefined ? "incomplete" : "completed");
   };
 
   // A mid-stream provider failure (`data: {"error": {...}}` — e.g. the
@@ -718,9 +741,9 @@ export function openAiSseToResponses(
 
     if (choice.finish_reason !== null && choice.finish_reason !== undefined) {
       // OpenAI can emit token usage/provider cost in a later choices:[] chunk.
-      // Record that the turn ended cleanly, but wait for [DONE] or EOF before
-      // emitting the one terminal Responses event.
-      sawFinishReason = true;
+      // Record how the turn ended, but wait for [DONE] or EOF before emitting
+      // the one terminal Responses event.
+      finishReason = choice.finish_reason;
     }
   };
 
@@ -728,7 +751,7 @@ export function openAiSseToResponses(
     if (data.length === 0) return;
     if (data === "[DONE]") {
       // A `[DONE]` with no prior finish_reason is truncation, not a clean stop.
-      if (!finished) finalize(controller, sawFinishReason ? "completed" : "incomplete");
+      if (!finished) finalizeFromFinishReason(controller);
       return;
     }
     let chunk: OpenAiChunk;
@@ -767,7 +790,7 @@ export function openAiSseToResponses(
       handleEvent(controller, event.data);
     },
     onEnd(controller) {
-      if (!finished) finalize(controller, sawFinishReason ? "completed" : "incomplete");
+      if (!finished) finalizeFromFinishReason(controller);
     }
   });
 }

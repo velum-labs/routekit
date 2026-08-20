@@ -273,6 +273,7 @@ export type RouteKitCompositionalRoutingInspection = {
 export type RouteKitCallInspection = {
   callId: string;
   status: ModelCallStatus;
+  stopReason?: string;
   requestedModel?: string;
   effectiveModel: string;
   nativeModel?: string;

@@ -301,3 +301,86 @@ test("HTTP 200 Codex terminal SSE quota failure is rate-limited provenance", () 
   assert.equal(record.error?.kind, "rate_limited");
   assert.equal(record.error?.retryable, true);
 });
+
+test("HTTP 200 incomplete Responses output is failed provenance", () => {
+  const record = buildModelCallRecord(
+    {
+      callId: "call_response_incomplete",
+      dialect: "openai-responses",
+      requestedModel: "claude-code/claude-opus-5",
+      model: "claude-code/claude-opus-5",
+      stream: false,
+      requestBody: { input: "author twenty evaluation cases" },
+      startedAt: "2026-08-20T13:00:00.000Z"
+    },
+    {
+      statusCode: 200,
+      durationMs: 5,
+      responseBody: Buffer.from(
+        JSON.stringify({
+          status: "incomplete",
+          incomplete_details: { reason: "max_output_tokens" },
+          usage: { input_tokens: 31_533, output_tokens: 16_384 }
+        })
+      )
+    }
+  );
+
+  assert.equal(record.status, "failed");
+  assert.equal(record.error?.message, "provider response reached the maximum output token limit");
+  assert.equal(record.usage?.completion_tokens, 16_384);
+  assert.equal(record.metadata?.stop_reason, "max_output_tokens");
+});
+
+test("an exact requested output-token cap is failed provenance", () => {
+  const record = buildModelCallRecord(
+    {
+      callId: "call_response_exact_cap",
+      dialect: "openai-responses",
+      requestedModel: "claude-code/claude-opus-5",
+      model: "claude-code/claude-opus-5",
+      stream: false,
+      requestBody: {
+        input: "author twenty evaluation cases",
+        max_output_tokens: 32_768
+      },
+      startedAt: "2026-08-20T13:00:00.000Z"
+    },
+    {
+      statusCode: 200,
+      durationMs: 5,
+      responseBody: Buffer.from(
+        JSON.stringify({
+          status: "completed",
+          usage: { input_tokens: 31_533, output_tokens: 32_768 }
+        })
+      )
+    }
+  );
+
+  assert.equal(record.status, "failed");
+  assert.equal(record.metadata?.stop_reason, "max_output_tokens");
+});
+
+test("HTTP 200 Responses stream without a finish reason is failed provenance", () => {
+  const record = buildModelCallRecord(
+    {
+      callId: "call_response_stream_truncated",
+      dialect: "openai-responses",
+      requestedModel: "openai/model",
+      model: "openai/model",
+      stream: true,
+      requestBody: { input: "answer", stream: true },
+      startedAt: "2026-08-20T13:00:00.000Z"
+    },
+    {
+      statusCode: 200,
+      durationMs: 5,
+      responseBody: Buffer.from(
+        'event: response.incomplete\ndata: {"type":"response.incomplete","response":{"status":"incomplete"}}\n\n'
+      )
+    }
+  );
+
+  assert.equal(record.status, "failed");
+});

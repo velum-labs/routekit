@@ -17,6 +17,7 @@ import {
   makeRouteKitEvalServiceLayer
 } from "@velum-labs/routekit-eval-service";
 import {
+  EVAL_AUTHORING_EVALUATION_OUTPUT_TOKENS,
   type EvalClassifierObservation,
   type EvalCompositionCaseResult,
   EvalCompositionSuiteSchema,
@@ -220,7 +221,7 @@ export function evalProposeEvaluationsCommand(
               operationId,
               model: state.configuration.authorModel,
               calls: basis.dimensions.length + 2,
-              maximumOutputTokens: 16_384,
+              maximumOutputTokens: EVAL_AUTHORING_EVALUATION_OUTPUT_TOKENS,
               use: (transport) =>
                 Effect.gen(function* () {
                   const author = yield* EvalProjectAuthor;
