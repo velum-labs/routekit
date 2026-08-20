@@ -261,8 +261,9 @@ const DIMENSIONS_JSON_SCHEMA = {
   properties: {
     dimensions: {
       type: "array",
-      minItems: 5,
-      maxItems: 10,
+      // Anthropic structured outputs only accept minItems values of 0 or 1 and
+      // reject maxItems. assertRoutingBasis enforces 5–10 after parsing.
+      minItems: 1,
       items: {
         type: "object",
         additionalProperties: false,

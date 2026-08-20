@@ -1,5 +1,25 @@
 # @velum-labs/routekit-tool-claude
 
+## 1.0.5
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@1.0.5
+- @velum-labs/routekit-harness-core@1.0.5
+- @velum-labs/routekit-registry@1.0.5
+- @velum-labs/routekit-runtime@1.0.5
+- @velum-labs/routekit-tools@1.0.5
+
+## 1.0.4
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@1.0.4
+- @velum-labs/routekit-harness-core@1.0.4
+- @velum-labs/routekit-registry@1.0.4
+- @velum-labs/routekit-runtime@1.0.4
+- @velum-labs/routekit-tools@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes
