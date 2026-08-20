@@ -1,5 +1,13 @@
 # @velum-labs/routekit-eval-setup
 
+## 1.0.5
+
+### Patch Changes
+
+- a702f98: Remove unsupported array maximums from eval dimension authoring schemas while retaining routing-basis count validation after parsing.
+  - @velum-labs/routekit-eval-contracts@1.0.5
+  - @velum-labs/routekit-runtime@1.0.5
+
 ## 1.0.4
 
 ### Patch Changes
