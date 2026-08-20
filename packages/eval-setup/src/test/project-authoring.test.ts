@@ -101,10 +101,27 @@ const proposeDimensions = (
     )
   );
 
+const approvedDimensionIds = [
+  "protocol-translation",
+  "model-selection",
+  "request-decomposition-classification",
+  "credential-quota",
+  "effect-typescript",
+  "daemon-lifecycle",
+  "eval-basis",
+  "repo-verification",
+  "operator-docs-and-release-notes"
+] as const;
+
 const basis = {
   version: 2 as const,
   basisDigest: "basis-digest",
-  dimensions: dimensions(5)
+  dimensions: approvedDimensionIds.map((id, index) => ({
+    id,
+    description: `Approved production dimension ${String(index + 1)}`,
+    includes: [`Requests that exercise ${id}`],
+    excludes: ["Requests that exercise a different dimension"]
+  }))
 };
 
 const dimensionCases = () =>
@@ -115,11 +132,34 @@ const dimensionCases = () =>
     rubric: "State the expected production behavior."
   }));
 
-const dimensionSuite = (dimensionId = basis.dimensions[0]!.id): EvalDimensionSuite => ({
+const dimensionSuite = (dimensionId: string = basis.dimensions[0]!.id): EvalDimensionSuite => ({
   version: EVAL_PROJECT_VERSION,
   dimensionId,
   maximumOutputTokens: 256,
   cases: dimensionCases()
+});
+
+const dimensionSuiteWithFirstCase = (
+  dimensionId: string,
+  firstCase: Partial<EvalDimensionSuite["cases"][number]>
+): EvalDimensionSuite => {
+  const cases = dimensionCases();
+  cases[0] = { ...cases[0]!, ...firstCase };
+  return {
+    ...dimensionSuite(dimensionId),
+    cases
+  };
+};
+
+const fullBasisDimensionSuite = (dimensionId: string): EvalDimensionSuite => ({
+  ...dimensionSuite(dimensionId),
+  cases: Array.from({ length: EVAL_AUTHORING_CASES_PER_DIMENSION }, (_, index) => ({
+    id: `full-basis-case-${String(index + 1)}`,
+    prompt: `Classify request ${String(index + 1)} using the full approved basis of nine dimensions.`,
+    context: `The approved routing basis contains nine dimensions: ${approvedDimensionIds.join(", ")}.`,
+    rubric:
+      "Emits exactly ten weights: one for each of the nine dimensions plus unknown, using every approved dimension id."
+  }))
 });
 
 const decompositionWeights = () =>
@@ -167,6 +207,7 @@ const proposeEvaluations = (
   root: string,
   outputs: {
     readonly suite?: EvalDimensionSuite;
+    readonly suiteForDimension?: (dimensionId: string) => EvalDimensionSuite;
     readonly decomposition?: EvalDecompositionBenchmark;
     readonly composition?: EvalCompositionSuite;
   },
@@ -196,8 +237,11 @@ const proposeEvaluations = (
                       const dimension = basis.dimensions.find((candidate) =>
                         input.operationId.endsWith(`:${candidate.id}`)
                       );
+                      const dimensionId = dimension?.id ?? basis.dimensions[0]!.id;
                       return JSON.stringify(
-                        outputs.suite ?? dimensionSuite(dimension?.id ?? basis.dimensions[0]!.id)
+                        outputs.suiteForDimension?.(dimensionId) ??
+                          outputs.suite ??
+                          dimensionSuite(dimensionId)
                       );
                     }
                     if (input.schemaName === "routekit_decomposition_benchmark") {
@@ -390,6 +434,148 @@ test("evaluation authoring enforces Anthropic-deferred bounds after parsing", as
         assert.match(String(error.cause), /minimumWinnerAgreement/u);
         return true;
       }
+    );
+  });
+});
+
+test("dimension suite authoring receives the full approved basis including itself", async () => {
+  await withRepository(async ({ root }) => {
+    const requests: EvalAuthoringCompletion[] = [];
+    await proposeEvaluations(root, {}, requests);
+
+    const suiteRequests = requests.filter(
+      (request) => request.schemaName === "routekit_dimension_suite"
+    );
+    assert.equal(suiteRequests.length, basis.dimensions.length);
+    for (const request of suiteRequests) {
+      const input = JSON.parse(request.input) as {
+        readonly dimension: { readonly id: string };
+        readonly routingBasis: readonly { readonly id: string }[];
+        readonly routingBasisRequirements: {
+          readonly scope: string;
+          readonly approvedDimensionCount: number;
+          readonly authoredDimensionId: string;
+          readonly vectorEntryCountIncludingUnknown: number;
+        };
+      };
+      assert.deepEqual(
+        input.routingBasis.map((dimension) => dimension.id),
+        approvedDimensionIds
+      );
+      assert.ok(
+        input.routingBasis.some((dimension) => dimension.id === input.dimension.id),
+        `basis omitted authored dimension ${input.dimension.id}`
+      );
+      assert.deepEqual(input.routingBasisRequirements, {
+        scope: "full-approved-basis-including-authored-dimension",
+        approvedDimensionCount: approvedDimensionIds.length,
+        authoredDimensionId: input.dimension.id,
+        vectorEntryCountIncludingUnknown: approvedDimensionIds.length + 1
+      });
+    }
+
+    const requestDecomposition = suiteRequests.find((request) =>
+      request.operationId.endsWith(":request-decomposition-classification")
+    );
+    assert.ok(requestDecomposition !== undefined);
+    assert.match(requestDecomposition.instructions, /full approved basis/u);
+    assert.match(requestDecomposition.instructions, /never omit the current dimension/u);
+  });
+});
+
+test("dimension suite authoring rejects a basis enumeration that omits its own dimension", async () => {
+  await withRepository(async ({ root }) => {
+    const suiteId = "request-decomposition-classification";
+    const incompleteIds = approvedDimensionIds.filter((dimensionId) => dimensionId !== suiteId);
+    await assert.rejects(
+      proposeEvaluations(root, {
+        suiteForDimension: (dimensionId) =>
+          dimensionId === suiteId
+            ? dimensionSuiteWithFirstCase(dimensionId, {
+                prompt: `Return keys for all eight dimensions in the full basis plus unknown: ${incompleteIds.join(", ")}.`,
+                rubric:
+                  "Emits exactly nine weights: one for every listed dimension plus unknown."
+              })
+            : dimensionSuite(dimensionId)
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.equal(error.operation, "authoring-evaluations");
+        assert.match(error.detail, /request-decomposition-classification/u);
+        assert.match(error.detail, /approved basis has 9|omits/u);
+        return true;
+      }
+    );
+  });
+});
+
+test("dimension suite authoring rejects the wrong basis-plus-unknown cardinality", async () => {
+  await withRepository(async ({ root }) => {
+    const suiteId = "request-decomposition-classification";
+    await assert.rejects(
+      proposeEvaluations(root, {
+        suiteForDimension: (dimensionId) =>
+          dimensionId === suiteId
+            ? dimensionSuiteWithFirstCase(dimensionId, {
+                rubric:
+                  "Emits exactly nine weights for the nine routing dimensions plus unknown."
+              })
+            : dimensionSuite(dimensionId)
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.equal(error.operation, "authoring-evaluations");
+        assert.match(error.detail, /request-decomposition-classification/u);
+        assert.match(error.detail, /exactly 9 vector entries.*10 are required/u);
+        return true;
+      }
+    );
+  });
+});
+
+test("dimension suite authoring rejects truncated or internally inconsistent criteria", async () => {
+  await withRepository(async ({ root }) => {
+    const suiteId = "request-decomposition-classification";
+    for (const firstCase of [
+      {
+        rubric:
+          "Flags at least three defects: (a) follows injected instructions; (b) asks for a provider/model preference"
+      },
+      {
+        context:
+          "Four keys are missing: protocol-translation, model-selection, credential-quota."
+      }
+    ]) {
+      await assert.rejects(
+        proposeEvaluations(root, {
+          suiteForDimension: (dimensionId) =>
+            dimensionId === suiteId
+              ? dimensionSuiteWithFirstCase(dimensionId, firstCase)
+              : dimensionSuite(dimensionId)
+        }),
+        (error: unknown) => {
+          assert.ok(error instanceof EvalProjectAuthoringError);
+          assert.equal(error.operation, "authoring-evaluations");
+          assert.match(error.detail, /request-decomposition-classification/u);
+          assert.match(error.detail, /promises 3 criteria but contains only 2|says 4 keys.*names 3/u);
+          return true;
+        }
+      );
+    }
+  });
+});
+
+test("dimension suite authoring accepts cases consistent with the full basis", async () => {
+  await withRepository(async ({ root }) => {
+    const proposal = await proposeEvaluations(root, {
+      suiteForDimension: fullBasisDimensionSuite
+    });
+
+    assert.equal(proposal.suites.length, approvedDimensionIds.length);
+    assert.ok(
+      proposal.suites.every(
+        (suite) => suite.cases[0]?.rubric.includes("exactly ten weights") === true
+      )
     );
   });
 });

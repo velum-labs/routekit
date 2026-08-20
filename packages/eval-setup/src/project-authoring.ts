@@ -491,6 +491,11 @@ const DIMENSION_INSTRUCTIONS = [
 
 const EVALUATION_INSTRUCTIONS = [
   `Author exactly ${String(EVAL_AUTHORING_CASES_PER_DIMENSION)} concrete cases for one workload dimension.`,
+  "The routingBasis input is the full approved basis and includes the dimension being authored.",
+  "Treat every routingBasis dimension as part of the classification world; never omit the current dimension.",
+  "Any basis count, dimension-id list, or classifier vector in a case must use the full basis.",
+  "A complete classifier vector has one entry per routingBasis dimension plus one unknown entry.",
+  "Keep counts, enumerated ids, and rubric criteria internally consistent and finish every criterion.",
   "Keep each case concise so all requested cases fit in one response.",
   "Each case must be answerable from its prompt and supplied context by a text-only model.",
   "Do not ask for filesystem, process, network, repository, or tool access.",
@@ -526,6 +531,195 @@ const parseJson = (
     try: () => JSON.parse(text) as unknown,
     catch: (cause) => failure(operation, "author model returned invalid JSON", cause)
   });
+
+const CARDINAL_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+  "twenty"
+] as const;
+const CARDINAL_PATTERN = `(?:\\d+|${CARDINAL_WORDS.join("|")})`;
+const BASIS_DIMENSION_COUNT_PATTERNS = [
+  new RegExp(
+    `\\b(?:all|every|full|complete|approved|reviewed)\\s+(?:approved\\s+|reviewed\\s+|routing\\s+|workload\\s+)?(${CARDINAL_PATTERN})\\s+dimensions?\\b`,
+    "giu"
+  ),
+  new RegExp(
+    `\\b(?:approved|reviewed|full|complete|routing)\\s+basis\\s*(?:has|contains|with|of|[,;:])?\\s*(${CARDINAL_PATTERN})\\s+dimensions?\\b`,
+    "giu"
+  ),
+  new RegExp(
+    `\\bbasis\\s*(?:has|contains|with|of|[,;:])\\s*(${CARDINAL_PATTERN})\\s+dimensions?\\b`,
+    "giu"
+  ),
+  new RegExp(
+    `\\b(${CARDINAL_PATTERN})\\s+dimensions?\\s+(?:plus|and)\\s+(?:an?\\s+)?unknown(?:\\s+(?:weight|key|entry|value))?\\b`,
+    "giu"
+  )
+] as const;
+const TOTAL_VECTOR_COUNT_PATTERN = new RegExp(
+  `\\bexactly\\s+(${CARDINAL_PATTERN})\\s+(?!dimension\\b)(?:numbers?|keys?|entries|values|weights|scores|fields|outputs)\\b`,
+  "giu"
+);
+const MISSING_COUNT_PATTERNS = [
+  new RegExp(
+    `\\b(${CARDINAL_PATTERN})\\s+(dimension\\s+)?(keys?|ids?|dimensions?|entries|names|weights)\\s+(?:are\\s+)?(?:missing|omitted|absent)\\b`,
+    "iu"
+  ),
+  new RegExp(
+    `\\b(?:missing|omits?|absent)\\s+(${CARDINAL_PATTERN})\\s+(dimension\\s+)?(keys?|ids?|dimensions?|entries|names|weights)\\b`,
+    "iu"
+  )
+] as const;
+const CRITERIA_COUNT_PATTERN = new RegExp(
+  `\\b(?:at\\s+least\\s+|exactly\\s+)?(${CARDINAL_PATTERN})\\s+(?:defects|criteria|issues|problems|errors|requirements|checks|reasons|failures|omissions)\\b`,
+  "iu"
+);
+
+const parseCardinal = (value: string): number | undefined => {
+  if (/^\d+$/u.test(value)) return Number(value);
+  const index = CARDINAL_WORDS.indexOf(value.toLowerCase() as (typeof CARDINAL_WORDS)[number]);
+  return index < 0 ? undefined : index;
+};
+
+const escapeRegExp = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+const mentionsDimensionId = (text: string, dimensionId: string): boolean =>
+  new RegExp(
+    `(?:^|[^a-z0-9-])${escapeRegExp(dimensionId)}(?:$|[^a-z0-9-])`,
+    "iu"
+  ).test(text);
+
+const authoredCaseFields = (testCase: EvalDimensionSuite["cases"][number]) =>
+  [
+    ["prompt", testCase.prompt],
+    ["context", testCase.context ?? ""],
+    ["rubric", testCase.rubric]
+  ] as const;
+
+const findAuthoredBasisDefect = (
+  suite: EvalDimensionSuite,
+  basis: RoutingBasis
+): string | undefined => {
+  const expectedDimensions = basis.dimensions.length;
+  const expectedVectorEntries = expectedDimensions + 1;
+  const dimensionIds = basis.dimensions.map((dimension) => dimension.id);
+
+  for (const testCase of suite.cases) {
+    for (const [field, text] of authoredCaseFields(testCase)) {
+      for (const pattern of BASIS_DIMENSION_COUNT_PATTERNS) {
+        for (const match of text.matchAll(pattern)) {
+          const claimed = match[1] === undefined ? undefined : parseCardinal(match[1]);
+          if (claimed !== undefined && claimed !== expectedDimensions) {
+            return `case ${JSON.stringify(testCase.id)} ${field} claims ${String(claimed)} basis dimensions, but the approved basis has ${String(expectedDimensions)}`;
+          }
+        }
+      }
+
+      const listedIds = dimensionIds.filter((dimensionId) =>
+        mentionsDimensionId(text, dimensionId)
+      );
+      const claimsBasisEnumeration =
+        /\b(?:all|every|full|complete|given)\b[\s\S]{0,80}\b(?:basis|dimensions?|dimension ids?|ids?|keys?|weights?|vector)\b/iu.test(
+          text
+        ) ||
+        /\b(?:approved|reviewed|routing)\s+basis\b/iu.test(text) ||
+        /\bbasis\s*(?:is|are|includes?|contains?|:)/iu.test(text);
+      if (
+        listedIds.length > 0 &&
+        claimsBasisEnumeration &&
+        listedIds.length !== dimensionIds.length
+      ) {
+        const omitted = dimensionIds.filter((dimensionId) => !listedIds.includes(dimensionId));
+        return `case ${JSON.stringify(testCase.id)} ${field} claims to enumerate the basis but omits ${omitted.map((dimensionId) => JSON.stringify(dimensionId)).join(", ")}`;
+      }
+
+      const sentences = text.split(/(?<=[.!?])\s+|\n+/u);
+      for (const sentence of sentences) {
+        if (
+          /\bunknown\b/iu.test(sentence) &&
+          /\b(?:basis|dimensions?|routing|vector|weights?|dimension ids?|given ids?)\b/iu.test(
+            sentence
+          )
+        ) {
+          for (const match of sentence.matchAll(TOTAL_VECTOR_COUNT_PATTERN)) {
+            const claimed = match[1] === undefined ? undefined : parseCardinal(match[1]);
+            if (claimed !== undefined && claimed !== expectedVectorEntries) {
+              return `case ${JSON.stringify(testCase.id)} ${field} claims exactly ${String(claimed)} vector entries including unknown, but ${String(expectedVectorEntries)} are required`;
+            }
+          }
+        }
+
+        for (const pattern of MISSING_COUNT_PATTERNS) {
+          const match = pattern.exec(sentence);
+          if (match === null || match[1] === undefined) continue;
+          const claimed = parseCardinal(match[1]);
+          if (claimed === undefined) continue;
+          const namedDimensions = dimensionIds.filter((dimensionId) =>
+            mentionsDimensionId(sentence, dimensionId)
+          ).length;
+          const unit = match[3] ?? "";
+          const namedEntries =
+            namedDimensions +
+            (unit.startsWith("dimension") || !/\bunknown\b/iu.test(sentence) ? 0 : 1);
+          if (namedEntries > 0 && namedEntries !== claimed) {
+            return `case ${JSON.stringify(testCase.id)} ${field} says ${String(claimed)} ${unit} are missing but names ${String(namedEntries)}`;
+          }
+        }
+      }
+
+      if (field === "rubric") {
+        const criteriaClaim = CRITERIA_COUNT_PATTERN.exec(text);
+        const markerCount = [
+          ...text.matchAll(/\((?:[a-z]|\d+)\)/giu),
+          ...text.matchAll(/(?:^|[\s;])(?:[a-z]|\d+)[.)]\s+/giu)
+        ].length;
+        if (criteriaClaim?.[1] !== undefined && markerCount > 0) {
+          const claimed = parseCardinal(criteriaClaim[1]);
+          if (claimed !== undefined && markerCount < claimed) {
+            return `case ${JSON.stringify(testCase.id)} rubric promises ${String(claimed)} criteria but contains only ${String(markerCount)}`;
+          }
+        }
+        const trimmed = text.trim();
+        if (
+          /(?:\.{3}|…|[:;,/([{—-])$/u.test(trimmed) ||
+          /\b(?:and|or|with|for|to|including|such as|e\.g\.)$/iu.test(trimmed)
+        ) {
+          return `case ${JSON.stringify(testCase.id)} rubric appears truncated`;
+        }
+        for (const [opening, closing] of [
+          ["(", ")"],
+          ["[", "]"],
+          ["{", "}"]
+        ] as const) {
+          if (trimmed.split(opening).length !== trimmed.split(closing).length) {
+            return `case ${JSON.stringify(testCase.id)} rubric has unbalanced ${opening}${closing} delimiters`;
+          }
+        }
+      }
+    }
+  }
+
+  return undefined;
+};
 
 export type EvalProjectAuthorShape = {
   readonly proposeDimensions: (input: {
@@ -626,6 +820,12 @@ export const makeEvalProjectAuthor = Effect.gen(function* () {
                 workloadDescription: input.configuration.workloadDescription,
                 dimension,
                 routingBasis: input.basis.dimensions,
+                routingBasisRequirements: {
+                  scope: "full-approved-basis-including-authored-dimension",
+                  approvedDimensionCount: input.basis.dimensions.length,
+                  authoredDimensionId: dimension.id,
+                  vectorEntryCountIncludingUnknown: input.basis.dimensions.length + 1
+                },
                 sources
               }),
               schemaName: "routekit_dimension_suite",
@@ -660,6 +860,13 @@ export const makeEvalProjectAuthor = Effect.gen(function* () {
               return yield* failure(
                 "authoring-evaluations",
                 `suite for ${JSON.stringify(dimension.id)} has the wrong identity or case set`
+              );
+            }
+            const authoredBasisDefect = findAuthoredBasisDefect(suite, input.basis);
+            if (authoredBasisDefect !== undefined) {
+              return yield* failure(
+                "authoring-evaluations",
+                `suite for ${JSON.stringify(dimension.id)} failed authored-basis validation: ${authoredBasisDefect}`
               );
             }
             return suite satisfies EvalDimensionSuite;
