@@ -1,5 +1,17 @@
 # @velum-labs/routekit-gateway
 
+## 1.0.6
+
+### Patch Changes
+
+- 293ad25: Restore OpenAI GPT-5.4, GPT-5.5, and GPT-5.6 discovery and inference on Amazon Bedrock through the regional bedrock-mantle API.
+  - @velum-labs/routekit-config-core@1.0.6
+  - @velum-labs/routekit-contracts@1.0.6
+  - @velum-labs/routekit-eval-contracts@1.0.6
+  - @velum-labs/routekit-eval-core@1.0.6
+  - @velum-labs/routekit-registry@1.0.6
+  - @velum-labs/routekit-runtime@1.0.6
+
 ## 1.0.5
 
 ### Patch Changes
