@@ -212,10 +212,15 @@ export function withQualificationTarget<A, E, R>(
   return Effect.gen(function* () {
     const remote = yield* cliTry(() => selectedRemoteMetadata());
     const client = yield* routekitClient;
-    for (const model of [
+    const allowedModels = [
       ...new Set([input.plan.classifierModel, input.plan.judgeModel, ...input.plan.candidateModels])
-    ]) {
-      yield* client.call("models.info", { model });
+    ];
+    const catalog = yield* client.call("models.list", {});
+    const availableModels = new Set(catalog.models.map((model) => model.id));
+    for (const model of allowedModels) {
+      if (!availableModels.has(model)) {
+        return yield* failure(`unknown model: ${model}`);
+      }
     }
     return yield* Effect.acquireUseRelease(
       client
@@ -224,13 +229,7 @@ export function withQualificationTarget<A, E, R>(
           {
             purpose: "qualification",
             operationId: input.operationId,
-            allowedModels: [
-              ...new Set([
-                input.plan.classifierModel,
-                input.plan.judgeModel,
-                ...input.plan.candidateModels
-              ])
-            ],
+            allowedModels,
             limits: {
               calls: input.plan.expectedCallCount,
               inputTokens: input.plan.expectedCallCount * QUALIFICATION_PER_CALL_INPUT_BYTES,
