@@ -153,6 +153,123 @@ function anthropicToolChoice(
     : undefined;
 }
 
+const ANTHROPIC_SUPPORTED_SCHEMA_KEYWORDS = new Set([
+  "$defs",
+  "$ref",
+  "additionalProperties",
+  "allOf",
+  "anyOf",
+  "const",
+  "description",
+  "enum",
+  "format",
+  "items",
+  "minItems",
+  "oneOf",
+  "pattern",
+  "properties",
+  "required",
+  "title",
+  "type"
+]);
+
+const ANTHROPIC_SUPPORTED_STRING_FORMATS = new Set([
+  "date",
+  "date-time",
+  "duration",
+  "email",
+  "hostname",
+  "ipv4",
+  "ipv6",
+  "time",
+  "uri",
+  "uuid"
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function cloneSchemaValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneSchemaValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [key, cloneSchemaValue(child)])
+  );
+}
+
+function sanitizedSchemaMap(value: unknown): unknown {
+  if (!isRecord(value)) return cloneSchemaValue(value);
+  return Object.fromEntries(
+    Object.entries(value).map(([key, schema]) => [key, anthropicStructuredOutputSchema(schema)])
+  );
+}
+
+/**
+ * Anthropic structured outputs accept only a subset of JSON Schema. Match the
+ * documented SDK behavior by retaining that subset, converting `oneOf` to
+ * `anyOf`, and moving omitted constraints into descriptions for model guidance.
+ * Callers remain responsible for validating the parsed response against the
+ * original schema.
+ */
+function anthropicStructuredOutputSchema(schema: unknown): unknown {
+  if (!isRecord(schema)) return cloneSchemaValue(schema);
+  if (typeof schema.$ref === "string") return { $ref: schema.$ref };
+  const sanitized: Record<string, unknown> = {};
+  const deferredConstraints: Array<readonly [string, unknown]> = [];
+  let oneOf: unknown;
+
+  for (const [key, value] of Object.entries(schema)) {
+    if (
+      !ANTHROPIC_SUPPORTED_SCHEMA_KEYWORDS.has(key) ||
+      (key === "minItems" && value !== 0 && value !== 1) ||
+      (key === "format" &&
+        (typeof value !== "string" || !ANTHROPIC_SUPPORTED_STRING_FORMATS.has(value)))
+    ) {
+      deferredConstraints.push([key, cloneSchemaValue(value)]);
+      continue;
+    }
+    if (key === "$defs" || key === "properties") {
+      sanitized[key] = sanitizedSchemaMap(value);
+      continue;
+    }
+    if ((key === "allOf" || key === "anyOf") && Array.isArray(value)) {
+      sanitized[key] = value.map(anthropicStructuredOutputSchema);
+      continue;
+    }
+    if (key === "oneOf") {
+      oneOf = value;
+      continue;
+    }
+    if (key === "additionalProperties" || key === "items") {
+      sanitized[key] = Array.isArray(value)
+        ? value.map(anthropicStructuredOutputSchema)
+        : anthropicStructuredOutputSchema(value);
+      continue;
+    }
+    sanitized[key] = cloneSchemaValue(value);
+  }
+
+  if (oneOf !== undefined) {
+    if (!Object.hasOwn(sanitized, "anyOf") && Array.isArray(oneOf)) {
+      sanitized.anyOf = oneOf.map(anthropicStructuredOutputSchema);
+    } else {
+      deferredConstraints.push(["oneOf", cloneSchemaValue(oneOf)]);
+    }
+  }
+
+  if (deferredConstraints.length > 0) {
+    const constraintDescription = `{${deferredConstraints
+      .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+      .join(", ")}}`;
+    sanitized.description =
+      typeof sanitized.description === "string" && sanitized.description.length > 0
+        ? `${sanitized.description}\n\n${constraintDescription}`
+        : constraintDescription;
+  }
+  return sanitized;
+}
+
 function anthropicStructuredOutputFormat(
   responseFormat: ChatBody["response_format"]
 ): Record<string, unknown> | undefined {
@@ -165,7 +282,24 @@ function anthropicStructuredOutputFormat(
   }
   return {
     type: "json_schema",
-    schema: responseFormat.json_schema.schema
+    schema: anthropicStructuredOutputSchema(responseFormat.json_schema.schema)
+  };
+}
+
+function sanitizedAnthropicOutputConfig(
+  outputConfig: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (outputConfig === undefined) return undefined;
+  const format = outputConfig.format;
+  if (!isRecord(format) || format.type !== "json_schema" || !isRecord(format.schema)) {
+    return outputConfig;
+  }
+  return {
+    ...outputConfig,
+    format: {
+      ...format,
+      schema: anthropicStructuredOutputSchema(format.schema)
+    }
   };
 }
 
@@ -236,7 +370,7 @@ export function anthropicMessages(body: ChatBody, model: string): Record<string,
   const translatedOutput = selection.mode === "effort" ? { effort: selection.effort } : undefined;
   const thinking = metadata?.thinking ?? translatedThinking;
   const structuredOutputFormat = anthropicStructuredOutputFormat(body.response_format);
-  const outputConfig =
+  const outputConfig = sanitizedAnthropicOutputConfig(
     metadata?.output_config != null
       ? {
           ...metadata.output_config,
@@ -250,7 +384,8 @@ export function anthropicMessages(body: ChatBody, model: string): Record<string,
             ...translatedOutput,
             ...(structuredOutputFormat !== undefined ? { format: structuredOutputFormat } : {})
           }
-        : undefined;
+        : undefined
+  );
   const toolChoice = anthropicToolChoice(body.tool_choice, body.parallel_tool_calls);
   return {
     model,

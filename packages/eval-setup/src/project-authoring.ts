@@ -254,6 +254,81 @@ const DimensionsOutput = Schema.Struct({
   dimensions: Schema.Array(WorkloadDimension)
 });
 
+function schemaRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/**
+ * Anthropic removes unsupported structured-output constraints from its wire
+ * schema. Enforce those deferred constraints against the decoded response so
+ * authoring validation remains provider-independent.
+ */
+function assertDeferredSchemaConstraints(schema: unknown, value: unknown, path = "$"): void {
+  const record = schemaRecord(schema);
+  if (record === undefined) return;
+
+  if (typeof value === "number") {
+    if (typeof record.minimum === "number" && value < record.minimum) {
+      throw new Error(`${path} must be greater than or equal to ${String(record.minimum)}`);
+    }
+    if (typeof record.maximum === "number" && value > record.maximum) {
+      throw new Error(`${path} must be less than or equal to ${String(record.maximum)}`);
+    }
+    if (typeof record.exclusiveMinimum === "number" && value <= record.exclusiveMinimum) {
+      throw new Error(`${path} must be greater than ${String(record.exclusiveMinimum)}`);
+    }
+    if (typeof record.exclusiveMaximum === "number" && value >= record.exclusiveMaximum) {
+      throw new Error(`${path} must be less than ${String(record.exclusiveMaximum)}`);
+    }
+    if (
+      typeof record.multipleOf === "number" &&
+      record.multipleOf !== 0 &&
+      Math.abs(value / record.multipleOf - Math.round(value / record.multipleOf)) >
+        Number.EPSILON * Math.max(1, Math.abs(value / record.multipleOf)) * 8
+    ) {
+      throw new Error(`${path} must be a multiple of ${String(record.multipleOf)}`);
+    }
+  }
+
+  if (typeof value === "string") {
+    const length = [...value].length;
+    if (typeof record.minLength === "number" && length < record.minLength) {
+      throw new Error(`${path} must contain at least ${String(record.minLength)} characters`);
+    }
+    if (typeof record.maxLength === "number" && length > record.maxLength) {
+      throw new Error(`${path} must contain at most ${String(record.maxLength)} characters`);
+    }
+  }
+
+  if (Array.isArray(value)) {
+    if (
+      typeof record.minItems === "number" &&
+      record.minItems > 1 &&
+      value.length < record.minItems
+    ) {
+      throw new Error(`${path} must contain at least ${String(record.minItems)} items`);
+    }
+    if (typeof record.maxItems === "number" && value.length > record.maxItems) {
+      throw new Error(`${path} must contain at most ${String(record.maxItems)} items`);
+    }
+    for (const [index, item] of value.entries()) {
+      assertDeferredSchemaConstraints(record.items, item, `${path}[${String(index)}]`);
+    }
+  }
+
+  const valueRecord = schemaRecord(value);
+  const properties = schemaRecord(record.properties);
+  if (valueRecord !== undefined && properties !== undefined) {
+    for (const [key, propertySchema] of Object.entries(properties)) {
+      if (Object.hasOwn(valueRecord, key)) {
+        assertDeferredSchemaConstraints(propertySchema, valueRecord[key], `${path}.${key}`);
+      }
+    }
+  }
+}
+
 const DIMENSIONS_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -529,12 +604,14 @@ export const makeEvalProjectAuthor = Effect.gen(function* () {
         )
       );
       yield* Effect.try({
-        try: () =>
+        try: () => {
+          assertDeferredSchemaConstraints(DIMENSIONS_JSON_SCHEMA, decoded);
           assertRoutingBasis({
             version: 2,
             basisDigest: "authoring-validation",
             dimensions: decoded.dimensions
-          }),
+          });
+        },
         catch: (cause) =>
           failure("authoring-dimensions", "dimension proposal failed validation", cause)
       });
@@ -573,6 +650,15 @@ export const makeEvalProjectAuthor = Effect.gen(function* () {
                 )
               )
             );
+            yield* Effect.try({
+              try: () => assertDeferredSchemaConstraints(SUITE_JSON_SCHEMA, suite),
+              catch: (cause) =>
+                failure(
+                  "authoring-evaluations",
+                  `suite for ${JSON.stringify(dimension.id)} failed validation`,
+                  cause
+                )
+            });
             if (
               suite.dimensionId !== dimension.id ||
               suite.cases.length !== EVAL_AUTHORING_CASES_PER_DIMENSION ||
@@ -612,6 +698,15 @@ export const makeEvalProjectAuthor = Effect.gen(function* () {
           )
         )
       );
+      yield* Effect.try({
+        try: () =>
+          assertDeferredSchemaConstraints(
+            decompositionBenchmarkJsonSchema(dimensionIds),
+            decompositionBenchmark
+          ),
+        catch: (cause) =>
+          failure("authoring-evaluations", "decomposition benchmark failed validation", cause)
+      });
       for (const benchmarkCase of decompositionBenchmark.cases) {
         yield* Effect.try({
           try: () => assertDecompositionResult(benchmarkCase.expected, input.basis),
@@ -643,6 +738,15 @@ export const makeEvalProjectAuthor = Effect.gen(function* () {
           failure("authoring-evaluations", "composition benchmark failed validation", cause)
         )
       );
+      yield* Effect.try({
+        try: () =>
+          assertDeferredSchemaConstraints(
+            compositionSuiteJsonSchema(dimensionIds),
+            compositionSuite
+          ),
+        catch: (cause) =>
+          failure("authoring-evaluations", "composition benchmark failed validation", cause)
+      });
       for (const compositionCase of compositionSuite.cases) {
         yield* Effect.try({
           try: () => assertDecompositionResult(compositionCase.decomposition, input.basis),

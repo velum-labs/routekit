@@ -9,13 +9,20 @@ import { Effect, Layer } from "effect";
 
 import { EvalProjectAuthoringError } from "../errors.js";
 import {
+  EVAL_AUTHORING_CASES_PER_DIMENSION,
   type EvalAuthoringCompletion,
   EvalAuthoringTransport,
   EvalProjectAuthor,
   EvalProjectAuthorLive,
   readProjectAuthoringSources
 } from "../project-authoring.js";
-import type { EvalProjectConfiguration } from "../project-contracts.js";
+import {
+  EVAL_PROJECT_VERSION,
+  type EvalCompositionSuite,
+  type EvalDecompositionBenchmark,
+  type EvalDimensionSuite,
+  type EvalProjectConfiguration
+} from "../project-contracts.js";
 
 const withRepository = async (
   use: (input: { readonly root: string; readonly outside: string }) => Promise<void>
@@ -83,6 +90,117 @@ const proposeDimensions = (
                   Effect.sync(() => {
                     requests.push(input);
                     return JSON.stringify(output);
+                  })
+              })
+            )
+          ),
+          Layer.provide(NodeServicesLayer)
+        )
+      )
+    )
+  );
+
+const basis = {
+  version: 2 as const,
+  basisDigest: "basis-digest",
+  dimensions: dimensions(5)
+};
+
+const dimensionCases = () =>
+  Array.from({ length: EVAL_AUTHORING_CASES_PER_DIMENSION }, (_, index) => ({
+    id: `dimension-case-${String(index + 1)}`,
+    prompt: `Answer production request ${String(index + 1)}.`,
+    context: "Reference context.",
+    rubric: "State the expected production behavior."
+  }));
+
+const dimensionSuite = (dimensionId = basis.dimensions[0]!.id): EvalDimensionSuite => ({
+  version: EVAL_PROJECT_VERSION,
+  dimensionId,
+  maximumOutputTokens: 256,
+  cases: dimensionCases()
+});
+
+const decompositionWeights = () =>
+  basis.dimensions.map((dimension) => ({
+    dimensionId: dimension.id,
+    weight: 1 / basis.dimensions.length
+  }));
+
+const decompositionBenchmark = (): EvalDecompositionBenchmark => ({
+  maximumVectorL1Error: 0.25,
+  cases: Array.from({ length: EVAL_AUTHORING_CASES_PER_DIMENSION }, (_, index) => ({
+    id: `decomposition-case-${String(index + 1)}`,
+    request: `Classify production request ${String(index + 1)}.`,
+    expected: {
+      weights: decompositionWeights(),
+      unknownWeight: 0
+    }
+  }))
+});
+
+const compositionSuite = (): EvalCompositionSuite => ({
+  maximumOutputTokens: 256,
+  minimumWinnerScoreGap: 0.05,
+  minimumWinnerAgreement: 0.8,
+  cases: Array.from({ length: EVAL_AUTHORING_CASES_PER_DIMENSION }, (_, index) => ({
+    id: `composition-case-${String(index + 1)}`,
+    prompt: `Compose production response ${String(index + 1)}.`,
+    context: "Reference context.",
+    rubric: "State the expected composed production behavior.",
+    decomposition: {
+      weights: decompositionWeights(),
+      unknownWeight: 0
+    },
+    requirements: {
+      endpoint: "chat" as const,
+      requiresTools: false,
+      requiresVision: false,
+      inputTokens: 128,
+      maxOutputTokens: 256
+    }
+  }))
+});
+
+const proposeEvaluations = (
+  root: string,
+  outputs: {
+    readonly suite?: EvalDimensionSuite;
+    readonly decomposition?: EvalDecompositionBenchmark;
+    readonly composition?: EvalCompositionSuite;
+  }
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const author = yield* EvalProjectAuthor;
+      return yield* author.proposeEvaluations({
+        operationId: "eng-833",
+        repositoryRoot: root,
+        sourceInventory: ["source.md"],
+        configuration,
+        basis
+      });
+    }).pipe(
+      Effect.provide(
+        EvalProjectAuthorLive.pipe(
+          Layer.provide(
+            Layer.succeed(
+              EvalAuthoringTransport,
+              EvalAuthoringTransport.of({
+                complete: (input) =>
+                  Effect.sync(() => {
+                    if (input.schemaName === "routekit_dimension_suite") {
+                      const dimension = basis.dimensions.find((candidate) =>
+                        input.operationId.endsWith(`:${candidate.id}`)
+                      );
+                      return JSON.stringify(
+                        outputs.suite ?? dimensionSuite(dimension?.id ?? basis.dimensions[0]!.id)
+                      );
+                    }
+                    if (input.schemaName === "routekit_decomposition_benchmark") {
+                      return JSON.stringify(outputs.decomposition ?? decompositionBenchmark());
+                    }
+                    return JSON.stringify(outputs.composition ?? compositionSuite());
                   })
               })
             )
@@ -214,6 +332,62 @@ test("dimension authoring enforces routing basis counts after structured output 
         assert.ok(error instanceof EvalProjectAuthoringError);
         assert.equal(error.detail, "dimension proposal failed validation");
         assert.match(String(error.cause), /inclusion and exclusion boundaries/u);
+        return true;
+      }
+    );
+  });
+});
+
+test("evaluation authoring enforces Anthropic-deferred bounds after parsing", async () => {
+  await withRepository(async ({ root }) => {
+    for (const maximumOutputTokens of [0, 16_385]) {
+      await assert.rejects(
+        proposeEvaluations(root, {
+          suite: { ...dimensionSuite(), maximumOutputTokens }
+        }),
+        (error: unknown) => {
+          assert.ok(error instanceof EvalProjectAuthoringError);
+          assert.match(error.detail, /suite .* failed validation/u);
+          assert.match(String(error.cause), /maximumOutputTokens/u);
+          return true;
+        }
+      );
+    }
+
+    await assert.rejects(
+      proposeEvaluations(root, {
+        suite: {
+          ...dimensionSuite(),
+          cases: dimensionCases().slice(0, EVAL_AUTHORING_CASES_PER_DIMENSION - 1)
+        }
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.match(String(error.cause), /cases must contain at least 20 items/u);
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      proposeEvaluations(root, {
+        decomposition: { ...decompositionBenchmark(), maximumVectorL1Error: 3 }
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.equal(error.detail, "decomposition benchmark failed validation");
+        assert.match(String(error.cause), /maximumVectorL1Error/u);
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      proposeEvaluations(root, {
+        composition: { ...compositionSuite(), minimumWinnerAgreement: 2 }
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof EvalProjectAuthoringError);
+        assert.equal(error.detail, "composition benchmark failed validation");
+        assert.match(String(error.cause), /minimumWinnerAgreement/u);
         return true;
       }
     );
