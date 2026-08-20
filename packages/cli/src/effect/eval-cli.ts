@@ -759,6 +759,7 @@ export function evalRunCommand(
               {},
               {
                 bearerCredential: Redacted.value(resolvedTarget.bearerCredential),
+                isolateExecutionFromProjectSdk: true,
                 timeoutMs
               }
             )

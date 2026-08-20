@@ -6,7 +6,7 @@ import {
   makeEvalEngineLayer,
   makeRouteKitEvalExecutionPortService
 } from "@velum-labs/routekit-eval-engine";
-import { Data, Effect, Layer, Stream } from "effect";
+import { Data, Effect, FileSystem, Layer, Path, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import type { RouteKitEvalServiceOptions } from "./layer-options.js";
@@ -24,22 +24,31 @@ export class EvalServiceCredentialError extends Data.TaggedError("EvalServiceCre
 
 const makeProductionExecutionPort = (
   options: RouteKitEvalServiceOptions
-): Effect.Effect<EvalExecutionPortService, never, HttpClient.HttpClient> =>
-  Effect.map(HttpClient.HttpClient, (httpClient) => {
+): Effect.Effect<
+  EvalExecutionPortService,
+  never,
+  FileSystem.FileSystem | HttpClient.HttpClient | Path.Path
+> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
     const bearerCredential = options.bearerCredential?.trim();
     if (bearerCredential === undefined || bearerCredential.length === 0) {
-      return {
+      return EvalExecutionPort.of({
         execute: () =>
           Stream.fail(
-          new EvalEngineExecutionError({
-            cause: new EvalServiceCredentialError({
-              detail: "RouteKit Eval comparison execution requires an injected bearer credential."
-            }),
-            detail: "RouteKit Eval comparison execution requires an injected bearer credential."
-          })
+            new EvalEngineExecutionError({
+              cause: new EvalServiceCredentialError({
+                detail:
+                  "RouteKit Eval comparison execution requires an injected bearer credential."
+              }),
+              detail:
+                "RouteKit Eval comparison execution requires an injected bearer credential."
+            })
           )
-      };
+      });
     }
+    const httpClient = yield* HttpClient.HttpClient;
+    const paths = yield* Path.Path;
     const execution = makeRouteKitEvalExecutionPortService(
       {
         bearerCredential,
@@ -50,17 +59,56 @@ const makeProductionExecutionPort = (
       },
       httpClient
     );
-    if (options.timeoutMs === undefined) return execution;
-    return {
-      execute: (input) =>
-        execution.execute({
-          ...input,
-          request: {
-            ...input.request,
-            timeoutMs: options.timeoutMs
-          }
-        })
-    };
+    return EvalExecutionPort.of({
+      execute: (input) => {
+        const deadlineInput =
+          options.timeoutMs === undefined
+            ? input
+            : {
+                ...input,
+                request: {
+                  ...input.request,
+                  timeoutMs: options.timeoutMs
+                }
+              };
+        if (options.isolateExecutionFromProjectSdk !== true) {
+          return execution.execute(deadlineInput);
+        }
+        return Stream.unwrap(
+          Effect.gen(function* () {
+            const root = yield* Effect.acquireRelease(
+              fs.makeTempDirectory({ prefix: "routekit-eval-execution-" }),
+              (directory) => fs.remove(directory, { recursive: true }).pipe(Effect.ignore)
+            );
+            const workingDirectory = paths.join(root, "suite");
+            yield* fs.copy(input.discovery.workingDirectory, workingDirectory);
+            const discovery = {
+              ...input.discovery,
+              workingDirectory,
+              files: input.discovery.files.map((file) =>
+                paths.join(
+                  workingDirectory,
+                  paths.relative(input.discovery.workingDirectory, file)
+                )
+              )
+            };
+            return execution.execute({
+              ...deadlineInput,
+              discovery
+            });
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new EvalEngineExecutionError({
+                  cause,
+                  detail:
+                    "RouteKit Eval could not isolate the reviewed suite from project-local SDK packages."
+                })
+            )
+          )
+        ).pipe(Stream.scoped);
+      }
+    });
   });
 
 const makeProductionEvalEngineLayer = (options: RouteKitEvalServiceOptions) =>

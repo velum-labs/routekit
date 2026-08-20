@@ -18,4 +18,12 @@ export type RouteKitEvalServiceOptions = Omit<NodeTestExecutionOptions, "bridgeO
    * stale or missing timeout.
    */
   readonly timeoutMs?: number;
+  /**
+   * Run the node:test child from a temporary copy of the reviewed suite.
+   *
+   * Qualification enables this so a project-local `routekit/eval` or `ori/eval`
+   * package cannot shadow the bundled bridge-aware SDK used by the production
+   * execution adapter.
+   */
+  readonly isolateExecutionFromProjectSdk?: boolean;
 };
