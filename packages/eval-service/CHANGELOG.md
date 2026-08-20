@@ -1,5 +1,17 @@
 # @velum-labs/routekit-eval-service
 
+## 1.0.13
+
+### Patch Changes
+
+- 962fb79: Run qualification node:test children from an isolated suite copy so project-local
+  `routekit/eval` or `ori/eval` packages cannot restore a shorter hidden execution
+  deadline ahead of the named qualification timeout.
+  - @velum-labs/routekit-eval-contracts@1.0.13
+  - @velum-labs/routekit-eval-engine@1.0.13
+  - @velum-labs/routekit-eval-store@1.0.13
+  - @velum-labs/routekit-registry@1.0.13
+
 ## 1.0.12
 
 ### Patch Changes
