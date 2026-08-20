@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { test } from "node:test";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { ProviderFailureError } from "@velum-labs/routekit-contracts";
 import { Effect } from "effect";
 
 import { type Backend, borrowedBackendPorts } from "../providers/backend.js";
+import { OpenAiBackend } from "../providers/openai-backend.js";
 import { startGateway } from "../gateway-service.js";
 import { startSwitchingGatewayProxy } from "../switching-proxy.js";
 
@@ -48,6 +52,29 @@ function midStreamFailureBackend(): Backend {
   };
 }
 
+function garbageCollector(): () => void {
+  setFlagsFromString("--expose_gc");
+  const collect = runInNewContext("gc") as () => void;
+  setFlagsFromString("--no-expose_gc");
+  return collect;
+}
+
+async function readWithGarbageCollection(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  assert.ok(reader !== undefined);
+  const decoder = new TextDecoder();
+  const collect = garbageCollector();
+  let text = "";
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    text += decoder.decode(next.value, { stream: true });
+    collect();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  return text + decoder.decode();
+}
+
 test("a mid-stream upstream failure does not kill the gateway process", async () => {
   const unhandled: unknown[] = [];
   const onUnhandled = (reason: unknown): void => {
@@ -82,6 +109,131 @@ test("a mid-stream upstream failure does not kill the gateway process", async ()
   } finally {
     process.off("unhandledRejection", onUnhandled);
     await Effect.runPromise(gateway.close);
+  }
+});
+
+test("a long Responses stream stays attached through its terminal event", async () => {
+  const deltaCount = 522;
+  const upstream = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    let emitted = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const frame = (type: string, value: Record<string, unknown>): void => {
+      response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...value })}\n\n`);
+    };
+    const pump = (): void => {
+      const end = Math.min(emitted + 16, deltaCount);
+      while (emitted < end) {
+        frame("response.output_text.delta", {
+          delta: `${String(emitted + 1).padStart(3, "0")}:${"x".repeat(170)}`
+        });
+        emitted += 1;
+      }
+      if (emitted < deltaCount) {
+        timer = setTimeout(pump, 1);
+        return;
+      }
+      frame("response.completed", {
+        response: { id: "resp_long", status: "completed" }
+      });
+      response.end();
+    };
+    response.once("close", () => {
+      if (timer !== undefined) clearTimeout(timer);
+    });
+    frame("response.created", { response: { id: "resp_long", status: "in_progress" } });
+    frame("response.in_progress", {
+      response: { id: "resp_long", status: "in_progress" }
+    });
+    frame("response.output_item.added", {
+      output_index: 0,
+      item: { id: "msg_long", type: "message", status: "in_progress" }
+    });
+    pump();
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const address = upstream.address();
+  assert.ok(typeof address === "object" && address !== null);
+  const backend = new OpenAiBackend({
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    apiKey: "test-key",
+    defaultModel: "mock-model"
+  });
+  const gateway = await startGateway({ backend });
+  const proxy = await startSwitchingGatewayProxy({ target: gateway.url() });
+  try {
+    const response = await fetch(`${proxy.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "mock-model", input: "count", stream: true })
+    });
+    assert.equal(response.status, 200);
+    const text = await readWithGarbageCollection(response);
+    assert.equal(text.match(/event: response\.output_text\.delta/g)?.length, deltaCount);
+    assert.match(text, /event: response\.completed/);
+    assert.doesNotMatch(text, /event: error/);
+    assert.ok(Buffer.byteLength(text) > 128 * 1024);
+  } finally {
+    await Effect.runPromise(proxy.close);
+    await Effect.runPromise(gateway.close);
+    await new Promise<void>((resolve, reject) =>
+      upstream.close((error) => (error === undefined ? resolve() : reject(error)))
+    );
+  }
+});
+
+test("a clean upstream EOF mid-Responses delta emits a terminal SSE error", async () => {
+  const deltaCount = 522;
+  const upstream = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    const frame = (type: string, value: Record<string, unknown>): void => {
+      response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...value })}\n\n`);
+    };
+    frame("response.created", { response: { id: "resp_cut", status: "in_progress" } });
+    frame("response.in_progress", {
+      response: { id: "resp_cut", status: "in_progress" }
+    });
+    frame("response.output_item.added", {
+      output_index: 0,
+      item: { id: "msg_cut", type: "message", status: "in_progress" }
+    });
+    for (let index = 0; index < deltaCount; index += 1) {
+      frame("response.output_text.delta", {
+        delta: `${String(index + 1).padStart(3, "0")}:${"x".repeat(170)}`
+      });
+    }
+    response.end();
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  const address = upstream.address();
+  assert.ok(typeof address === "object" && address !== null);
+  const backend = new OpenAiBackend({
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    apiKey: "test-key",
+    defaultModel: "mock-model"
+  });
+  const gateway = await startGateway({ backend });
+  const proxy = await startSwitchingGatewayProxy({ target: gateway.url() });
+  try {
+    const response = await fetch(`${proxy.url()}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "mock-model", input: "count", stream: true })
+    });
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.equal(text.match(/event: response\.output_text\.delta/g)?.length, deltaCount);
+    assert.ok(Buffer.byteLength(text) > 128 * 1024);
+    assert.doesNotMatch(text, /event: response\.completed/);
+    assert.match(text, /event: error/);
+    assert.match(text, /"type":"upstream_stream_closed"/);
+    assert.match(text, /last_event=response\.output_text\.delta/);
+  } finally {
+    await Effect.runPromise(proxy.close);
+    await Effect.runPromise(gateway.close);
+    await new Promise<void>((resolve, reject) =>
+      upstream.close((error) => (error === undefined ? resolve() : reject(error)))
+    );
   }
 });
 
