@@ -1,5 +1,16 @@
 # @velum-labs/routekit-eval-service
 
+## 1.0.12
+
+### Patch Changes
+
+- 606d829: Apply the advertised qualification timeout at the production node:test boundary
+  and retain candidate or judge requests that were issued before interruption.
+  - @velum-labs/routekit-eval-contracts@1.0.12
+  - @velum-labs/routekit-eval-engine@1.0.12
+  - @velum-labs/routekit-eval-store@1.0.12
+  - @velum-labs/routekit-registry@1.0.12
+
 ## 1.0.11
 
 ### Patch Changes
