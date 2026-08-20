@@ -97,7 +97,9 @@ export const qualificationFailureDetail = (input: {
   readonly comparison?: QualificationComparisonContext;
   readonly observedCalls: readonly QualificationObservedCall[];
 }): string => {
-  const callIds = input.observedCalls.map((call) => call.callId);
+  const callIds = input.observedCalls.flatMap((call) =>
+    call.callId === undefined ? [] : [call.callId]
+  );
   const shownCallIds = callIds.slice(0, 20);
   return [
     input.comparison === undefined
@@ -756,7 +758,8 @@ export function evalRunCommand(
             makeRouteKitEvalServiceLayer(
               {},
               {
-                bearerCredential: Redacted.value(resolvedTarget.bearerCredential)
+                bearerCredential: Redacted.value(resolvedTarget.bearerCredential),
+                timeoutMs
               }
             )
           ),
@@ -777,10 +780,12 @@ export function evalRunCommand(
         ? yield* Effect.forEach(
             finalObservedCalls,
             (call) =>
-              inspector(call.callId).pipe(
-                Effect.map((measurement) => ({ ...call, measurement })),
-                Effect.orElseSucceed(() => call)
-              ),
+              call.callId === undefined
+                ? Effect.succeed(call)
+                : inspector(call.callId).pipe(
+                    Effect.map((measurement) => ({ ...call, measurement })),
+                    Effect.orElseSucceed(() => call)
+                  ),
             { concurrency: 4 }
           )
         : finalObservedCalls;

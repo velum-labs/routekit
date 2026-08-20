@@ -335,3 +335,70 @@ test("production runner executes candidate and judge traffic through the live en
     );
   }
 });
+
+test("production runner applies the host timeout at node:test instead of a stale request deadline", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-timeout-"));
+  roots.push(root);
+  const suite = path.join(root, "support.eval.ts");
+  await writeFile(
+    suite,
+    [
+      'import { test } from "node:test";',
+      'import { setupAgent, setupJudge } from "routekit/eval";',
+      'const judge = setupJudge({ agent: setupAgent({ model: "openai/judge" }), minScore: 0.8 });',
+      'test("support case", async () => {',
+      '  const run = await setupAgent({ model: "openai/cheap" }).run({ prompt: "Help", caseId: "support-case" });',
+      "  run.toComplete();",
+      '  await judge.autoEvals({ criteria: "Helpful", prompt: "Help", run });',
+      "});"
+    ].join("\n")
+  );
+  await writeManifest(root, ["openai/cheap"], "openai/judge", ["support-case"]);
+
+  const gateway = createServer((incoming, outgoing) => {
+    void (async () => {
+      const body = JSON.parse(await readBody(incoming)) as Readonly<Record<string, unknown>>;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const content =
+        body.model === "openai/judge"
+          ? JSON.stringify({ pass: true, reason: "helpful", score: 0.9 })
+          : "Helpful answer";
+      outgoing.writeHead(200, { "content-type": "application/json" });
+      outgoing.end(
+        JSON.stringify({
+          model: body.model,
+          choices: [{ message: { role: "assistant", content } }]
+        })
+      );
+    })();
+  });
+  await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+  const address = gateway.address();
+  assert.ok(address !== null && typeof address !== "string");
+
+  try {
+    const result = await Effect.runPromise(
+      withEvalService(
+        {
+          bearerCredential: "parent-only-token",
+          timeoutMs: 15_000
+        },
+        (service) =>
+          service.runComparison(
+            {
+              ...requestFor(suite, `http://127.0.0.1:${String(address.port)}`),
+              candidateModels: ["openai/cheap"],
+              timeoutMs: 5
+            },
+            "full"
+          )
+      ).pipe(Effect.provide(NodeHttpClient.layerUndici))
+    );
+
+    assert.equal(result.models[0]?.cases[0]?.outcome, "passed");
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      gateway.close((error) => (error === undefined ? resolve() : reject(error)))
+    );
+  }
+});

@@ -40,7 +40,7 @@ const makeProductionExecutionPort = (
           )
       };
     }
-    return makeRouteKitEvalExecutionPortService(
+    const execution = makeRouteKitEvalExecutionPortService(
       {
         bearerCredential,
         ...(options.childEnvironment === undefined
@@ -50,6 +50,17 @@ const makeProductionExecutionPort = (
       },
       httpClient
     );
+    if (options.timeoutMs === undefined) return execution;
+    return {
+      execute: (input) =>
+        execution.execute({
+          ...input,
+          request: {
+            ...input.request,
+            timeoutMs: options.timeoutMs
+          }
+        })
+    };
   });
 
 const makeProductionEvalEngineLayer = (options: RouteKitEvalServiceOptions) =>
