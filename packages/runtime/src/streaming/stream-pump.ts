@@ -191,12 +191,18 @@ export class StreamPump {
     source: ReadableStream<Uint8Array>,
     options: {
       signal?: AbortSignal;
+      keepaliveMs?: number;
       onFrame(
         frame: string,
         delimiter: string,
         controller: ReadableStreamDefaultController<Uint8Array>
       ): void | Promise<void>;
       onEnd(controller: ReadableStreamDefaultController<Uint8Array>): void | Promise<void>;
+      keepalive?(controller: ReadableStreamDefaultController<Uint8Array>): void;
+      onError?(
+        error: unknown,
+        controller: ReadableStreamDefaultController<Uint8Array>
+      ): void | Promise<void>;
     }
   ): ReadableStream<Uint8Array> {
     const reader = source.getReader();
@@ -205,9 +211,17 @@ export class StreamPump {
     let settled = false;
     let cleaned = false;
     let wakePull: (() => void) | undefined;
+    let keepaliveTimer: ReturnType<typeof setInterval> | undefined;
+    const stopKeepalive = (): void => {
+      if (keepaliveTimer !== undefined) {
+        clearInterval(keepaliveTimer);
+        keepaliveTimer = undefined;
+      }
+    };
     const cleanup = (): void => {
       if (cleaned) return;
       cleaned = true;
+      stopKeepalive();
       if (abort !== undefined && options.signal !== undefined) {
         options.signal.removeEventListener("abort", abort);
       }
@@ -232,6 +246,7 @@ export class StreamPump {
             if (buffer.length > 0) await options.onFrame(buffer, "", controller);
             await options.onEnd(controller);
             settled = true;
+            stopKeepalive();
             controller.close();
             return;
           }
@@ -248,12 +263,22 @@ export class StreamPump {
       } catch (error) {
         if (settled) return;
         settled = true;
+        stopKeepalive();
         try {
           await reader.cancel(error);
         } catch {
           // The transform failure remains authoritative.
         }
-        controller.error(error);
+        if (options.onError === undefined) {
+          controller.error(error);
+        } else {
+          try {
+            await options.onError(error, controller);
+            controller.close();
+          } catch (handlerError) {
+            controller.error(handlerError);
+          }
+        }
       } finally {
         cleanup();
       }
@@ -265,6 +290,7 @@ export class StreamPump {
           abort = () => {
             if (settled) return;
             settled = true;
+            stopKeepalive();
             wake();
             const reason = options.signal?.reason ?? new DOMException("Aborted", "AbortError");
             void reader
@@ -276,6 +302,20 @@ export class StreamPump {
           if (options.signal.aborted) abort();
           else options.signal.addEventListener("abort", abort, { once: true });
         }
+        if (
+          options.keepalive !== undefined &&
+          options.keepaliveMs !== undefined &&
+          options.keepaliveMs > 0
+        ) {
+          keepaliveTimer = setInterval(() => {
+            if (settled || (controller.desiredSize ?? 1) <= 0) return;
+            try {
+              options.keepalive?.(controller);
+            } catch {
+              // A closed controller is settled by the active pump/cancel path.
+            }
+          }, options.keepaliveMs);
+        }
         if (!settled) void pump(controller);
       },
       pull() {
@@ -284,6 +324,7 @@ export class StreamPump {
       async cancel(reason) {
         if (settled) return;
         settled = true;
+        stopKeepalive();
         wake();
         try {
           await reader.cancel(reason);

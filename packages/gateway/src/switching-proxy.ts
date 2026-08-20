@@ -41,6 +41,7 @@ import {
 import { gatewayTryPromise } from "./effect/gateway.js";
 
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
+const DEFAULT_UPSTREAM_HEADERS_TIMEOUT_MS = 10 * 60 * 1000;
 const HOP_BY_HOP = new Set([
   "connection",
   "keep-alive",
@@ -231,6 +232,8 @@ export type SwitchingGatewayProxyOptions = {
   host?: string;
   port?: number;
   authToken?: string;
+  /** Maximum wait for the active generation to return response headers. */
+  upstreamHeadersTimeoutMs?: number;
   /** Resolve a named data-plane principal; preferred over `authToken` alone. */
   resolveDataPrincipal?: (presented: string) => GatewayPrincipal | undefined;
 };
@@ -302,12 +305,24 @@ const startSwitchingGatewayProxyOperation = Effect.fn("SwitchingGatewayProxy.sta
               error: { message: rejection.message, type: "invalid_request_error" }
             });
           }
+          const headersTimeout = new AbortController();
+          const timeout = setTimeout(
+            () =>
+              headersTimeout.abort(
+                new Error(
+                  `gateway generation did not return headers within ${
+                    input.upstreamHeadersTimeoutMs ?? DEFAULT_UPSTREAM_HEADERS_TIMEOUT_MS
+                  }ms`
+                )
+              ),
+            input.upstreamHeadersTimeoutMs ?? DEFAULT_UPSTREAM_HEADERS_TIMEOUT_MS
+          );
           const upstream = yield* executeWebRequest(`${selected.url}${path}`, {
             method: nodeReq.method ?? "GET",
             headers: requestHeaders(nodeReq.headers, principal),
             ...(body !== undefined ? { body } : {}),
-            signal: AbortSignal.any([aborter.signal, AbortSignal.timeout(10 * 60 * 1000)])
-          });
+            signal: AbortSignal.any([aborter.signal, headersTimeout.signal])
+          }).pipe(Effect.ensuring(Effect.sync(() => clearTimeout(timeout))));
           return HttpEffect.scopeTransferToStream(proxyResponse(upstream, retiring));
         }).pipe(
           Effect.orElseSucceed(() =>
