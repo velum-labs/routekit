@@ -10,6 +10,7 @@ import {
   immutableCliRuntime
 } from "@velum-labs/routekit-cli-core";
 import { EVAL_POLICY } from "@velum-labs/routekit-eval-contracts";
+import { EVAL_AUTHORING_EVALUATION_OUTPUT_TOKENS } from "@velum-labs/routekit-eval-setup";
 import { Effect } from "effect";
 
 import { buildProgram } from "../cli.js";
@@ -73,6 +74,22 @@ test("eval authoring lets the selected model choose compatible reasoning control
   assert.equal(body.model, "claude-code/claude-opus-5");
   assert.equal(body.max_output_tokens, 8_192);
   assert.equal(Object.hasOwn(body, "reasoning"), false);
+});
+
+test("evaluation authoring sends the raised output budget as max_output_tokens", () => {
+  const body = JSON.parse(
+    evalAuthoringRequestBody({
+      operationId: "authoring-834",
+      model: "claude-code/claude-opus-5",
+      instructions: "author exactly twenty concise cases",
+      input: "{}",
+      schemaName: "routekit_dimension_suite",
+      jsonSchema: { type: "object" },
+      maximumOutputTokens: EVAL_AUTHORING_EVALUATION_OUTPUT_TOKENS
+    })
+  ) as Record<string, unknown>;
+
+  assert.equal(body.max_output_tokens, 32_768);
 });
 
 test("eval authoring HTTP failures include provider diagnostics and the inspectable call id", async () => {
