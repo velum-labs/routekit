@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- 293ad25: Restore OpenAI GPT-5.4, GPT-5.5, and GPT-5.6 discovery and inference on Amazon Bedrock through the regional bedrock-mantle API.
+- 293ad25: Restore OpenAI GPT-5.6-family discovery and inference on Amazon Bedrock through the regional bedrock-mantle API.
 - Updated dependencies [293ad25]
   - @velum-labs/routekit-gateway@1.0.6
   - @velum-labs/routekit-accounts@1.0.6

@@ -154,7 +154,7 @@ test("GPT-5 Chat Completions translate max_tokens to max_completion_tokens", asy
     for (const model of [
       "gpt-5.6-sol",
       "openai.gpt-5.6-luna",
-      "bedrock/openai.gpt-5.5",
+      "bedrock/openai.gpt-5.6-sol",
       "routekit/bedrock/us.openai.gpt-5.7"
     ]) {
       const response = await fetch(`${gateway.url()}/v1/chat/completions`, {

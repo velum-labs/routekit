@@ -143,14 +143,19 @@ test("Bedrock discovery includes active Anthropic foundations and paginated back
 });
 
 test("Bedrock OpenAI model ids stay on mantle and never match Anthropic Converse", () => {
-  assert.equal(isBedrockOpenAiModel("openai.gpt-5.4"), true);
+  assert.equal(isBedrockOpenAiModel("openai.gpt-5.7"), true);
   assert.equal(isBedrockOpenAiModel("openai.gpt-5.6-sol"), true);
   assert.equal(isBedrockOpenAiModel("us.openai.gpt-5.6-terra"), true);
   assert.equal(isBedrockOpenAiModel("anthropic.claude-3"), false);
   assert.equal(isBedrockOpenAiModel("us.anthropic.claude-3"), false);
 });
 
-test("Bedrock discovery unions OpenAI mantle models when a bearer token is present", async () => {
+test("Bedrock discovery advertises only verified OpenAI mantle models", async () => {
+  assert.deepEqual(BEDROCK_OPENAI_ALLOWLIST, [
+    "openai.gpt-5.6-sol",
+    "openai.gpt-5.6-terra",
+    "openai.gpt-5.6-luna"
+  ]);
   const source = new BedrockProviderSource({
     env: { AWS_BEARER_TOKEN_BEDROCK: "bedrock-key", AWS_REGION: "us-east-1" },
     controlClient: {
@@ -235,7 +240,7 @@ test("Bedrock routes OpenAI models through mantle and leaves Anthropic on Conver
   });
 
   assert.equal(
-    source.responses.kind === "responses" && source.responses.supports("openai.gpt-5.4"),
+    source.responses.kind === "responses" && source.responses.supports("openai.gpt-5.6-sol"),
     true
   );
   assert.equal(
@@ -249,11 +254,11 @@ test("Bedrock routes OpenAI models through mantle and leaves Anthropic on Conver
 
   const openaiChat = await runRouteKitEffect(
     source.requests.chat({
-      model: "openai.gpt-5.4",
+      model: "openai.gpt-5.6-sol",
       messages: [{ role: "user", content: "hi" }]
     })
   );
-  assert.deepEqual(await openaiChat.json(), { id: "chat", model: "openai.gpt-5.4" });
+  assert.deepEqual(await openaiChat.json(), { id: "chat", model: "openai.gpt-5.6-sol" });
 
   assert.equal(source.responses.kind, "responses");
   if (source.responses.kind !== "responses") throw new Error("expected Responses support");
@@ -278,7 +283,7 @@ test("Bedrock routes OpenAI models through mantle and leaves Anthropic on Conver
   assert.equal(runtimeCalls.length, 1);
   assert.equal(runtimeCalls[0] instanceof ConverseCommand, true);
   assert.deepEqual(mantleCalls, [
-    { kind: "chat", model: "openai.gpt-5.4" },
+    { kind: "chat", model: "openai.gpt-5.6-sol" },
     { kind: "responses", model: "openai.gpt-5.6-terra" }
   ]);
 
@@ -355,7 +360,7 @@ test("Bedrock OpenAI chat without a mantle key returns 400 and skips Converse", 
   });
   const response = await runRouteKitEffect(
     source.requests.chat({
-      model: "openai.gpt-5.5",
+      model: "openai.gpt-5.6-luna",
       messages: [{ role: "user", content: "hi" }]
     })
   );
