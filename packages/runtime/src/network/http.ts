@@ -101,7 +101,7 @@ function withFetchInit<A, E, R>(
   );
 }
 
-const pinnedClientResponses = new WeakMap<Response, unknown>();
+const pinnedClientResponses = new WeakMap<object, unknown>();
 
 function clientResponseSource(response: HttpClientResponse): unknown {
   const original = (response as { original?: HttpClientResponse }).original ?? response;
@@ -123,8 +123,11 @@ export function fetchResponseFromClient(response: HttpClientResponse): Response 
     throw new TypeError("HttpClient response is not backed by a Fetch Response");
   }
   // HttpClient registers the inner response with a FinalizationRegistry that
-  // aborts the request. Pin it to the Fetch Response so streaming bodies stay
-  // alive after runPromise returns.
-  pinnedClientResponses.set(web, (response as { original?: unknown }).original ?? response);
+  // aborts the request. Streaming adapters retain the body after dropping the
+  // Response wrapper, so pin the client response to that body for its lifetime.
+  pinnedClientResponses.set(
+    web.body ?? web,
+    (response as { original?: unknown }).original ?? response
+  );
   return web;
 }

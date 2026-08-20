@@ -1,5 +1,17 @@
 # @velum-labs/routekit-gateway
 
+## 1.0.11
+
+### Patch Changes
+
+- Updated dependencies [a148a71]
+  - @velum-labs/routekit-runtime@1.0.11
+  - @velum-labs/routekit-eval-core@1.0.11
+  - @velum-labs/routekit-config-core@1.0.11
+  - @velum-labs/routekit-contracts@1.0.11
+  - @velum-labs/routekit-eval-contracts@1.0.11
+  - @velum-labs/routekit-registry@1.0.11
+
 ## 1.0.10
 
 ### Patch Changes
