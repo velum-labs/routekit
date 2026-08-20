@@ -215,7 +215,7 @@ export class RoutingBackend implements Backend {
             const injected = options.sources?.[provider];
             const source = yield* gatewayTry(() => {
               if (injected !== undefined) return injected;
-              if (provider === "bedrock") return new BedrockProviderSource();
+              if (provider === "bedrock") return new BedrockProviderSource({ env });
               if (isApiProvider(provider)) {
                 return (
                   options.createApiSource?.(provider, env) ??

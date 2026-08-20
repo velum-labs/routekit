@@ -119,12 +119,15 @@ export {
 } from "./providers/backend.js";
 export type {
   BedrockControlClient,
+  BedrockMantleBackend,
   BedrockProviderSourceOptions,
   BedrockRuntime
 } from "./providers/bedrock-source.js";
 export {
+  BEDROCK_OPENAI_ALLOWLIST,
   BedrockProviderSource,
   fromBedrockConverseOutput,
+  isBedrockOpenAiModel,
   toBedrockConverseInput
 } from "./providers/bedrock-source.js";
 export type {

@@ -1253,3 +1253,66 @@ test("Bedrock Opus 5 exposes reasoning controls and accepts routed effort select
   const error = (await rejected.json()) as { error: { code: string } };
   assert.equal(error.error.code, "unsupported_reasoning_control");
 });
+
+test("Bedrock OpenAI models keep native ids and route through Responses", async () => {
+  const calls: Array<{ source: string; model?: string }> = [];
+  const bedrock = fakeSource(
+    "bedrock",
+    [
+      {
+        id: "openai.gpt-5.6-sol",
+        reasoning: {
+          status: "supported",
+          efforts: ["none", "low", "medium", "high", "xhigh", "max"].map((id) => ({ id })),
+          defaultEffort: "medium",
+          wireShape: "openai-responses",
+          provenance: "builtin"
+        }
+      }
+    ],
+    calls
+  );
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: { providers: { bedrock: {} }, defaultModel: "bedrock/openai.gpt-5.6-sol" },
+      sources: {
+        bedrock: {
+          ...bedrock,
+          responses: {
+            kind: "responses",
+            supports: (model: string) => model.startsWith("openai."),
+            execute: (body: unknown) => {
+              const model =
+                typeof body === "object" &&
+                body !== null &&
+                "model" in body &&
+                typeof body.model === "string"
+                  ? body.model
+                  : undefined;
+              calls.push({
+                source: "bedrock-responses",
+                ...(model !== undefined ? { model } : {})
+              });
+              return Effect.succeed(Response.json({ ok: true, model }));
+            }
+          }
+        }
+      }
+    })
+  );
+  assert.deepEqual(backend.listModelIds(), ["bedrock/openai.gpt-5.6-sol"]);
+  assert.equal(backend.supportsResponses("bedrock/openai.gpt-5.6-sol"), true);
+  assert.equal(
+    backend.modelInfo("bedrock/openai.gpt-5.6-sol")?.reasoning?.wireShape,
+    "openai-responses"
+  );
+  const response = await runRouteKitEffect(
+    backend.responses({
+      model: "bedrock/openai.gpt-5.6-sol",
+      input: "hi"
+    })
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true, model: "openai.gpt-5.6-sol" });
+  assert.deepEqual(calls, [{ source: "bedrock-responses", model: "openai.gpt-5.6-sol" }]);
+});
