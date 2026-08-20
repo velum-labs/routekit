@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 
+import { CliError } from "@velum-labs/routekit-cli-core";
 import {
   EVAL_ATTRIBUTION_HEADER,
   EVAL_POLICY,
@@ -45,16 +46,85 @@ import {
   type RouteKitPlatform
 } from "@velum-labs/routekit-runtime/effect";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
-import { Effect, Exit, FileSystem, Layer, Redacted, Ref, Schema } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import { Cause, Effect, Exit, FileSystem, Layer, Redacted, Ref, Schema } from "effect";
+import { HttpClient } from "effect/unstable/http";
 
 import { routekitClient } from "../client.js";
 import { withTargetAuthoringSession } from "./eval-authoring-target.js";
-import { makeQualificationCleanupRef, withQualificationTarget } from "./eval-execution-target.js";
+import {
+  includeQualificationObservedCalls,
+  makeQualificationCleanupRef,
+  observeQualificationCalls,
+  type QualificationObservedCall,
+  type QualificationTarget,
+  withQualificationTarget
+} from "./eval-execution-target.js";
 
 export type EvalWorkflowCliInput = {
   readonly repositoryRoot?: string;
 };
+
+export const DEFAULT_QUALIFICATION_TEST_TIMEOUT_MS = 10 * 60_000;
+
+type QualificationComparisonContext = {
+  readonly dimensionId: string;
+  readonly timeoutMs: number;
+};
+
+export const qualificationComparisonRequest = (input: {
+  readonly candidateModels: readonly string[];
+  readonly dimensionId: string;
+  readonly gatewayUrl: string;
+  readonly judgeModel: string;
+  readonly suitePath: string;
+  readonly timeoutMs?: number;
+}): EvalComparisonRequest => ({
+  version: 1,
+  profileId: input.dimensionId,
+  suitePath: input.suitePath,
+  candidateModels: input.candidateModels,
+  judgeModel: input.judgeModel,
+  gatewayUrl: input.gatewayUrl,
+  timeoutMs: input.timeoutMs ?? DEFAULT_QUALIFICATION_TEST_TIMEOUT_MS
+});
+
+const detailOf = (cause: unknown): string =>
+  cause instanceof Error && cause.message.length > 0 ? cause.message : String(cause);
+
+export const qualificationFailureDetail = (input: {
+  readonly cause: unknown;
+  readonly cleanupIncomplete: boolean;
+  readonly comparison?: QualificationComparisonContext;
+  readonly observedCalls: readonly QualificationObservedCall[];
+}): string => {
+  const callIds = input.observedCalls.map((call) => call.callId);
+  const shownCallIds = callIds.slice(0, 20);
+  return [
+    input.comparison === undefined
+      ? "qualification execution failed"
+      : `qualification dimension ${JSON.stringify(input.comparison.dimensionId)} failed ` +
+        `(per-test timeout ${String(input.comparison.timeoutMs)}ms)`,
+    detailOf(input.cause),
+    shownCallIds.length === 0
+      ? "observed call ids: none"
+      : `observed call ids: ${shownCallIds.join(", ")}${
+          callIds.length > shownCallIds.length
+            ? ` (+${String(callIds.length - shownCallIds.length)} more)`
+            : ""
+        }`,
+    ...(input.cleanupIncomplete ? ["qualification cleanup did not complete"] : [])
+  ].join("; ");
+};
+
+export const evalQualificationCliError = (failure: string, cause?: unknown): CliError =>
+  Object.assign(
+    new CliError({
+      code: "eval_qualification_failed",
+      message: failure,
+      exitCode: 1
+    }),
+    cause === undefined ? {} : { cause }
+  );
 
 const EvalProjectWorkflowCliLive = EvalProjectWorkflowLive.pipe(
   Layer.provide(EvalProjectStoreLive),
@@ -322,9 +392,17 @@ export function evalRunCommand(
     readonly planId: string;
     readonly gatewayUrl?: string;
     readonly tokenFile?: string;
+    readonly timeoutMs?: number;
   }
 ): Effect.Effect<EvalRunReport, unknown, RouteKitPlatform> {
   return Effect.gen(function* () {
+    const timeoutMs = input.timeoutMs ?? DEFAULT_QUALIFICATION_TEST_TIMEOUT_MS;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+      return yield* new RouteKitFailure({
+        message: "eval run timeoutMs must be a positive safe integer"
+      });
+    }
+    const httpClient = yield* HttpClient.HttpClient;
     const httpContext = yield* Effect.context<HttpClient.HttpClient>();
     const root = repositoryRoot(input);
     const startedAt = new Date().toISOString();
@@ -351,6 +429,11 @@ export function evalRunCommand(
     const cleanup = yield* makeQualificationCleanupRef;
     const comparisons = yield* Ref.make<EvalRunReport["comparisons"]>([]);
     const classifierObservations = yield* Ref.make<readonly EvalClassifierObservation[]>([]);
+    const observedCalls = yield* Ref.make<readonly QualificationObservedCall[]>([]);
+    const activeComparison = yield* Ref.make<QualificationComparisonContext | undefined>(undefined);
+    const inspectObservedCall = yield* Ref.make<QualificationTarget["inspectCall"] | undefined>(
+      undefined
+    );
     const target = yield* Ref.make<EvalRunTarget>(
       input.gatewayUrl === undefined && input.tokenFile === undefined
         ? { kind: "configured", identity: "unresolved", publishAllowed: true }
@@ -365,23 +448,36 @@ export function evalRunCommand(
         ...(input.tokenFile === undefined ? {} : { tokenFile: input.tokenFile })
       },
       cleanup,
-      (resolvedTarget) =>
-        Effect.gen(function* () {
+      (resolvedTarget) => {
+        const instrumentedHttpClient = observeQualificationCalls(httpClient, observedCalls);
+        return Effect.gen(function* () {
           yield* Ref.set(target, resolvedTarget.target);
+          yield* Ref.set(inspectObservedCall, resolvedTarget.inspectCall);
           const evalService = yield* EvalService;
+          const runQualificationComparison = (dimensionId: string, suitePath: string) =>
+            Effect.gen(function* () {
+              yield* Ref.set(activeComparison, { dimensionId, timeoutMs });
+              yield* Ref.set(observedCalls, []);
+              const comparison = yield* evalService.runComparison(
+                qualificationComparisonRequest({
+                  candidateModels: started.plan.candidateModels,
+                  dimensionId,
+                  gatewayUrl: resolvedTarget.gatewayUrl,
+                  judgeModel: started.plan.judgeModel,
+                  suitePath,
+                  timeoutMs
+                }),
+                started.plan.scope
+              );
+              yield* Ref.set(activeComparison, undefined);
+              yield* Ref.set(observedCalls, []);
+              return comparison;
+            });
           for (const selection of started.plan.selectedCaseIds) {
             const suitePath = yield* withArtifacts((artifacts) =>
               artifacts.planSuitePath(root, started.plan.planId, selection.dimensionId)
             );
-            const request: EvalComparisonRequest = {
-              version: 1,
-              profileId: selection.dimensionId,
-              suitePath,
-              candidateModels: started.plan.candidateModels,
-              judgeModel: started.plan.judgeModel,
-              gatewayUrl: resolvedTarget.gatewayUrl
-            };
-            const comparison = yield* evalService.runComparison(request, started.plan.scope);
+            const comparison = yield* runQualificationComparison(selection.dimensionId, suitePath);
             yield* Ref.update(comparisons, (completed) => [...completed, comparison]);
           }
           const dimensionComparisons = yield* Ref.get(comparisons);
@@ -539,16 +635,9 @@ export function evalRunCommand(
           const compositionSuitePath = yield* withArtifacts((artifacts) =>
             artifacts.compositionSuitePath(root, started.plan.planId)
           );
-          const compositionComparison = yield* evalService.runComparison(
-            {
-              version: 1,
-              profileId: "composition",
-              suitePath: compositionSuitePath,
-              candidateModels: started.plan.candidateModels,
-              judgeModel: started.plan.judgeModel,
-              gatewayUrl: resolvedTarget.gatewayUrl
-            },
-            started.plan.scope
+          const compositionComparison = yield* runQualificationComparison(
+            "composition",
+            compositionSuitePath
           );
           yield* Ref.update(comparisons, (current) => [...current, compositionComparison]);
 
@@ -670,8 +759,10 @@ export function evalRunCommand(
                 bearerCredential: Redacted.value(resolvedTarget.bearerCredential)
               }
             )
-          )
-        )
+          ),
+          Effect.provideService(HttpClient.HttpClient, instrumentedHttpClient)
+        );
+      }
     );
     const exit = yield* Effect.exit(execution);
     const finishedAt = new Date().toISOString();
@@ -679,10 +770,27 @@ export function evalRunCommand(
     const finalCleanup = yield* Ref.get(cleanup);
     const finalTarget = yield* Ref.get(target);
     const finalClassifierObservations = yield* Ref.get(classifierObservations);
-    const ledger = summarizeEvalRunLedger(
-      completed,
-      started.plan.expectedCallCount,
-      finalClassifierObservations
+    const finalObservedCalls = yield* Ref.get(observedCalls);
+    const inspector = yield* Ref.get(inspectObservedCall);
+    const inspectedObservedCalls =
+      Exit.isFailure(exit) && inspector !== undefined
+        ? yield* Effect.forEach(
+            finalObservedCalls,
+            (call) =>
+              inspector(call.callId).pipe(
+                Effect.map((measurement) => ({ ...call, measurement })),
+                Effect.orElseSucceed(() => call)
+              ),
+            { concurrency: 4 }
+          )
+        : finalObservedCalls;
+    const ledger = includeQualificationObservedCalls(
+      summarizeEvalRunLedger(
+        completed,
+        started.plan.expectedCallCount,
+        finalClassifierObservations
+      ),
+      Exit.isFailure(exit) ? inspectedObservedCalls : []
     );
     if (Exit.isSuccess(exit)) {
       const report: EvalRunReport = {
@@ -705,6 +813,14 @@ export function evalRunCommand(
       yield* withWorkflow((workflow) => workflow.finishRun(root, report));
       return report;
     }
+    const cause = Cause.squash(exit.cause);
+    const finalActiveComparison = yield* Ref.get(activeComparison);
+    const failure = qualificationFailureDetail({
+      cause,
+      cleanupIncomplete: finalCleanup.sessionOpened && !finalCleanup.sessionClosed,
+      ...(finalActiveComparison === undefined ? {} : { comparison: finalActiveComparison }),
+      observedCalls: inspectedObservedCalls
+    });
     const report: EvalRunReport = {
       version: 1,
       runId: started.runId,
@@ -719,13 +835,10 @@ export function evalRunCommand(
       comparisons: completed,
       ledger,
       status: "failed",
-      failure:
-        finalCleanup.sessionOpened && !finalCleanup.sessionClosed
-          ? "qualification cleanup did not complete"
-          : "qualification execution did not complete"
+      failure
     };
     yield* withWorkflow((workflow) => workflow.failRun(root, report));
-    return report;
+    return yield* Effect.fail(evalQualificationCliError(failure, cause));
   }) as Effect.Effect<EvalRunReport, unknown, RouteKitPlatform>;
 }
 
