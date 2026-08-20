@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit-daemon",
   "private": false,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Singleton RouteKit control daemon and stable model gateway.",
   "repository": {
     "type": "git",

@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit-runtime",
   "private": false,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/velum-labs/routekit.git",
