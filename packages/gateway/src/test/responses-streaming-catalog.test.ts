@@ -69,6 +69,51 @@ test("a mid-stream provider error event becomes response.failed with the upstrea
   assert.ok(!text.includes("event: response.completed"));
 });
 
+test("max-token Chat completion becomes an incomplete Responses result", () => {
+  for (const finishReason of ["length", "max_tokens"]) {
+    const response = chatToResponses(
+      {
+        choices: [
+          {
+            message: { role: "assistant", content: '{"cases":[{"id":"truncated' },
+            finish_reason: finishReason
+          }
+        ]
+      },
+      "claude-code/claude-opus-5"
+    );
+
+    assert.equal(response.status, "incomplete");
+    assert.deepEqual(response.incomplete_details, { reason: "max_output_tokens" });
+  }
+});
+
+test("max-token Chat stream becomes response.incomplete with its reason", async () => {
+  const stream = openAiSseToResponses(
+    sseStream(
+      `data: ${JSON.stringify({
+        choices: [
+          {
+            index: 0,
+            delta: { content: '{"cases":[{"id":"truncated' },
+            finish_reason: null
+          }
+        ]
+      })}\n\n`,
+      `data: ${JSON.stringify({
+        choices: [{ index: 0, delta: {}, finish_reason: "length" }]
+      })}\n\n`,
+      "data: [DONE]\n\n"
+    ),
+    "claude-code/claude-opus-5"
+  );
+  const text = await new Response(stream).text();
+
+  assert.match(text, /event: response\.incomplete/u);
+  assert.match(text, /"incomplete_details":\{"reason":"max_output_tokens"\}/u);
+  assert.doesNotMatch(text, /event: response\.completed/u);
+});
+
 test("translates a streamed Responses event sequence", async () => {
   const mock = await startMock();
   const gateway = await startGateway({

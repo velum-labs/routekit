@@ -16,6 +16,7 @@ import { buildProgram } from "../cli.js";
 import {
   evalAuthoringRequestBody,
   evalAuthoringResponseFailureDetail,
+  evalAuthoringResponseStatusFailureDetail,
   evalAuthoringStructuredOutput,
   evalSessionGatewayUrl
 } from "../effect/eval-authoring-target.js";
@@ -95,6 +96,38 @@ test("eval authoring HTTP failures include provider diagnostics and the inspecta
   assert.match(detail, /param reasoning\.effort/u);
   assert.match(detail, /call id model_call_eng826/u);
   assert.match(detail, /upstream body .*invalid_request_error/u);
+});
+
+test("eval authoring reports capped Responses output as incomplete, not invalid JSON", () => {
+  const detail = evalAuthoringResponseStatusFailureDetail(
+    {
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      output_text: '{"cases":[{"id":"truncated'
+    },
+    "model_call_eng834"
+  );
+
+  assert.match(detail ?? "", /response was incomplete/u);
+  assert.match(detail ?? "", /stop reason max_output_tokens/u);
+  assert.match(detail ?? "", /call id model_call_eng834/u);
+  assert.doesNotMatch(detail ?? "", /invalid JSON/u);
+});
+
+test("eval authoring treats an exact output-token cap as truncation", () => {
+  const detail = evalAuthoringResponseStatusFailureDetail(
+    {
+      status: "completed",
+      usage: { output_tokens: 32_768 },
+      output_text: '{"cases":[{"id":"truncated'
+    },
+    "model_call_eng834_cap",
+    32_768
+  );
+
+  assert.match(detail ?? "", /response was incomplete/u);
+  assert.match(detail ?? "", /stop reason max_output_tokens/u);
+  assert.match(detail ?? "", /call id model_call_eng834_cap/u);
 });
 
 test("eval authoring extracts requested JSON from common model wrappers", async () => {

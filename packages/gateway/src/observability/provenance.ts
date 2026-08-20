@@ -203,23 +203,70 @@ function streamedProviderError(body: Buffer | undefined): Record<string, unknown
     return (
       asRecord(payload?.error) ??
       asRecord(response?.error) ??
-      asRecord(response?.incomplete_details)
+      asRecord(response?.incomplete_details) ?? {
+        type: eventType === "response.incomplete" ? "response_incomplete" : "response_failed"
+      }
     );
   }
   return undefined;
 }
 
-function providerError(result: ModelGatewayCallResult): ProviderError | undefined {
-  const streamError = streamedProviderError(result.responseBody);
+function bufferedProviderError(body: Buffer | undefined): Record<string, unknown> | undefined {
+  const response = asRecord(parseJson(body));
+  if (response?.status === "incomplete") {
+    return asRecord(response.incomplete_details) ?? { type: "response_incomplete" };
+  }
+  if (response?.status === "failed") {
+    return asRecord(response.error) ?? { type: "response_failed" };
+  }
+  return undefined;
+}
+
+function requestedMaximumOutputTokens(body: unknown): number | undefined {
+  const request = asRecord(body);
+  for (const field of ["max_output_tokens", "max_completion_tokens", "max_tokens"] as const) {
+    const value = request?.[field];
+    if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+  }
+  return undefined;
+}
+
+function terminalStopReason(
+  context: ModelGatewayCallContext,
+  result: ModelGatewayCallResult,
+  usage: ModelUsage | undefined
+): string | undefined {
+  const terminalError =
+    bufferedProviderError(result.responseBody) ?? streamedProviderError(result.responseBody);
+  const reason = terminalError?.reason ?? terminalError?.code;
+  if (typeof reason === "string" && reason.length > 0) return reason;
+  const maximumOutputTokens = requestedMaximumOutputTokens(context.requestBody);
+  return maximumOutputTokens !== undefined &&
+    usage?.completion_tokens !== undefined &&
+    usage.completion_tokens >= maximumOutputTokens
+    ? "max_output_tokens"
+    : undefined;
+}
+
+function providerError(
+  result: ModelGatewayCallResult,
+  stopReason: string | undefined
+): ProviderError | undefined {
+  const terminalError =
+    bufferedProviderError(result.responseBody) ?? streamedProviderError(result.responseBody);
   if (
     result.error === undefined &&
     result.statusCode >= 200 &&
     result.statusCode < 400 &&
-    streamError === undefined
+    terminalError === undefined &&
+    stopReason === undefined
   ) {
     return undefined;
   }
-  const responseError = asRecord(asRecord(parseJson(result.responseBody))?.error) ?? streamError;
+  const responseError =
+    asRecord(asRecord(parseJson(result.responseBody))?.error) ??
+    terminalError ??
+    (stopReason === undefined ? undefined : { reason: stopReason });
   const noModelAvailable =
     result.statusCode === 503 &&
     responseError?.type === "unavailable" &&
@@ -243,13 +290,15 @@ function providerError(result: ModelGatewayCallResult): ProviderError | undefine
   const message =
     kind === "capability_missing"
       ? "no model route is configured"
-      : kind === "timeout"
-        ? "provider request timed out"
-        : kind === "rate_limited"
-          ? "provider rate limited the request"
-          : kind === "validation_error"
-            ? "provider rejected the request"
-            : "provider request failed";
+      : responseError?.reason === "max_output_tokens"
+        ? "provider response reached the maximum output token limit"
+        : kind === "timeout"
+          ? "provider request timed out"
+          : kind === "rate_limited"
+            ? "provider rate limited the request"
+            : kind === "validation_error"
+              ? "provider rejected the request"
+              : "provider request failed";
   return {
     kind,
     message,
@@ -278,13 +327,15 @@ export function buildModelCallRecord(
             totalTokens: usage.total_tokens
           }
   });
-  const error = providerError(result);
+  const stopReason = terminalStopReason(context, result, usage);
+  const error = providerError(result, stopReason);
   const metadata: Record<string, JsonValue> = {
     dialect: context.dialect,
     stream: context.stream,
     http_status: result.statusCode,
     duration_ms: result.durationMs,
     requested_model: context.requestedModel ?? null,
+    ...(stopReason === undefined ? {} : { stop_reason: stopReason }),
     unknown_usage: callCost.unknownUsage,
     unknown_cost: callCost.unknownCost,
     ...(context.attribution !== undefined
@@ -313,8 +364,7 @@ export function buildModelCallRecord(
               ? {
                   compositional_routing: {
                     version: 2,
-                    basis_digest:
-                      context.attribution.compositional_routing.basis_digest,
+                    basis_digest: context.attribution.compositional_routing.basis_digest,
                     evidence_digest: context.attribution.compositional_routing.evidence_digest,
                     weights: context.attribution.compositional_routing.weights.map((entry) => ({
                       dimension_id: entry.dimension_id,

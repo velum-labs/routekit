@@ -193,6 +193,48 @@ const diagnosticOutput = (text: string): { readonly text: string; readonly trunc
 const causeMessage = (cause: unknown): string =>
   cause instanceof Error && cause.message.length > 0 ? cause.message : String(cause);
 
+export const evalAuthoringResponseStatusFailureDetail = (
+  payload: unknown,
+  callId?: string | null,
+  maximumOutputTokens?: number
+): string | undefined => {
+  const response = recordOf(payload);
+  const status = response?.status;
+  const usage = recordOf(response?.usage);
+  const outputTokens =
+    typeof usage?.output_tokens === "number"
+      ? usage.output_tokens
+      : typeof usage?.completion_tokens === "number"
+        ? usage.completion_tokens
+        : undefined;
+  const reachedOutputLimit =
+    maximumOutputTokens !== undefined &&
+    outputTokens !== undefined &&
+    outputTokens >= maximumOutputTokens;
+  if (status !== "incomplete" && status !== "failed" && !reachedOutputLimit) {
+    return undefined;
+  }
+  const details =
+    status === "incomplete" ? recordOf(response?.incomplete_details) : recordOf(response?.error);
+  const reason =
+    typeof details?.reason === "string"
+      ? details.reason
+      : typeof details?.code === "string"
+        ? details.code
+        : reachedOutputLimit
+          ? "max_output_tokens"
+          : undefined;
+  return [
+    status === "incomplete" || reachedOutputLimit
+      ? "author model response was incomplete"
+      : "author model response failed",
+    ...(reason === undefined ? [] : [`stop reason ${reason}`]),
+    callId === undefined || callId === null || callId.length === 0
+      ? "call id unavailable"
+      : `call id ${callId}`
+  ].join("; ");
+};
+
 const structuredOutputResult = (input: {
   readonly text: string;
   readonly schemaName: string;
@@ -377,6 +419,14 @@ function targetAuthoringTransport(
           authoringFailure(operation, "author model returned invalid response JSON", cause)
       });
       const callId = response.headers.get(MODEL_CALL_ID_HEADER);
+      const responseStatusFailure = evalAuthoringResponseStatusFailureDetail(
+        payload,
+        callId,
+        input.maximumOutputTokens
+      );
+      if (responseStatusFailure !== undefined) {
+        return yield* authoringFailure(operation, responseStatusFailure);
+      }
       const text = outputText(payload, input.schemaName);
       if (text === undefined) {
         return yield* authoringFailure(

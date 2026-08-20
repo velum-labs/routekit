@@ -196,6 +196,7 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
   const principalLabel = string(principal?.label);
   const nativeModel = string(attribution?.native_model);
   const requestedModel = string(metadata?.requested_model);
+  const stopReason = string(metadata?.stop_reason);
   const compositionalRouting = compositionalRoutingInspection(attribution?.compositional_routing);
   const evalAttribution = record(attribution?.eval);
   const evalRole = string(evalAttribution?.role);
@@ -208,6 +209,7 @@ export function callInspection(modelCall: ModelCallRecord): RouteKitCallInspecti
   return {
     callId: modelCall.call_id,
     status: modelCall.status,
+    ...(stopReason !== undefined ? { stopReason } : {}),
     ...(requestedModel !== undefined ? { requestedModel } : {}),
     effectiveModel,
     ...(nativeModel !== undefined ? { nativeModel } : {}),

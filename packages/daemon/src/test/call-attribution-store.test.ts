@@ -164,6 +164,22 @@ test("call inspection exposes attribution while dropping sensitive metadata", ()
   assert.equal("messages" in inspection, false);
 });
 
+test("call inspection preserves a truncation stop reason", () => {
+  const call = modelCall("model_call_truncated");
+  const inspection = callInspection({
+    ...call,
+    status: "failed",
+    error: { kind: "provider_error", retryable: false },
+    metadata: {
+      ...call.metadata,
+      stop_reason: "max_output_tokens"
+    }
+  });
+
+  assert.equal(inspection?.status, "failed");
+  assert.equal(inspection?.stopReason, "max_output_tokens");
+});
+
 test("call attribution store evicts by capacity and expiry", () => {
   let now = 0;
   const store = new CallAttributionStore({
