@@ -67,7 +67,7 @@ const proposeDimensions = (
     Effect.gen(function* () {
       const author = yield* EvalProjectAuthor;
       return yield* author.proposeDimensions({
-        operationId: "eng-830",
+        operationId: "eng-831",
         repositoryRoot: root,
         sourceInventory: ["source.md"],
         configuration
@@ -93,13 +93,18 @@ const proposeDimensions = (
     )
   );
 
-const collectMinimumItems = (value: unknown): number[] => {
+const collectSchemaNumberKeyword = (
+  value: unknown,
+  keyword: "minItems" | "maxItems"
+): number[] => {
   if (typeof value !== "object" || value === null) return [];
-  if (Array.isArray(value)) return value.flatMap(collectMinimumItems);
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectSchemaNumberKeyword(item, keyword));
+  }
   const record = value as Record<string, unknown>;
   return [
-    ...(typeof record.minItems === "number" ? [record.minItems] : []),
-    ...Object.values(record).flatMap(collectMinimumItems)
+    ...(typeof record[keyword] === "number" ? [record[keyword]] : []),
+    ...Object.values(record).flatMap((item) => collectSchemaNumberKeyword(item, keyword))
   ];
 };
 
@@ -176,13 +181,14 @@ test("dimension authoring sends an Anthropic-compatible structured output schema
 
     const schema = requests[0]?.jsonSchema;
     assert.ok(schema !== undefined);
-    assert.deepEqual(collectMinimumItems(schema), [1, 1, 1]);
+    assert.deepEqual(collectSchemaNumberKeyword(schema, "minItems"), [1, 1, 1]);
+    assert.deepEqual(collectSchemaNumberKeyword(schema, "maxItems"), []);
     const dimensionsSchema = (
       schema.properties as { dimensions?: Record<string, unknown> } | undefined
     )?.dimensions;
     assert.equal(dimensionsSchema?.type, "array");
     assert.equal(dimensionsSchema.minItems, 1);
-    assert.equal(dimensionsSchema.maxItems, 10);
+    assert.equal(dimensionsSchema.maxItems, undefined);
   });
 });
 
