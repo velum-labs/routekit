@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit-harness-core",
   "private": false,
-  "version": "1.0.18",
+  "version": "1.0.19",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/velum-labs/routekit.git",

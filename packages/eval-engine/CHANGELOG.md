@@ -1,5 +1,12 @@
 # @velum-labs/routekit-eval-engine
 
+## 1.0.19
+
+### Patch Changes
+
+- @velum-labs/routekit-eval-contracts@1.0.19
+- @velum-labs/routekit-runtime@1.0.19
+
 ## 1.0.18
 
 ### Patch Changes

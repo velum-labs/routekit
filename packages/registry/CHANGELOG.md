@@ -1,5 +1,11 @@
 # @velum-labs/routekit-registry
 
+## 1.0.19
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@1.0.19
+
 ## 1.0.18
 
 ### Patch Changes
