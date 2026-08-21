@@ -115,7 +115,7 @@ jobs:
 
       - name: Synchronize published release with Linear
         if: ${{ !cancelled() && steps.npm-release.outcome == 'success' && steps.routekit-release.outputs.released == 'true' }}
-        uses: linear/linear-release-action@af56a9a388625921f3757a2f988e4d7aca958377 # v0
+        uses: linear/linear-release-action@17b8c24f8ceb2b98cabaf1965ff83c55dd596fac # v0
         with:
           access_key: ${{ secrets.LINEAR_RELEASE_ACCESS_KEY }}
           name: RouteKit ${{ steps.routekit-release.outputs.version }}
