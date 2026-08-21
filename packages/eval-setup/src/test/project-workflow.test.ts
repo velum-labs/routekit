@@ -406,6 +406,26 @@ test("reviewed artifacts are digest-bound and produce an immutable exact-call pl
   const planPath = path.join(root, ".routekit", "evals", "plans", `${result.plan.planId}.json`);
   assert.equal((await stat(planPath)).mode & 0o777, 0o600);
   assert.deepEqual(JSON.parse(await readFile(planPath, "utf8")), result.plan);
+  const firstDimension = reviewedDimensions[0]!;
+  const generatedSuite = await readFile(
+    path.join(
+      root,
+      ".routekit",
+      "evals",
+      "plans",
+      result.plan.planId,
+      "dimensions",
+      firstDimension.id,
+      `${firstDimension.id}.eval.ts`
+    ),
+    "utf8"
+  );
+  const completionAssertion = generatedSuite.indexOf("run.toComplete();");
+  const judgeCall = generatedSuite.indexOf("await judge.autoEvals");
+  const completionRethrow = generatedSuite.indexOf("throw candidateCompletionError;");
+  assert.ok(completionAssertion >= 0);
+  assert.ok(judgeCall > completionAssertion);
+  assert.ok(completionRethrow > judgeCall);
   for (const dimension of reviewedDimensions) {
     assert.equal(
       (await stat(path.join(root, ".routekit", "evals", "dimensions", dimension.id, "suite.json")))

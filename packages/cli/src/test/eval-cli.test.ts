@@ -154,6 +154,21 @@ test("qualification failures retain the nested bridge or spawn error chain", () 
   assert.match(failure, /observed call ids: none/u);
 });
 
+test("qualification failures identify observed calls when response ids are unavailable", () => {
+  const failure = qualificationFailureDetail({
+    cause: new Error("comparison call count mismatch"),
+    cleanupIncomplete: false,
+    comparison: {
+      dimensionId: "provider-protocol-translation",
+      timeoutMs: 600_000
+    },
+    observedCalls: [{ role: "candidate" }, { role: "candidate" }, { role: "judge" }]
+  });
+
+  assert.match(failure, /observed call ids: candidate#1, candidate#2, judge#3/u);
+  assert.doesNotMatch(failure, /observed call ids: none/u);
+});
+
 test("failed qualification ledger retains calls observed before interruption", () => {
   const ledger = includeQualificationObservedCalls(
     {
