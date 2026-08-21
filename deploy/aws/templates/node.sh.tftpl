@@ -122,7 +122,9 @@ if [ '${node_kind}' = 'gateway' ]; then
   chown routekit:routekit /var/lib/routekit/.routekit /var/lib/routekit/.config/routekit
   chmod 0711 /var/lib/routekit/.routekit
 
-  install -d -m 0700 /etc/routekit
+  install -d -o root -g routekit -m 0710 /etc/routekit
+  chown root:routekit /etc/routekit
+  chmod 0710 /etc/routekit
   touch /etc/routekit/provider.env
   chmod 0600 /etc/routekit/provider.env
 
@@ -145,7 +147,7 @@ import sys
 import boto3
 
 value = boto3.client("ssm", region_name="${aws_region}").get_parameter(
-    Name="/routekit/gateway/production/workload-jwt-config"
+    Name="${workload_jwt_parameter}"
 )["Parameter"]["Value"]
 document = json.loads(value)
 if not isinstance(document, dict):
