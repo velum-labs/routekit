@@ -3,8 +3,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync
 } from "node:fs";
@@ -179,6 +179,50 @@ try {
     cwd: install,
     stdio: "pipe"
   });
+  const installedRouteKitManifest = JSON.parse(
+    readFileSync(join(install, "node_modules", "@velum-labs", "routekit", "package.json"), "utf8")
+  );
+  const pinnedEffectVersion = installedRouteKitManifest.dependencies?.effect;
+  const pinnedPlatformSharedVersion =
+    installedRouteKitManifest.dependencies?.["@effect/platform-node-shared"];
+  if (typeof pinnedEffectVersion !== "string" || typeof pinnedPlatformSharedVersion !== "string") {
+    throw new Error("packed RouteKit must pin Effect and @effect/platform-node-shared");
+  }
+  for (const [name, expected] of [
+    ["effect", pinnedEffectVersion],
+    ["@effect/platform-node-shared", pinnedPlatformSharedVersion]
+  ]) {
+    const installedVersion = JSON.parse(
+      readFileSync(join(install, "node_modules", ...name.split("/"), "package.json"), "utf8")
+    ).version;
+    if (installedVersion !== expected) {
+      throw new Error(
+        `npm packed install resolved ${name}@${installedVersion} instead of ${expected}`
+      );
+    }
+  }
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      [
+        'import { EvalRunManifest } from "@velum-labs/routekit-eval-contracts";',
+        'import { Schema } from "effect";',
+        "Schema.decodeUnknownSync(EvalRunManifest)({",
+        "  version: 1,",
+        '  profileId: "pack-smoke",',
+        '  candidateModels: ["openai/candidate"],',
+        '  judgeModel: "openai/judge",',
+        "  caseCount: 1,",
+        '  caseIds: ["case-1"],',
+        "  maxOutputTokens: 1,",
+        "  expectedCallCount: 2",
+        "});"
+      ].join("\n")
+    ],
+    { cwd: install, stdio: "pipe" }
+  );
   for (const scope of readdirSync(join(install, "node_modules"), { withFileTypes: true })) {
     if (!scope.isDirectory() || !scope.name.startsWith("@")) continue;
     // Only the forbidden parent-product scope is banned; third-party scopes from
