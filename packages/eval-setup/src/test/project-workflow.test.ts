@@ -4,8 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Layer } from "effect";
 
+import { EvalDimensionContrastError } from "../errors.js";
 import { EvalRepositoryInspectorLive } from "../inspection.js";
 import { EvalProjectArtifactsLive } from "../project-artifacts.js";
 import {
@@ -180,6 +181,12 @@ const reviewedDimensions = Array.from({ length: 5 }, (_, index) => ({
   excludes: [`Requests that primarily exercise another dimension`]
 }));
 
+const reviewedProposedDimensions = reviewedDimensions.map((dimension, index) => ({
+  ...dimension,
+  inScopeRequest: `Solve an in-scope request for dimension ${String(index + 1)}.`,
+  nearMissRequest: `Solve a neighboring request outside dimension ${String(index + 1)}.`
+}));
+
 const reviewedSuites = reviewedDimensions.map((dimension) => ({
   version: 1 as const,
   dimensionId: dimension.id,
@@ -256,6 +263,70 @@ async function completeProjectSetup(root: string): Promise<void> {
   );
 }
 
+test("dimension approval requires complete distinct contrast sidecars", async () => {
+  const cases = [
+    {
+      detail: /contrast sidecar is missing/u,
+      mutate: (proposal: Record<string, unknown>) => {
+        delete proposal.dimensionContrasts;
+      }
+    },
+    {
+      detail: /contrast requests must both be non-empty/u,
+      mutate: (proposal: Record<string, unknown>) => {
+        const contrasts = proposal.dimensionContrasts as Array<Record<string, unknown>>;
+        contrasts[0]!.inScopeRequest = "   ";
+      }
+    },
+    {
+      detail: /in-scope and near-miss requests must be distinct/u,
+      mutate: (proposal: Record<string, unknown>) => {
+        const contrasts = proposal.dimensionContrasts as Array<Record<string, unknown>>;
+        contrasts[0]!.nearMissRequest = ` ${String(contrasts[0]!.inScopeRequest).toUpperCase()} `;
+      }
+    },
+    {
+      detail: /in-scope request must be exclusive and pairwise distinct/u,
+      mutate: (proposal: Record<string, unknown>) => {
+        const contrasts = proposal.dimensionContrasts as Array<Record<string, unknown>>;
+        contrasts[1]!.inScopeRequest = ` ${String(
+          contrasts[0]!.inScopeRequest
+        ).toUpperCase()} `;
+      }
+    }
+  ] as const;
+
+  for (const testCase of cases) {
+    const root = await makeRepository();
+    await completeProjectSetup(root);
+    const proposed = await Effect.runPromise(
+      Effect.gen(function* () {
+        const workflow = yield* EvalProjectWorkflow;
+        return yield* workflow.proposeDimensions(root, reviewedProposedDimensions);
+      }).pipe(Effect.provide(ProjectWorkflowTestLive))
+    );
+    const digest = proposed.artifacts?.basisProposalDigest;
+    assert.ok(digest !== undefined);
+    const proposalPath = path.join(root, ".routekit", "evals", "routing-basis.proposed.json");
+    const proposal = JSON.parse(await readFile(proposalPath, "utf8")) as Record<string, unknown>;
+    testCase.mutate(proposal);
+    await writeFile(proposalPath, `${JSON.stringify(proposal, null, 2)}\n`);
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const workflow = yield* EvalProjectWorkflow;
+        return yield* Effect.exit(workflow.approveDimensions(root, digest));
+      }).pipe(Effect.provide(ProjectWorkflowTestLive))
+    );
+    assert.equal(result._tag, "Failure");
+    if (result._tag === "Failure") {
+      const error = Cause.squash(result.cause);
+      assert.ok(error instanceof EvalDimensionContrastError);
+      assert.match(error.detail, testCase.detail);
+    }
+  }
+});
+
 test("reviewed artifacts are digest-bound and produce an immutable exact-call plan", async () => {
   const root = await makeRepository();
   await completeProjectSetup(root);
@@ -263,7 +334,7 @@ test("reviewed artifacts are digest-bound and produce an immutable exact-call pl
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const workflow = yield* EvalProjectWorkflow;
-      const proposedBasis = yield* workflow.proposeDimensions(root, reviewedDimensions);
+      const proposedBasis = yield* workflow.proposeDimensions(root, reviewedProposedDimensions);
       assert.equal(proposedBasis.nextAction, "approve-dimensions");
       const basisDigest = proposedBasis.artifacts?.basisProposalDigest;
       assert.ok(basisDigest !== undefined);
@@ -297,6 +368,29 @@ test("reviewed artifacts are digest-bound and produce an immutable exact-call pl
     }).pipe(Effect.provide(ProjectWorkflowTestLive))
   );
 
+  const storedBasis = JSON.parse(
+    await readFile(path.join(root, ".routekit", "evals", "routing-basis.proposed.json"), "utf8")
+  ) as {
+    readonly dimensions: ReadonlyArray<Record<string, unknown>>;
+    readonly dimensionContrasts: ReadonlyArray<Record<string, unknown>>;
+  };
+  assert.equal(storedBasis.dimensionContrasts.length, reviewedDimensions.length);
+  assert.equal(
+    storedBasis.dimensionContrasts.every(
+      (contrast) =>
+        typeof contrast.inScopeRequest === "string" &&
+        typeof contrast.nearMissRequest === "string"
+    ),
+    true
+  );
+  assert.equal(
+    storedBasis.dimensions.every(
+      (dimension) =>
+        !Object.hasOwn(dimension, "inScopeRequest") && !Object.hasOwn(dimension, "nearMissRequest")
+    ),
+    true
+  );
+
   assert.equal(result.plan.basisDigest, result.basisDigest);
   assert.equal(result.plan.evaluationDigest, result.evaluationDigest);
   assert.equal(result.plan.expectedDimensionCandidateCalls, 75);
@@ -327,7 +421,7 @@ test("full qualification refuses fewer than twenty reviewed cases per dimension"
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
       const workflow = yield* EvalProjectWorkflow;
-      const proposed = yield* workflow.proposeDimensions(root, reviewedDimensions);
+      const proposed = yield* workflow.proposeDimensions(root, reviewedProposedDimensions);
       yield* workflow.approveDimensions(root, proposed.artifacts!.basisProposalDigest!);
       const evaluations = yield* workflow.proposeEvaluations(root, {
         suites: reviewedSuites.map((suite) => ({ ...suite, cases: suite.cases.slice(0, 5) })),
@@ -552,7 +646,7 @@ async function createPlan(
   return Effect.runPromise(
     Effect.gen(function* () {
       const workflow = yield* EvalProjectWorkflow;
-      const basis = yield* workflow.proposeDimensions(root, reviewedDimensions);
+      const basis = yield* workflow.proposeDimensions(root, reviewedProposedDimensions);
       yield* workflow.approveDimensions(root, basis.artifacts!.basisProposalDigest!);
       const evaluations = yield* workflow.proposeEvaluations(root, reviewedEvaluationInput);
       yield* workflow.approveEvaluations(root, evaluations.artifacts!.evaluationProposalDigest!);

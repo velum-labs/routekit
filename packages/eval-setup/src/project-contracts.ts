@@ -5,7 +5,8 @@ import {
   PublishedRoutingActivation,
   RoutingActivationConstraints,
   RequestRoutingRequirements,
-  RoutingObjectivePolicy
+  RoutingObjectivePolicy,
+  WorkloadDimension
 } from "@velum-labs/routekit-eval-contracts";
 import { Schema } from "effect";
 
@@ -101,6 +102,30 @@ export const EvalProjectConfiguration = Schema.Struct({
   constraints: Schema.optionalKey(RoutingActivationConstraints)
 });
 export type EvalProjectConfiguration = typeof EvalProjectConfiguration.Type;
+
+export const EvalProposedDimension = Schema.Struct({
+  ...WorkloadDimension.fields,
+  inScopeRequest: Schema.String,
+  nearMissRequest: Schema.String
+});
+export type EvalProposedDimension = typeof EvalProposedDimension.Type;
+
+export const EvalDimensionContrast = Schema.Struct({
+  dimensionId: Schema.String,
+  inScopeRequest: Schema.optionalKey(Schema.String),
+  nearMissRequest: Schema.optionalKey(Schema.String)
+});
+export type EvalDimensionContrast = typeof EvalDimensionContrast.Type;
+
+export const EvalRoutingBasisProposal = Schema.Struct({
+  version: Schema.Literal(2),
+  basisDigest: Schema.String,
+  dimensions: Schema.Array(WorkloadDimension),
+  // Optional only so legacy or manually damaged artifacts reach the named
+  // approval gate instead of failing as an opaque decode error.
+  dimensionContrasts: Schema.optionalKey(Schema.Array(EvalDimensionContrast))
+});
+export type EvalRoutingBasisProposal = typeof EvalRoutingBasisProposal.Type;
 
 const NonNegativeInteger = Schema.Finite.pipe(
   Schema.check(

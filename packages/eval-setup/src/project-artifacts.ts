@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   assertRoutingBasis,
-  type RoutingBasis,
-  RoutingBasis as RoutingBasisSchema
+  type RoutingBasis
 } from "@velum-labs/routekit-eval-contracts";
 import { writeFileAtomicEffect } from "@velum-labs/routekit-runtime/effect";
 import { Context, Effect, Exit, FileSystem, Layer, Path, Schema } from "effect";
@@ -18,6 +17,8 @@ import {
   EvalEvaluationProposal as EvalEvaluationProposalSchema,
   type EvalExecutionPlan,
   EvalExecutionPlan as EvalExecutionPlanSchema,
+  type EvalRoutingBasisProposal,
+  EvalRoutingBasisProposal as EvalRoutingBasisProposalSchema,
   type EvalRunReport,
   EvalRunReport as EvalRunReportSchema
 } from "./project-contracts.js";
@@ -195,10 +196,10 @@ function assertDimensionSuite(suite: EvalDimensionSuite): void {
 export type EvalProjectArtifactsShape = {
   readonly loadBasisProposal: (
     repositoryRoot: string
-  ) => Effect.Effect<RoutingBasis | undefined, EvalProjectArtifactError, never>;
+  ) => Effect.Effect<EvalRoutingBasisProposal | undefined, EvalProjectArtifactError, never>;
   readonly saveBasisProposal: (
     repositoryRoot: string,
-    basis: RoutingBasis
+    basis: EvalRoutingBasisProposal
   ) => Effect.Effect<void, EvalProjectArtifactError, never>;
   readonly loadBasisApproval: (
     repositoryRoot: string
@@ -338,10 +339,10 @@ export const makeFileEvalProjectArtifacts = Effect.gen(function* () {
 
   return EvalProjectArtifacts.of({
     loadBasisProposal: (repositoryRoot) =>
-      read<RoutingBasis>(
+      read<EvalRoutingBasisProposal>(
         repositoryRoot,
         BASIS_PROPOSAL,
-        Schema.decodeUnknownEffect(RoutingBasisSchema)
+        Schema.decodeUnknownEffect(EvalRoutingBasisProposalSchema)
       ).pipe(
         Effect.tap((basis) =>
           basis === undefined

@@ -12,7 +12,11 @@ import {
 import { Clock, Context, Effect, Layer, Path, Schema } from "effect";
 
 import type { EvalProjectArtifactError, EvalSetupInspectionError } from "./errors.js";
-import { type EvalProjectStoreError, EvalProjectTransitionError } from "./errors.js";
+import {
+  EvalDimensionContrastError,
+  type EvalProjectStoreError,
+  EvalProjectTransitionError
+} from "./errors.js";
 import { EvalRepositoryInspector } from "./inspection.js";
 import {
   EvalProjectArtifacts,
@@ -23,6 +27,7 @@ import type {
   EvalEvaluationProposal,
   EvalExecutionPlan,
   EvalPlanScope,
+  EvalProposedDimension,
   EvalProjectConfiguration,
   EvalProjectQuestion,
   EvalProjectSetupProgress,
@@ -580,6 +585,7 @@ export type EvalProjectWorkflowError =
   | EvalProjectStoreError
   | EvalProjectArtifactError
   | EvalSetupInspectionError
+  | EvalDimensionContrastError
   | EvalProjectTransitionError;
 
 export type EvalProjectWorkflowShape = {
@@ -601,7 +607,7 @@ export type EvalProjectWorkflowShape = {
   >;
   readonly proposeDimensions: (
     repositoryRoot: string,
-    dimensions: RoutingBasis["dimensions"]
+    dimensions: readonly EvalProposedDimension[]
   ) => Effect.Effect<EvalProjectStatus, EvalProjectWorkflowError>;
   readonly approveDimensions: (
     repositoryRoot: string,
@@ -772,11 +778,26 @@ export const makeEvalProjectWorkflow = Effect.gen(function* () {
           "routing dimensions can only be proposed after setup"
         );
       }
-      const basis: RoutingBasis = {
+      const basisDimensions: RoutingBasis["dimensions"] = dimensions.map(
+        ({ id, description, includes, excludes }) => ({
+          id,
+          description,
+          includes,
+          excludes
+        })
+      );
+      const basis = {
         version: 2,
-        basisDigest: routingBasisDigest(dimensions),
-        dimensions
-      };
+        basisDigest: routingBasisDigest(basisDimensions),
+        dimensions: basisDimensions,
+        dimensionContrasts: dimensions.map(
+          ({ id, inScopeRequest, nearMissRequest }) => ({
+            dimensionId: id,
+            inScopeRequest,
+            nearMissRequest
+          })
+        )
+      } as const;
       yield* artifacts.saveBasisProposal(root, basis);
       return yield* statusOf(root, state);
     });
@@ -800,6 +821,54 @@ export const makeEvalProjectWorkflow = Effect.gen(function* () {
           state.stage,
           "routing basis changed after review; approve its current digest"
         );
+      }
+      const contrasts = new Map<
+        string,
+        { readonly inScopeRequest?: string; readonly nearMissRequest?: string }
+      >();
+      const exclusiveRequests = new Set<string>();
+      for (const contrast of basis.dimensionContrasts ?? []) {
+        if (
+          !basis.dimensions.some((dimension) => dimension.id === contrast.dimensionId) ||
+          contrasts.has(contrast.dimensionId)
+        ) {
+          return yield* new EvalDimensionContrastError({
+            dimensionId: contrast.dimensionId,
+            detail: "contrast sidecar must match exactly one proposed dimension"
+          });
+        }
+        contrasts.set(contrast.dimensionId, contrast);
+      }
+      for (const dimension of basis.dimensions) {
+        const contrast = contrasts.get(dimension.id);
+        if (contrast === undefined) {
+          return yield* new EvalDimensionContrastError({
+            dimensionId: dimension.id,
+            detail: "contrast sidecar is missing"
+          });
+        }
+        const inScopeRequest = contrast.inScopeRequest?.trim() ?? "";
+        const nearMissRequest = contrast.nearMissRequest?.trim() ?? "";
+        if (inScopeRequest.length === 0 || nearMissRequest.length === 0) {
+          return yield* new EvalDimensionContrastError({
+            dimensionId: dimension.id,
+            detail: "contrast requests must both be non-empty"
+          });
+        }
+        if (inScopeRequest.toLowerCase() === nearMissRequest.toLowerCase()) {
+          return yield* new EvalDimensionContrastError({
+            dimensionId: dimension.id,
+            detail: "in-scope and near-miss requests must be distinct"
+          });
+        }
+        const normalizedInScopeRequest = inScopeRequest.toLowerCase().replace(/\s+/gu, " ");
+        if (exclusiveRequests.has(normalizedInScopeRequest)) {
+          return yield* new EvalDimensionContrastError({
+            dimensionId: dimension.id,
+            detail: "in-scope request must be exclusive and pairwise distinct"
+          });
+        }
+        exclusiveRequests.add(normalizedInScopeRequest);
       }
       const now = yield* isoNow;
       yield* artifacts.saveBasisApproval(root, {
