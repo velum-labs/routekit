@@ -1,5 +1,16 @@
 # @velum-labs/routekit-eval-service
 
+## 1.0.17
+
+### Patch Changes
+
+- 69c65a8: Observe qualification calls at the child gateway-bridge HTTP boundary and
+  persist nested failure details when execution stops before the first call.
+  - @velum-labs/routekit-eval-contracts@1.0.17
+  - @velum-labs/routekit-eval-engine@1.0.17
+  - @velum-labs/routekit-eval-store@1.0.17
+  - @velum-labs/routekit-registry@1.0.17
+
 ## 1.0.16
 
 ### Patch Changes
