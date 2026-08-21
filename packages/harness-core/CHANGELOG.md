@@ -1,5 +1,12 @@
 # @velum-labs/routekit-harness-core
 
+## 1.0.17
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@1.0.17
+- @velum-labs/routekit-runtime@1.0.17
+
 ## 1.0.16
 
 ### Patch Changes

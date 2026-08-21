@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit-tool-registry",
   "private": false,
-  "version": "1.0.16",
+  "version": "1.0.17",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/velum-labs/routekit.git",
