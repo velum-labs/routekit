@@ -23,12 +23,9 @@ installer diagnostic rather than improvising a different global installation.
 
 ## Inspect before setup
 
-Run:
-
-```text
-$ROUTEKIT config show --json
-$ROUTEKIT status --json
-```
+Reuse the Resolution gate's target-bound `config show --json` and
+`status --json` results. Do not rerun either command without the resolved
+`targetArgs`.
 
 If a valid configuration already exists, treat the request as maintenance.
 Do not replace it merely because the user asked to "set up RouteKit."
@@ -66,10 +63,10 @@ official CLI login.
 Run:
 
 ```text
-$ROUTEKIT status --json
-$ROUTEKIT providers status --json
-$ROUTEKIT accounts status --json
-$ROUTEKIT models list --json
+[...routekitArgv, ...targetArgs, "status", "--json"]
+[...routekitArgv, ...targetArgs, "providers", "status", "--json"]
+[...routekitArgv, ...targetArgs, "accounts", "status", "--json"]
+[...routekitArgv, ...targetArgs, "models", "list", "--json"]
 ```
 
 Require a ready gateway and at least one intended live model. Use only model IDs
@@ -78,7 +75,7 @@ returned by `models list`.
 Finish with the shortest relevant use command, for example:
 
 ```text
-$ROUTEKIT <tool> <model-id>
+[...routekitArgv, ...targetArgs, "<tool>", "<model-id>"]
 ```
 
 Do not claim onboarding succeeded when configuration exists but provider

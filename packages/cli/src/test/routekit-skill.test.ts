@@ -16,24 +16,51 @@ test("RouteKit skill unifies onboarding, configuration, and eval routing", async
   assert.match(skill, /references\/eval-routing\.md/u);
   assert.match(skill, /references\/recovery-and-safety\.md/u);
   assert.match(skill, /public `routekit` CLI/u);
-  assert.match(skill, /Resolve workflow parameters/u);
+  assert.match(skill, /Required Resolution gate/u);
+  assert.ok(
+    skill.indexOf("## Required Resolution gate") < skill.indexOf("## Choose one workflow"),
+    "Resolution gate must precede workflow selection"
+  );
   for (const parameter of [
     "routekitArgv",
     "repositoryRoot",
-    "targetArgs",
+    "target",
+    "health",
     "interaction",
     "modelId",
     "evalScope"
   ]) {
     assert.match(skill, new RegExp(`\\b${parameter}\\b`, "u"));
   }
-  assert.match(skill, /per-workflow parameter ledger/u);
+  assert.match(skill, /Fill this parameter ledger first/u);
+  assert.match(skill, /Exactly `\["--local"\]` or `\["--remote", "<name>"\]`/u);
+  assert.match(skill, /never an empty argv or the implicit active remote/u);
+  assert.match(
+    skill,
+    /\[\.\.\.routekitArgv, "--local", "remote", "list", "--json"\]/u
+  );
+  assert.match(skill, /if a remote is active, show its name and ask whether to use it or local/iu);
+  assert.match(skill, /for eval requests, make local the default/iu);
+  assert.match(skill, /\[\.\.\.routekitArgv, \.\.\.targetArgs, "status", "--json"\]/u);
+  assert.match(
+    skill,
+    /\[\.\.\.routekitArgv, \.\.\.targetArgs, "config", "show", "--json"\]/u
+  );
+  assert.match(skill, /Do not add a parallel health sweep\s+or substitute `doctor`/u);
+  assert.match(skill, /offer exactly one public CLI remediation, and wait/iu);
+  assert.match(skill, /Do not run the remediation, retry the gate, auto-recover/iu);
+  assert.match(skill, /`router_missing` and offer `config init`/u);
+  assert.match(skill, /`daemon_unready` and offer `setup`/u);
+  assert.match(skill, /Never offer a billed eval command as the\s+fix/u);
+  assert.match(skill, /`spendApproved` \/ `publishApproved`/u);
+  assert.match(skill, /Separate explicit decisions; both default to false/u);
   assert.match(skill, /\[\.\.\.routekitArgv, \.\.\.targetArgs, \.\.\.operationArgs\]/u);
-  assert.match(skill, /Eval workflows are stricter: default to\s+`\["--local"\]`/u);
-  assert.match(skill, /working directory to `repositoryRoot`/u);
+  assert.match(skill, /working directory set to `repositoryRoot`/u);
   assert.match(skill, /typed argv value/u);
   assert.match(skill, /Never execute a displayed template/u);
   assert.match(skill, /Ask one question per turn/u);
+  assert.doesNotMatch(skill, /\b(?:orbit|lab|ssh)\b/iu);
+  assert.doesNotMatch(skill, /prefix[- ]bump/iu);
   assert.doesNotMatch(skill, /OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENROUTER_API_KEY/u);
 });
 
@@ -58,10 +85,11 @@ test("RouteKit eval reference preserves approval and activation boundaries", asy
   assert.match(skill, /ordered,\s+deduplicated argv list/u);
   assert.match(skill, /Treat `planId` and `runId` as opaque strings/u);
   assert.match(skill, /approvals as false unless the user explicitly grants/u);
-  assert.match(skill, /`targetArgs`: `\["--local"\]` unless the user explicitly requested/u);
-  assert.match(skill, /already-active remote is not an eval target request/u);
+  assert.match(skill, /required Resolution gate in `SKILL\.md`/u);
+  assert.match(skill, /Reuse its exact `repositoryRoot` and `targetArgs`/u);
+  assert.match(skill, /do not repeat target selection or inherit the active remote here/u);
   for (const command of ["setup", "status", "answer", "validate", "estimate", "run", "publish"]) {
-    assert.match(skill, new RegExp(`eval ${command}`, "u"));
+    assert.match(skill, new RegExp(`(?:eval ${command}|"eval", "${command}")`, "u"));
   }
   for (const term of [
     "routing basis",

@@ -19,15 +19,18 @@ belong in provider-supported environment variables, not router YAML.
 Use:
 
 ```text
-$ROUTEKIT doctor --json
-$ROUTEKIT status --json
-$ROUTEKIT providers status --json
-$ROUTEKIT accounts status --json
+[...routekitArgv, ...targetArgs, "doctor", "--json"]
+[...routekitArgv, ...targetArgs, "status", "--json"]
+[...routekitArgv, ...targetArgs, "providers", "status", "--json"]
+[...routekitArgv, ...targetArgs, "accounts", "status", "--json"]
 ```
 
+This public `doctor` command is for a selected recovery workflow; it does not
+replace or extend the root Resolution gate.
+
 In JSON errors, use a supplied `tryArgv` exactly rather than parsing prose.
-Do not automatically retry mutations unless the diagnostic establishes that
-the first operation did not commit or documents a safe retry after remediation.
+Offer one public CLI remediation and wait. Never run the remediation,
+auto-recover, or automatically retry a mutation.
 
 After an interrupted eval or publication command, inspect `eval status` and
 `eval results` before deciding that work remains.

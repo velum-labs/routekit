@@ -16,12 +16,12 @@ literal token.
 
 ## Resolve eval parameters
 
+Enter this workflow only after the required Resolution gate in `SKILL.md` has
+recorded `health = ready`. Reuse its exact `repositoryRoot` and `targetArgs`;
+do not repeat target selection or inherit the active remote here.
+
 Before advancing the project, resolve:
 
-- `repositoryRoot`: the repository whose durable state lives under
-  `.routekit/evals`;
-- `targetArgs`: `["--local"]` unless the user explicitly requested a named
-  remote, in which case use `["--remote", "<name>"]`;
 - `candidateModels`, `classifierModel`, `authorModel`, and `judgeModel`: exact
   `provider/model` IDs selected through the setup workflow;
 - `evalScope`: `pilot` or `full`;
@@ -44,11 +44,6 @@ Run `$ROUTEKIT eval --help` and the relevant subcommand help before acting. Use
 only commands and flags exposed by that CLI version. Prefer `--json` for state,
 plans, estimates, and results.
 
-Do not let eval qualification inherit RouteKit's active-remote fallback. Use
-`--local` unless the user explicitly asked to qualify on a named remote. An
-already-active remote is not an eval target request. If the user did request a
-remote, use the exact `--remote <name>` selection they supplied or approved.
-
 Apply the resolved global target arguments consistently to model-backed
 authoring and execution commands. The optional `--repository` argument must
 resolve to `repositoryRoot` when commands are run outside that root.
@@ -60,8 +55,11 @@ publish a routing activation.
 
 ## Resume or initialize
 
-1. Run `$ROUTEKIT --json eval status` from the repository root.
-2. If no eval project exists, run `$ROUTEKIT --json eval setup`.
+1. Run
+   `[...routekitArgv, ...targetArgs, "eval", "status", "--json"]` from the
+   repository root.
+2. If no eval project exists, run
+   `[...routekitArgv, ...targetArgs, "eval", "setup", "--json"]`.
 3. Follow `nextAction` and the returned artifact paths. Durable state lives
    under `.routekit/evals`; resume it rather than starting over after an
    interruption.

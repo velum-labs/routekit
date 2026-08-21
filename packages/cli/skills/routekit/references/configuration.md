@@ -6,25 +6,25 @@ before mutation and prefer structured output for inspection and verification.
 `$ROUTEKIT` denotes the resolved `routekitArgv` from `SKILL.md`; do not use it
 as a shell variable or pass the literal token.
 
-Resolve `targetArgs`, `provider`, `accountKind`, `modelId`, `tool`, `remoteName`,
-and `callId` only when the requested operation needs them. Obtain enumerated
-values and IDs from current CLI help or structured discovery output. Never
-guess them or reuse values from an unrelated target.
+Reuse `targetArgs` from the Resolution gate. Resolve `provider`, `accountKind`,
+`modelId`, `tool`, `remoteName`, and `callId` only when the requested operation
+needs them. Obtain enumerated values and IDs from current CLI help or structured
+discovery output. Never guess them or reuse values from an unrelated target.
 
 ## Inspect
 
 ```text
-$ROUTEKIT status --json
-$ROUTEKIT config show --json
-$ROUTEKIT providers status --json
-$ROUTEKIT accounts status --json
-$ROUTEKIT models list --json
+[...routekitArgv, ...targetArgs, "status", "--json"]
+[...routekitArgv, ...targetArgs, "config", "show", "--json"]
+[...routekitArgv, ...targetArgs, "providers", "status", "--json"]
+[...routekitArgv, ...targetArgs, "accounts", "status", "--json"]
+[...routekitArgv, ...targetArgs, "models", "list", "--json"]
 ```
 
-Use `$ROUTEKIT remote list --json` and `$ROUTEKIT remote show --json` when a
-remote may be active. Add resolved `targetArgs` when target ambiguity could
-change the affected gateway and the command supports remote targeting.
-Canonical router-file operations and guided setup are local-only.
+The gate already inspected the local remote registry. Never fall back to its
+active selection. Include the resolved `targetArgs` on every command that
+supports remote targeting. Canonical router-file mutations and guided setup
+are local-only.
 
 ## Select the owning command
 
