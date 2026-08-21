@@ -50,6 +50,7 @@ import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
 import { Cause, Effect, Exit, FileSystem, Layer, Option, Redacted, Ref, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
+import { resolveEvalNodeExecPath } from "../adapters/eval-node-runtime.js";
 import { routekitClient } from "../client.js";
 import { withTargetAuthoringSession } from "./eval-authoring-target.js";
 import {
@@ -487,6 +488,16 @@ export function evalRunCommand(
         message: "eval run timeoutMs must be a positive safe integer"
       });
     }
+    const nodeTestExecPath = yield* Effect.try({
+      try: () => resolveEvalNodeExecPath(),
+      catch: (cause) =>
+        new RouteKitFailure({
+          message:
+            cause instanceof Error
+              ? cause.message
+              : "RouteKit Eval could not resolve a supported Node runtime."
+        })
+    });
     const httpClient = yield* HttpClient.HttpClient;
     const httpContext = yield* Effect.context<HttpClient.HttpClient>();
     const root = repositoryRoot(input);
@@ -843,6 +854,7 @@ export function evalRunCommand(
               {},
               {
                 bearerCredential: Redacted.value(resolvedTarget.bearerCredential),
+                execPath: nodeTestExecPath,
                 isolateExecutionFromProjectSdk: true,
                 observeGatewayCall,
                 timeoutMs

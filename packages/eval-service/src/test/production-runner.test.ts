@@ -467,7 +467,7 @@ test("production runner applies the host timeout at node:test instead of a stale
   }
 });
 
-test("production runner fails before observation when the comparison child cannot spawn", async () => {
+test("production runner uses its selected Node runtime for validation before observation", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-spawn-failure-"));
   roots.push(root);
   const suite = path.join(root, "support.eval.ts");
@@ -509,7 +509,9 @@ test("production runner fails before observation when the comparison child canno
   assert.equal(Exit.isFailure(exit), true);
   assert.deepEqual(observed, []);
   if (Exit.isFailure(exit)) {
-    assert.match(String(exit.cause), /could not execute node:test/iu);
+    assert.match(String(exit.cause), /validation failed/iu);
+    assert.match(String(exit.cause), /could not be loaded safely through node:test/iu);
+    assert.match(String(exit.cause), /missing-node/iu);
   }
 });
 
