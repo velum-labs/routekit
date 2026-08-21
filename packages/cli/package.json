@@ -30,6 +30,7 @@
     "provenance": true
   },
   "dependencies": {
+    "@effect/platform-node-shared": "catalog:",
     "@velum-labs/routekit-accounts": "workspace:*",
     "@velum-labs/routekit-cli-core": "workspace:*",
     "@velum-labs/routekit-cli-ui": "workspace:*",
