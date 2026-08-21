@@ -176,8 +176,8 @@ export const qualificationFailureDetail = (input: {
   readonly comparison?: QualificationComparisonContext;
   readonly observedCalls: readonly QualificationObservedCall[];
 }): string => {
-  const callIds = input.observedCalls.flatMap((call) =>
-    call.callId === undefined ? [] : [call.callId]
+  const callIds = input.observedCalls.map((call, index) =>
+    call.callId ?? `${call.role}#${String(index + 1)}`
   );
   const shownCallIds = callIds.slice(0, 20);
   return [

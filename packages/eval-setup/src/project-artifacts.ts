@@ -50,8 +50,16 @@ for (const model of manifest.candidateModels) {
         ? testCase.prompt
         : [testCase.prompt, "", "Reference material:", "-----", testCase.context, "-----"].join("\\n");
       const run = await candidate.run({ prompt, caseId: testCase.id });
-      run.toComplete();
+      let candidateCompletionError: unknown;
+      try {
+        run.toComplete();
+      } catch (error) {
+        candidateCompletionError = error;
+      }
       await judge.autoEvals({ criteria: testCase.rubric, prompt, run });
+      if (candidateCompletionError !== undefined) {
+        throw candidateCompletionError;
+      }
     });
   }
 }
