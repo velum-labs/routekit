@@ -5,12 +5,44 @@ import type {
 } from "@velum-labs/routekit-contracts";
 import type { DiscoveredProviderModel } from "@velum-labs/routekit-contracts/provider-discovery";
 import type { SubscriptionMode } from "@velum-labs/routekit-registry";
-import type { RouteKitPlatform } from "@velum-labs/routekit-runtime/effect";
-import { Effect } from "effect";
+import {
+  RouteKitFailure,
+  type RouteKitPlatform,
+  routeKitError
+} from "@velum-labs/routekit-runtime/effect";
+import { Cause, Effect, Exit } from "effect";
 import type { SubscriptionPoolMember } from "../subscription-pool-selection.js";
+
+function discoveryFailure(
+  mode: SubscriptionMode,
+  member: SubscriptionPoolMember,
+  cause: unknown
+): RouteKitFailure {
+  const error = routeKitError(cause);
+  return new RouteKitFailure({
+    message:
+      `provider "${mode}" account "${member.label}" model discovery failed ` +
+      `(${member.sourcePath}): ${error.message}`,
+    cause: error
+  });
+}
+
+function aggregateDiscoveryFailures(
+  mode: SubscriptionMode,
+  failures: readonly RouteKitFailure[]
+): Error {
+  if (failures.length === 1) return failures[0]!;
+  return new AggregateError(
+    failures,
+    `provider "${mode}" account model discovery failed: ${failures
+      .map((failure) => failure.message)
+      .join("; ")}`
+  );
+}
 
 export class AccountCatalogService<M extends SubscriptionMode> {
   constructor(
+    private readonly mode: M,
     private readonly members: SubscriptionPoolMember[],
     private readonly metadata: Map<string, ModelCapabilityMetadata>,
     private readonly selectionSignals: Map<string, ModelSelectionSignals>,
@@ -35,19 +67,29 @@ export class AccountCatalogService<M extends SubscriptionMode> {
       self.metadata.clear();
       self.selectionSignals.clear();
       self.reasoning.clear();
-      const discoveries = yield* Effect.all(
+      const attempts = yield* Effect.all(
         self.members.map((member) =>
-          Effect.gen(function* () {
-            yield* self.ensureFresh(member, signal);
-            const discovered = yield* self.discoverMemberModels(member, signal);
-            member.models = new Set(discovered.map((model) => model.id));
-            return discovered;
-          }).pipe(Effect.orElseSucceed(() => undefined))
+          Effect.exit(
+            Effect.gen(function* () {
+              yield* self.ensureFresh(member, signal);
+              return yield* self.discoverMemberModels(member, signal);
+            })
+          ).pipe(Effect.map((exit) => ({ member, exit })))
         ),
         { concurrency: "unbounded" }
       );
+      const discoveries: (readonly DiscoveredProviderModel[])[] = [];
+      const failures: RouteKitFailure[] = [];
+      for (const { member, exit } of attempts) {
+        if (Exit.isFailure(exit)) {
+          failures.push(discoveryFailure(self.mode, member, Cause.squash(exit.cause)));
+          continue;
+        }
+        const discovered = exit.value;
+        member.models = new Set(discovered.map((model) => model.id));
+        discoveries.push(discovered);
+      }
       for (const discovered of discoveries) {
-        if (discovered === undefined) continue;
         for (const model of discovered) {
           if (model.metadata !== undefined && !self.metadata.has(model.id))
             self.metadata.set(model.id, model.metadata);
@@ -78,6 +120,20 @@ export class AccountCatalogService<M extends SubscriptionMode> {
           self.selectionSignals.set(model, value);
       for (const [model, value] of previousReasoning)
         if (served.has(model) && !self.reasoning.has(model)) self.reasoning.set(model, value);
+      if (failures.length > 0 && (discoveries.length > 0 || served.size > 0)) {
+        for (const failure of failures) {
+          yield* Effect.logWarning("subscription account model discovery failed").pipe(
+            Effect.annotateLogs({
+              provider: self.mode,
+              stage: "model_discovery",
+              error: failure.message
+            })
+          );
+        }
+      }
+      if (failures.length > 0 && discoveries.length === 0 && served.size === 0) {
+        return yield* Effect.fail(aggregateDiscoveryFailures(self.mode, failures));
+      }
       self.markCatalogReady();
       return self.listModelIds();
     });
