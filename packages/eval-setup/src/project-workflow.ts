@@ -1157,7 +1157,7 @@ export const makeEvalProjectWorkflow = Effect.gen(function* () {
       const next: EvalProjectState = {
         version: state.version,
         projectId: state.projectId,
-        revision: state.revision + 1,
+        revision: state.revision,
         createdAt: state.createdAt,
         updatedAt: now,
         sourceInventory: state.sourceInventory,
@@ -1280,7 +1280,7 @@ export const makeEvalProjectWorkflow = Effect.gen(function* () {
       const next: EvalProjectState = {
         version: state.version,
         projectId: state.projectId,
-        revision: state.revision + 1,
+        revision: state.revision,
         createdAt: state.createdAt,
         updatedAt: report.finishedAt,
         sourceInventory: state.sourceInventory,
