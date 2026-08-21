@@ -1,6 +1,7 @@
 import { lstat } from "node:fs/promises";
 
 import { EVAL_ATTRIBUTION_HEADER } from "@velum-labs/routekit-eval-contracts";
+import type { RouteKitEvalGatewayCallEvent } from "@velum-labs/routekit-eval-service";
 import type {
   EvalClassifierObservation,
   EvalExecutionPlan,
@@ -27,9 +28,34 @@ const TOKEN_FILE_MAX_BYTES = 16 * 1024;
 const MODEL_CALL_ID_HEADER = "x-routekit-model-call-id";
 
 export type QualificationObservedCall = {
-  readonly callId: string;
+  readonly callId?: string;
   readonly role: "candidate" | "judge";
   readonly measurement?: EvalClassifierObservation["measurement"];
+};
+
+export const qualificationGatewayCallObserver = (
+  observed: Ref.Ref<readonly QualificationObservedCall[]>
+): ((event: RouteKitEvalGatewayCallEvent) => Effect.Effect<void>) => {
+  const pending = new Map<string, QualificationObservedCall>();
+  return (event) => {
+    if (event.phase === "issued") {
+      const call = { role: event.role } satisfies QualificationObservedCall;
+      pending.set(event.observationId, call);
+      return Ref.update(observed, (current) => [...current, call]);
+    }
+    const call = pending.get(event.observationId);
+    pending.delete(event.observationId);
+    if (call === undefined || event.callId === undefined) return Effect.void;
+    return Ref.update(observed, (current) => {
+      const pendingIndex = current.indexOf(call);
+      if (pendingIndex === -1 || current.some((entry) => entry.callId === event.callId)) {
+        return current;
+      }
+      const updated = [...current];
+      updated[pendingIndex] = { callId: event.callId, role: event.role };
+      return updated;
+    });
+  };
 };
 
 const qualificationRole = (
@@ -51,15 +77,21 @@ export const observeQualificationCalls = (
   HttpClient.transform(client, (responseEffect, request) => {
     const role = qualificationRole(request.headers[EVAL_ATTRIBUTION_HEADER]);
     if (role === undefined) return responseEffect;
-    return responseEffect.pipe(
+    const pending = { role } satisfies QualificationObservedCall;
+    return Ref.update(observed, (current) => [...current, pending]).pipe(
+      Effect.andThen(responseEffect),
       Effect.tap((response) => {
         const callId = response.headers[MODEL_CALL_ID_HEADER]?.trim();
         if (callId === undefined || callId.length === 0) return Effect.void;
-        return Ref.update(observed, (current) =>
-          current.some((entry) => entry.callId === callId)
-            ? current
-            : [...current, { callId, role }]
-        );
+        return Ref.update(observed, (current) => {
+          const pendingIndex = current.indexOf(pending);
+          if (pendingIndex === -1 || current.some((entry) => entry.callId === callId)) {
+            return current;
+          }
+          const updated = [...current];
+          updated[pendingIndex] = { callId, role };
+          return updated;
+        });
       })
     );
   });
@@ -206,10 +238,15 @@ export function withQualificationTarget<A, E, R>(
   return Effect.gen(function* () {
     const remote = yield* cliTry(() => selectedRemoteMetadata());
     const client = yield* routekitClient;
-    for (const model of [
+    const allowedModels = [
       ...new Set([input.plan.classifierModel, input.plan.judgeModel, ...input.plan.candidateModels])
-    ]) {
-      yield* client.call("models.info", { model });
+    ];
+    const catalog = yield* client.call("models.list", {});
+    const availableModels = new Set(catalog.models.map((model) => model.id));
+    for (const model of allowedModels) {
+      if (!availableModels.has(model)) {
+        return yield* failure(`unknown model: ${model}`);
+      }
     }
     return yield* Effect.acquireUseRelease(
       client
@@ -218,13 +255,7 @@ export function withQualificationTarget<A, E, R>(
           {
             purpose: "qualification",
             operationId: input.operationId,
-            allowedModels: [
-              ...new Set([
-                input.plan.classifierModel,
-                input.plan.judgeModel,
-                ...input.plan.candidateModels
-              ])
-            ],
+            allowedModels,
             limits: {
               calls: input.plan.expectedCallCount,
               inputTokens: input.plan.expectedCallCount * QUALIFICATION_PER_CALL_INPUT_BYTES,

@@ -1,5 +1,208 @@
 # @velum-labs/routekit
 
+## 1.0.18
+
+### Patch Changes
+
+- 280e4f7: Run eval qualification dry-load and execution with the same supported Node
+  runtime, and retain bounded node:test output when dry-load fails.
+- Updated dependencies [280e4f7]
+  - @velum-labs/routekit-eval-service@1.0.18
+  - @velum-labs/routekit-accounts@1.0.18
+  - @velum-labs/routekit-cli-core@1.0.18
+  - @velum-labs/routekit-cli-ui@1.0.18
+  - @velum-labs/routekit-config@1.0.18
+  - @velum-labs/routekit-contracts@1.0.18
+  - @velum-labs/routekit-control@1.0.18
+  - @velum-labs/routekit-daemon@1.0.18
+  - @velum-labs/routekit-eval-contracts@1.0.18
+  - @velum-labs/routekit-eval-core@1.0.18
+  - @velum-labs/routekit-eval-setup@1.0.18
+  - @velum-labs/routekit-eval-store@1.0.18
+  - @velum-labs/routekit-gateway@1.0.18
+  - @velum-labs/routekit-registry@1.0.18
+  - @velum-labs/routekit-runtime@1.0.18
+  - @velum-labs/routekit-telemetry-core@1.0.18
+  - @velum-labs/routekit-tool-registry@1.0.18
+  - @velum-labs/routekit-tools@1.0.18
+
+## 1.0.17
+
+### Patch Changes
+
+- 69c65a8: Observe qualification calls at the child gateway-bridge HTTP boundary and
+  persist nested failure details when execution stops before the first call.
+- Updated dependencies [69c65a8]
+  - @velum-labs/routekit-eval-service@1.0.17
+  - @velum-labs/routekit-eval-setup@1.0.17
+  - @velum-labs/routekit-accounts@1.0.17
+  - @velum-labs/routekit-cli-core@1.0.17
+  - @velum-labs/routekit-cli-ui@1.0.17
+  - @velum-labs/routekit-config@1.0.17
+  - @velum-labs/routekit-contracts@1.0.17
+  - @velum-labs/routekit-control@1.0.17
+  - @velum-labs/routekit-daemon@1.0.17
+  - @velum-labs/routekit-eval-contracts@1.0.17
+  - @velum-labs/routekit-eval-core@1.0.17
+  - @velum-labs/routekit-eval-store@1.0.17
+  - @velum-labs/routekit-gateway@1.0.17
+  - @velum-labs/routekit-registry@1.0.17
+  - @velum-labs/routekit-runtime@1.0.17
+  - @velum-labs/routekit-telemetry-core@1.0.17
+  - @velum-labs/routekit-tool-registry@1.0.17
+  - @velum-labs/routekit-tools@1.0.17
+
+## 1.0.16
+
+### Patch Changes
+
+- 7edef2f: Pin the published CLI's Effect platform runtime so npm installs cannot mix
+  incompatible release-candidate versions before eval qualification execution.
+  - @velum-labs/routekit-accounts@1.0.16
+  - @velum-labs/routekit-cli-core@1.0.16
+  - @velum-labs/routekit-cli-ui@1.0.16
+  - @velum-labs/routekit-config@1.0.16
+  - @velum-labs/routekit-contracts@1.0.16
+  - @velum-labs/routekit-control@1.0.16
+  - @velum-labs/routekit-daemon@1.0.16
+  - @velum-labs/routekit-eval-contracts@1.0.16
+  - @velum-labs/routekit-eval-core@1.0.16
+  - @velum-labs/routekit-eval-service@1.0.16
+  - @velum-labs/routekit-eval-setup@1.0.16
+  - @velum-labs/routekit-eval-store@1.0.16
+  - @velum-labs/routekit-gateway@1.0.16
+  - @velum-labs/routekit-registry@1.0.16
+  - @velum-labs/routekit-runtime@1.0.16
+  - @velum-labs/routekit-telemetry-core@1.0.16
+  - @velum-labs/routekit-tool-registry@1.0.16
+  - @velum-labs/routekit-tools@1.0.16
+
+## 1.0.15
+
+### Patch Changes
+
+- db6701a: Repair stale generated eval SDK links before qualification dry-load so a
+  published CLI can issue the first candidate request from a RouteKit checkout.
+  - @velum-labs/routekit-accounts@1.0.15
+  - @velum-labs/routekit-cli-core@1.0.15
+  - @velum-labs/routekit-cli-ui@1.0.15
+  - @velum-labs/routekit-config@1.0.15
+  - @velum-labs/routekit-contracts@1.0.15
+  - @velum-labs/routekit-control@1.0.15
+  - @velum-labs/routekit-daemon@1.0.15
+  - @velum-labs/routekit-eval-contracts@1.0.15
+  - @velum-labs/routekit-eval-core@1.0.15
+  - @velum-labs/routekit-eval-service@1.0.15
+  - @velum-labs/routekit-eval-setup@1.0.15
+  - @velum-labs/routekit-eval-store@1.0.15
+  - @velum-labs/routekit-gateway@1.0.15
+  - @velum-labs/routekit-registry@1.0.15
+  - @velum-labs/routekit-runtime@1.0.15
+  - @velum-labs/routekit-telemetry-core@1.0.15
+  - @velum-labs/routekit-tool-registry@1.0.15
+  - @velum-labs/routekit-tools@1.0.15
+
+## 1.0.14
+
+### Patch Changes
+
+- 18dbcc9: Validate all remote qualification models with one catalog request so wide eval plans reach their advertised execution timeout instead of spending roughly two minutes on serial SSH preflight calls.
+  - @velum-labs/routekit-accounts@1.0.14
+  - @velum-labs/routekit-cli-core@1.0.14
+  - @velum-labs/routekit-cli-ui@1.0.14
+  - @velum-labs/routekit-config@1.0.14
+  - @velum-labs/routekit-contracts@1.0.14
+  - @velum-labs/routekit-control@1.0.14
+  - @velum-labs/routekit-daemon@1.0.14
+  - @velum-labs/routekit-eval-contracts@1.0.14
+  - @velum-labs/routekit-eval-core@1.0.14
+  - @velum-labs/routekit-eval-service@1.0.14
+  - @velum-labs/routekit-eval-setup@1.0.14
+  - @velum-labs/routekit-eval-store@1.0.14
+  - @velum-labs/routekit-gateway@1.0.14
+  - @velum-labs/routekit-registry@1.0.14
+  - @velum-labs/routekit-runtime@1.0.14
+  - @velum-labs/routekit-telemetry-core@1.0.14
+  - @velum-labs/routekit-tool-registry@1.0.14
+  - @velum-labs/routekit-tools@1.0.14
+
+## 1.0.13
+
+### Patch Changes
+
+- 962fb79: Run qualification node:test children from an isolated suite copy so project-local
+  `routekit/eval` or `ori/eval` packages cannot restore a shorter hidden execution
+  deadline ahead of the named qualification timeout.
+- Updated dependencies [962fb79]
+  - @velum-labs/routekit-eval-service@1.0.13
+  - @velum-labs/routekit-accounts@1.0.13
+  - @velum-labs/routekit-cli-core@1.0.13
+  - @velum-labs/routekit-cli-ui@1.0.13
+  - @velum-labs/routekit-config@1.0.13
+  - @velum-labs/routekit-contracts@1.0.13
+  - @velum-labs/routekit-control@1.0.13
+  - @velum-labs/routekit-daemon@1.0.13
+  - @velum-labs/routekit-eval-contracts@1.0.13
+  - @velum-labs/routekit-eval-core@1.0.13
+  - @velum-labs/routekit-eval-setup@1.0.13
+  - @velum-labs/routekit-eval-store@1.0.13
+  - @velum-labs/routekit-gateway@1.0.13
+  - @velum-labs/routekit-registry@1.0.13
+  - @velum-labs/routekit-runtime@1.0.13
+  - @velum-labs/routekit-telemetry-core@1.0.13
+  - @velum-labs/routekit-tool-registry@1.0.13
+  - @velum-labs/routekit-tools@1.0.13
+
+## 1.0.12
+
+### Patch Changes
+
+- 606d829: Apply the advertised qualification timeout at the production node:test boundary
+  and retain candidate or judge requests that were issued before interruption.
+- Updated dependencies [606d829]
+  - @velum-labs/routekit-eval-service@1.0.12
+  - @velum-labs/routekit-accounts@1.0.12
+  - @velum-labs/routekit-cli-core@1.0.12
+  - @velum-labs/routekit-cli-ui@1.0.12
+  - @velum-labs/routekit-config@1.0.12
+  - @velum-labs/routekit-contracts@1.0.12
+  - @velum-labs/routekit-control@1.0.12
+  - @velum-labs/routekit-daemon@1.0.12
+  - @velum-labs/routekit-eval-contracts@1.0.12
+  - @velum-labs/routekit-eval-core@1.0.12
+  - @velum-labs/routekit-eval-setup@1.0.12
+  - @velum-labs/routekit-eval-store@1.0.12
+  - @velum-labs/routekit-gateway@1.0.12
+  - @velum-labs/routekit-registry@1.0.12
+  - @velum-labs/routekit-runtime@1.0.12
+  - @velum-labs/routekit-telemetry-core@1.0.12
+  - @velum-labs/routekit-tool-registry@1.0.12
+  - @velum-labs/routekit-tools@1.0.12
+
+## 1.0.11
+
+### Patch Changes
+
+- Updated dependencies [a148a71]
+  - @velum-labs/routekit-runtime@1.0.11
+  - @velum-labs/routekit-accounts@1.0.11
+  - @velum-labs/routekit-config@1.0.11
+  - @velum-labs/routekit-control@1.0.11
+  - @velum-labs/routekit-daemon@1.0.11
+  - @velum-labs/routekit-eval-core@1.0.11
+  - @velum-labs/routekit-eval-setup@1.0.11
+  - @velum-labs/routekit-eval-store@1.0.11
+  - @velum-labs/routekit-gateway@1.0.11
+  - @velum-labs/routekit-telemetry-core@1.0.11
+  - @velum-labs/routekit-tools@1.0.11
+  - @velum-labs/routekit-eval-service@1.0.11
+  - @velum-labs/routekit-tool-registry@1.0.11
+  - @velum-labs/routekit-cli-core@1.0.11
+  - @velum-labs/routekit-cli-ui@1.0.11
+  - @velum-labs/routekit-contracts@1.0.11
+  - @velum-labs/routekit-eval-contracts@1.0.11
+  - @velum-labs/routekit-registry@1.0.11
+
 ## 1.0.10
 
 ### Patch Changes

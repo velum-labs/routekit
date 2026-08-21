@@ -321,6 +321,69 @@ test("empty provider configuration creates a credential-independent empty catalo
   );
 });
 
+test("empty and failing subscription catalogs do not block healthy providers", async () => {
+  for (const codex of [
+    fakeSource("codex", []),
+    {
+      ...fakeSource("codex", []),
+      discovery: {
+        discoverModels: () =>
+          Effect.fail(new RouteKitFailure({ message: "model discovery returned HTTP 403" }))
+      }
+    }
+  ]) {
+    const backend = await runRouteKitEffect(
+      RoutingBackend.create({
+        config: {
+          providers: { openai: {}, codex: {} },
+          defaultModel: "openai/gpt-5.5"
+        },
+        sources: {
+          openai: fakeSource("openai", [{ id: "gpt-5.5" }]),
+          codex
+        }
+      })
+    );
+    try {
+      assert.equal(backend.defaultModel, "openai/gpt-5.5");
+      assert.deepEqual(backend.listModelIds(), ["openai/gpt-5.5"]);
+    } finally {
+      await runRouteKitEffect(backend.close());
+    }
+  }
+});
+
+test("a subscription-only empty catalog creates an empty backend", async () => {
+  const backend = await runRouteKitEffect(
+    RoutingBackend.create({
+      config: { providers: { codex: {} } },
+      sources: { codex: fakeSource("codex", []) }
+    })
+  );
+  try {
+    assert.equal(backend.defaultModel, undefined);
+    assert.deepEqual(backend.listModelIds(), []);
+    assert.throws(
+      () => backend.chat({ messages: [] }),
+      (error: unknown) => error instanceof NoModelAvailableError
+    );
+  } finally {
+    await runRouteKitEffect(backend.close());
+  }
+});
+
+test("API provider empty catalogs remain fatal", async () => {
+  await assert.rejects(
+    runRouteKitEffect(
+      RoutingBackend.create({
+        config: { providers: { openai: {} } },
+        sources: { openai: fakeSource("openai", []) }
+      })
+    ),
+    /provider "openai" discovery returned no models/
+  );
+});
+
 test("discovery normalizes native response shapes", () => {
   assert.deepEqual(
     decodeModelDiscovery("openai", {

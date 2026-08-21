@@ -689,6 +689,89 @@ test("run lifecycle retains complete sanitized evidence and activates only after
   assert.equal((await stat(reportPath)).mode & 0o777, 0o600);
 });
 
+test("failed run reports persist the nested qualification error chain", async () => {
+  const root = await makeRepository();
+  const plan = await createPlan(root, "full");
+  const outcome = await Effect.runPromise(
+    Effect.gen(function* () {
+      const workflow = yield* EvalProjectWorkflow;
+      const started = yield* workflow.startRun(root, plan.planId);
+      const status = yield* workflow.status(root);
+      const report: EvalRunReport = {
+        version: 1,
+        status: "failed",
+        runId: started.runId,
+        planId: plan.planId,
+        projectId: status!.state.projectId,
+        startedAt: "2026-08-21T03:47:27.000Z",
+        finishedAt: "2026-08-21T03:47:48.000Z",
+        basisDigest: plan.basisDigest,
+        evaluationDigest: plan.evaluationDigest,
+        target: {
+          kind: "configured",
+          identity: "routekit-generation:48",
+          publishAllowed: true
+        },
+        cleanup: { sessionOpened: true, sessionClosed: true },
+        comparisons: [],
+        ledger: {
+          expectedCalls: plan.expectedCallCount,
+          observedCalls: 0,
+          observedCandidateRows: 0,
+          knownInputTokens: 0,
+          knownOutputTokens: 0,
+          unknownTokenMeasurements: 0,
+          knownPricedSubtotalUsd: 0,
+          unpricedCalls: 0
+        },
+        failure:
+          'qualification dimension "provider-protocol-translation" failed ' +
+          "(per-test timeout 600000ms); observed call ids: none",
+        errors: [
+          {
+            name: "EvalServiceComparisonError",
+            message: "RouteKit Eval comparison failed",
+            stack: "EvalServiceComparisonError: RouteKit Eval comparison failed"
+          },
+          {
+            name: "RouteKitEvalGatewayBridgeStartError",
+            message: "Could not start the scoped RouteKit Eval gateway bridge.",
+            stack:
+              "RouteKitEvalGatewayBridgeStartError: Could not start the scoped RouteKit Eval gateway bridge."
+          }
+        ]
+      };
+      yield* workflow.failRun(root, report);
+      return {
+        loaded: yield* workflow.result(root, started.runId),
+        runId: started.runId
+      };
+    }).pipe(Effect.provide(ProjectWorkflowTestLive))
+  );
+
+  assert.equal(outcome.loaded?.status, "failed");
+  assert.deepEqual(outcome.loaded?.status === "failed" ? outcome.loaded.errors : undefined, [
+    {
+      name: "EvalServiceComparisonError",
+      message: "RouteKit Eval comparison failed",
+      stack: "EvalServiceComparisonError: RouteKit Eval comparison failed"
+    },
+    {
+      name: "RouteKitEvalGatewayBridgeStartError",
+      message: "Could not start the scoped RouteKit Eval gateway bridge.",
+      stack:
+        "RouteKitEvalGatewayBridgeStartError: Could not start the scoped RouteKit Eval gateway bridge."
+    }
+  ]);
+  const raw = JSON.parse(
+    await readFile(
+      path.join(root, ".routekit", "evals", "runs", outcome.runId, "report.json"),
+      "utf8"
+    )
+  ) as { readonly errors?: readonly unknown[] };
+  assert.equal(raw.errors?.length, 2);
+});
+
 test("incomplete evidence and external qualification fail closed", async () => {
   const incompleteRoot = await makeRepository();
   const incompletePlan = await createPlan(incompleteRoot, "full");

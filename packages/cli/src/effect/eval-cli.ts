@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { CliError } from "@velum-labs/routekit-cli-core";
 import {
@@ -35,6 +35,7 @@ import {
   EvalProjectWorkflow,
   EvalProjectWorkflowLive,
   EvalRepositoryInspectorLive,
+  type EvalRunFailureError,
   type EvalRunReport,
   type EvalRunTarget,
   summarizeEvalRunLedger
@@ -46,15 +47,16 @@ import {
   type RouteKitPlatform
 } from "@velum-labs/routekit-runtime/effect";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
-import { Cause, Effect, Exit, FileSystem, Layer, Redacted, Ref, Schema } from "effect";
+import { Cause, Effect, Exit, FileSystem, Layer, Option, Redacted, Ref, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
+import { resolveEvalNodeExecPath } from "../adapters/eval-node-runtime.js";
 import { routekitClient } from "../client.js";
 import { withTargetAuthoringSession } from "./eval-authoring-target.js";
 import {
   includeQualificationObservedCalls,
   makeQualificationCleanupRef,
-  observeQualificationCalls,
+  qualificationGatewayCallObserver,
   type QualificationObservedCall,
   type QualificationTarget,
   withQualificationTarget
@@ -88,8 +90,85 @@ export const qualificationComparisonRequest = (input: {
   timeoutMs: input.timeoutMs ?? DEFAULT_QUALIFICATION_TEST_TIMEOUT_MS
 });
 
+const QUALIFICATION_SDK_PACKAGES = ["routekit", "ori"] as const;
+
+/**
+ * Generated suites may retain SDK links when an earlier CLI process is
+ * interrupted after materialization. A later published CLI cannot replace an
+ * existing broken link, and Node ESM ignores the fallback NODE_PATH, so
+ * dry-load exits before the first candidate request.
+ */
+export const removeStaleQualificationSdkLinks = Effect.fn(
+  "EvalCli.removeStaleQualificationSdkLinks"
+)(function* (suitePath: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const suiteRoot = dirname(resolve(suitePath));
+  for (const packageName of QUALIFICATION_SDK_PACKAGES) {
+    const linkPath = join(suiteRoot, "node_modules", packageName);
+    const destination = yield* fs.readLink(linkPath).pipe(Effect.option);
+    if (Option.isNone(destination)) continue;
+    const target = resolve(dirname(linkPath), destination.value);
+    const targetExists = yield* fs.stat(target).pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false)
+    );
+    if (!targetExists) {
+      yield* fs.remove(linkPath);
+    }
+  }
+});
+
 const detailOf = (cause: unknown): string =>
   cause instanceof Error && cause.message.length > 0 ? cause.message : String(cause);
+
+const errorRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
+  value !== null && (typeof value === "object" || typeof value === "function")
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+
+const failureErrorName = (
+  value: unknown,
+  record: Readonly<Record<string, unknown>> | undefined
+): string => {
+  const tagged = typeof record?._tag === "string" ? record._tag : undefined;
+  if (value instanceof Error && value.name !== "Error" && value.name.length > 0) {
+    return value.name;
+  }
+  if (tagged !== undefined && tagged.length > 0) return tagged;
+  if (value instanceof Error && value.name.length > 0) return value.name;
+  const constructorName = record?.constructor;
+  return typeof constructorName === "function" && constructorName.name.length > 0
+    ? constructorName.name
+    : "UnknownError";
+};
+
+export const qualificationFailureErrors = (cause: unknown): readonly EvalRunFailureError[] => {
+  const errors: EvalRunFailureError[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = cause;
+  while (current !== undefined && current !== null && errors.length < 12 && !seen.has(current)) {
+    seen.add(current);
+    const record = errorRecord(current);
+    const stack =
+      current instanceof Error && typeof current.stack === "string"
+        ? current.stack.slice(0, 16 * 1024)
+        : undefined;
+    errors.push({
+      name: failureErrorName(current, record),
+      message: detailOf(current),
+      ...(stack === undefined ? {} : { stack })
+    });
+    current = record?.cause;
+  }
+  return errors;
+};
+
+const qualificationErrorDetails = (errors: readonly EvalRunFailureError[]): readonly string[] =>
+  errors.map(
+    (error, index) =>
+      `cause[${String(index)}] ${error.name}: ${error.message}` +
+      (error.stack === undefined ? "" : `\n${error.stack}`)
+  );
 
 export const qualificationFailureDetail = (input: {
   readonly cause: unknown;
@@ -97,7 +176,9 @@ export const qualificationFailureDetail = (input: {
   readonly comparison?: QualificationComparisonContext;
   readonly observedCalls: readonly QualificationObservedCall[];
 }): string => {
-  const callIds = input.observedCalls.map((call) => call.callId);
+  const callIds = input.observedCalls.flatMap((call) =>
+    call.callId === undefined ? [] : [call.callId]
+  );
   const shownCallIds = callIds.slice(0, 20);
   return [
     input.comparison === undefined
@@ -116,11 +197,16 @@ export const qualificationFailureDetail = (input: {
   ].join("; ");
 };
 
-export const evalQualificationCliError = (failure: string, cause?: unknown): CliError =>
+export const evalQualificationCliError = (
+  failure: string,
+  errors: readonly EvalRunFailureError[] = [],
+  cause?: unknown
+): CliError =>
   Object.assign(
     new CliError({
       code: "eval_qualification_failed",
       message: failure,
+      ...(errors.length === 0 ? {} : { details: qualificationErrorDetails(errors) }),
       exitCode: 1
     }),
     cause === undefined ? {} : { cause }
@@ -402,6 +488,16 @@ export function evalRunCommand(
         message: "eval run timeoutMs must be a positive safe integer"
       });
     }
+    const nodeTestExecPath = yield* Effect.try({
+      try: () => resolveEvalNodeExecPath(),
+      catch: (cause) =>
+        new RouteKitFailure({
+          message:
+            cause instanceof Error
+              ? cause.message
+              : "RouteKit Eval could not resolve a supported Node runtime."
+        })
+    });
     const httpClient = yield* HttpClient.HttpClient;
     const httpContext = yield* Effect.context<HttpClient.HttpClient>();
     const root = repositoryRoot(input);
@@ -449,7 +545,7 @@ export function evalRunCommand(
       },
       cleanup,
       (resolvedTarget) => {
-        const instrumentedHttpClient = observeQualificationCalls(httpClient, observedCalls);
+        const observeGatewayCall = qualificationGatewayCallObserver(observedCalls);
         return Effect.gen(function* () {
           yield* Ref.set(target, resolvedTarget.target);
           yield* Ref.set(inspectObservedCall, resolvedTarget.inspectCall);
@@ -458,6 +554,7 @@ export function evalRunCommand(
             Effect.gen(function* () {
               yield* Ref.set(activeComparison, { dimensionId, timeoutMs });
               yield* Ref.set(observedCalls, []);
+              yield* removeStaleQualificationSdkLinks(suitePath);
               const comparison = yield* evalService.runComparison(
                 qualificationComparisonRequest({
                   candidateModels: started.plan.candidateModels,
@@ -756,11 +853,15 @@ export function evalRunCommand(
             makeRouteKitEvalServiceLayer(
               {},
               {
-                bearerCredential: Redacted.value(resolvedTarget.bearerCredential)
+                bearerCredential: Redacted.value(resolvedTarget.bearerCredential),
+                execPath: nodeTestExecPath,
+                isolateExecutionFromProjectSdk: true,
+                observeGatewayCall,
+                timeoutMs
               }
             )
           ),
-          Effect.provideService(HttpClient.HttpClient, instrumentedHttpClient)
+          Effect.provideService(HttpClient.HttpClient, httpClient)
         );
       }
     );
@@ -777,10 +878,12 @@ export function evalRunCommand(
         ? yield* Effect.forEach(
             finalObservedCalls,
             (call) =>
-              inspector(call.callId).pipe(
-                Effect.map((measurement) => ({ ...call, measurement })),
-                Effect.orElseSucceed(() => call)
-              ),
+              call.callId === undefined
+                ? Effect.succeed(call)
+                : inspector(call.callId).pipe(
+                    Effect.map((measurement) => ({ ...call, measurement })),
+                    Effect.orElseSucceed(() => call)
+                  ),
             { concurrency: 4 }
           )
         : finalObservedCalls;
@@ -814,6 +917,7 @@ export function evalRunCommand(
       return report;
     }
     const cause = Cause.squash(exit.cause);
+    const errors = qualificationFailureErrors(cause);
     const finalActiveComparison = yield* Ref.get(activeComparison);
     const failure = qualificationFailureDetail({
       cause,
@@ -835,10 +939,11 @@ export function evalRunCommand(
       comparisons: completed,
       ledger,
       status: "failed",
-      failure
+      failure,
+      errors
     };
     yield* withWorkflow((workflow) => workflow.failRun(root, report));
-    return yield* Effect.fail(evalQualificationCliError(failure, cause));
+    return yield* Effect.fail(evalQualificationCliError(failure, errors, cause));
   }) as Effect.Effect<EvalRunReport, unknown, RouteKitPlatform>;
 }
 

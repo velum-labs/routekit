@@ -1,5 +1,85 @@
 # @velum-labs/routekit-tool-registry
 
+## 1.0.18
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.18
+- @velum-labs/routekit-tool-codex@1.0.18
+- @velum-labs/routekit-tool-cursor@1.0.18
+- @velum-labs/routekit-tool-opencode@1.0.18
+- @velum-labs/routekit-tools@1.0.18
+
+## 1.0.17
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.17
+- @velum-labs/routekit-tool-codex@1.0.17
+- @velum-labs/routekit-tool-cursor@1.0.17
+- @velum-labs/routekit-tool-opencode@1.0.17
+- @velum-labs/routekit-tools@1.0.17
+
+## 1.0.16
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.16
+- @velum-labs/routekit-tool-codex@1.0.16
+- @velum-labs/routekit-tool-cursor@1.0.16
+- @velum-labs/routekit-tool-opencode@1.0.16
+- @velum-labs/routekit-tools@1.0.16
+
+## 1.0.15
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.15
+- @velum-labs/routekit-tool-codex@1.0.15
+- @velum-labs/routekit-tool-cursor@1.0.15
+- @velum-labs/routekit-tool-opencode@1.0.15
+- @velum-labs/routekit-tools@1.0.15
+
+## 1.0.14
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.14
+- @velum-labs/routekit-tool-codex@1.0.14
+- @velum-labs/routekit-tool-cursor@1.0.14
+- @velum-labs/routekit-tool-opencode@1.0.14
+- @velum-labs/routekit-tools@1.0.14
+
+## 1.0.13
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.13
+- @velum-labs/routekit-tool-codex@1.0.13
+- @velum-labs/routekit-tool-cursor@1.0.13
+- @velum-labs/routekit-tool-opencode@1.0.13
+- @velum-labs/routekit-tools@1.0.13
+
+## 1.0.12
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.12
+- @velum-labs/routekit-tool-codex@1.0.12
+- @velum-labs/routekit-tool-cursor@1.0.12
+- @velum-labs/routekit-tool-opencode@1.0.12
+- @velum-labs/routekit-tools@1.0.12
+
+## 1.0.11
+
+### Patch Changes
+
+- @velum-labs/routekit-tool-claude@1.0.11
+- @velum-labs/routekit-tool-codex@1.0.11
+- @velum-labs/routekit-tool-cursor@1.0.11
+- @velum-labs/routekit-tool-opencode@1.0.11
+- @velum-labs/routekit-tools@1.0.11
+
 ## 1.0.10
 
 ### Patch Changes

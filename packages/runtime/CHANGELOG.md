@@ -1,5 +1,26 @@
 # @velum-labs/routekit-runtime
 
+## 1.0.18
+
+## 1.0.17
+
+## 1.0.16
+
+## 1.0.15
+
+## 1.0.14
+
+## 1.0.13
+
+## 1.0.12
+
+## 1.0.11
+
+### Patch Changes
+
+- a148a71: Keep streamed HTTP responses attached to their live bodies after protocol
+  adapters discard the original Fetch response wrapper.
+
 ## 1.0.10
 
 ### Patch Changes

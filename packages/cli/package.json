@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit",
   "private": false,
-  "version": "1.0.10",
+  "version": "1.0.18",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/velum-labs/routekit.git",
@@ -30,6 +30,7 @@
     "provenance": true
   },
   "dependencies": {
+    "@effect/platform-node-shared": "catalog:",
     "@velum-labs/routekit-accounts": "workspace:*",
     "@velum-labs/routekit-cli-core": "workspace:*",
     "@velum-labs/routekit-cli-ui": "workspace:*",

@@ -11,6 +11,7 @@ import { applyEvalSdkEnv } from "../vendor/framework/cli/src/commands/eval/sdk-i
 
 const DRY_LOAD_TEST_FILTER = "__ROUTEKIT_EVAL_DRY_LOAD_NEVER__";
 const DRY_LOAD_TIMEOUT_MS = 30_000;
+const DRY_LOAD_OUTPUT_LIMIT_BYTES = 16 * 1024;
 
 export interface EvalDryLoadDiscovery {
   readonly workingDirectory: string;
@@ -20,11 +21,54 @@ export interface EvalDryLoadDiscovery {
 export class EvalEngineDryLoadError extends Data.TaggedError("EvalEngineDryLoadError")<{
   readonly cause: unknown;
   readonly files: readonly string[];
+  readonly stderr?: string;
+  readonly stdout?: string;
 }> {
   override get message(): string {
-    return "RouteKit Eval files could not be loaded safely through node:test.";
+    const output = [
+      this.stdout === undefined || this.stdout.length === 0
+        ? undefined
+        : `node:test stdout:\n${this.stdout}`,
+      this.stderr === undefined || this.stderr.length === 0
+        ? undefined
+        : `node:test stderr:\n${this.stderr}`
+    ].filter((value): value is string => value !== undefined);
+    return ["RouteKit Eval files could not be loaded safely through node:test.", ...output].join(
+      "\n"
+    );
   }
 }
+
+const collectBoundedOutput = (
+  stream: Stream.Stream<Uint8Array, unknown>
+): Effect.Effect<string, unknown> =>
+  stream.pipe(
+    Stream.runFold(
+      () => ({
+        bytes: 0,
+        chunks: [] as Uint8Array[],
+        truncated: false
+      }),
+      (captured, chunk) => {
+        const remaining = DRY_LOAD_OUTPUT_LIMIT_BYTES - captured.bytes;
+        if (remaining <= 0) {
+          captured.truncated = true;
+          return captured;
+        }
+        const retained = chunk.byteLength <= remaining ? chunk : chunk.subarray(0, remaining);
+        captured.chunks.push(retained);
+        captured.bytes += retained.byteLength;
+        if (retained.byteLength < chunk.byteLength) captured.truncated = true;
+        return captured;
+      }
+    ),
+    Effect.map((captured) => {
+      const output = new TextDecoder().decode(
+        Buffer.concat(captured.chunks.map((chunk) => Buffer.from(chunk)))
+      );
+      return captured.truncated ? `${output}\n[output truncated]` : output;
+    })
+  );
 
 /**
  * Load authored eval files exactly as the concrete executor does, while a test
@@ -34,7 +78,10 @@ export class EvalEngineDryLoadError extends Data.TaggedError("EvalEngineDryLoadE
  * Top-level module evaluation still runs, so syntax errors, unresolved imports,
  * and initialization failures fail validation without making an inference call.
  */
-const runDryLoad = Effect.fn("EvalEngine.dryLoad")(function* (discovery: EvalDryLoadDiscovery) {
+const runDryLoad = Effect.fn("EvalEngine.dryLoad")(function* (
+  discovery: EvalDryLoadDiscovery,
+  execPath: string
+) {
   if (discovery.files.length === 0) {
     return;
   }
@@ -42,7 +89,7 @@ const runDryLoad = Effect.fn("EvalEngine.dryLoad")(function* (discovery: EvalDry
   const sdk = yield* acquireEvalSdk(discovery.workingDirectory);
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const command = ChildProcess.make(
-    globalThis.process.execPath,
+    execPath,
     [
       ...evalNodeTestArgs({
         files: discovery.files,
@@ -63,26 +110,35 @@ const runDryLoad = Effect.fn("EvalEngine.dryLoad")(function* (discovery: EvalDry
     }
   );
   const handle = yield* spawner.spawn(command);
-  const [exitCode] = yield* Effect.all(
-    [handle.exitCode, Stream.runDrain(handle.stdout), Stream.runDrain(handle.stderr)],
+  const [exitCode, stdout, stderr] = yield* Effect.all(
+    [handle.exitCode, collectBoundedOutput(handle.stdout), collectBoundedOutput(handle.stderr)],
     { concurrency: "unbounded" }
   );
   if (Number(exitCode) !== 0) {
+    const output = [
+      stdout.length === 0 ? undefined : `stdout:\n${stdout}`,
+      stderr.length === 0 ? undefined : `stderr:\n${stderr}`
+    ].filter((value): value is string => value !== undefined);
     return yield* new EvalEngineDryLoadError({
-      cause: new Error(`node:test exited with code ${String(Number(exitCode))}`),
-      files: discovery.files
+      cause: new Error(
+        [`node:test exited with code ${String(Number(exitCode))}`, ...output].join("\n")
+      ),
+      files: discovery.files,
+      ...(stderr.length === 0 ? {} : { stderr }),
+      ...(stdout.length === 0 ? {} : { stdout })
     });
   }
 }, Effect.scoped);
 
 export const dryLoadEvals = (
-  discovery: EvalDryLoadDiscovery
+  discovery: EvalDryLoadDiscovery,
+  execPath: string = globalThis.process.execPath
 ): Effect.Effect<
   void,
   EvalEngineDryLoadError,
   ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
 > =>
-  runDryLoad(discovery).pipe(
+  runDryLoad(discovery, execPath).pipe(
     Effect.mapError((cause) =>
       cause instanceof EvalEngineDryLoadError
         ? cause

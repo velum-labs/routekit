@@ -1,5 +1,64 @@
 # @velum-labs/routekit-eval-engine
 
+## 1.0.18
+
+### Patch Changes
+
+- 280e4f7: Run eval qualification dry-load and execution with the same supported Node
+  runtime, and retain bounded node:test output when dry-load fails.
+  - @velum-labs/routekit-eval-contracts@1.0.18
+  - @velum-labs/routekit-runtime@1.0.18
+
+## 1.0.17
+
+### Patch Changes
+
+- @velum-labs/routekit-eval-contracts@1.0.17
+- @velum-labs/routekit-runtime@1.0.17
+
+## 1.0.16
+
+### Patch Changes
+
+- @velum-labs/routekit-eval-contracts@1.0.16
+- @velum-labs/routekit-runtime@1.0.16
+
+## 1.0.15
+
+### Patch Changes
+
+- @velum-labs/routekit-eval-contracts@1.0.15
+- @velum-labs/routekit-runtime@1.0.15
+
+## 1.0.14
+
+### Patch Changes
+
+- @velum-labs/routekit-eval-contracts@1.0.14
+- @velum-labs/routekit-runtime@1.0.14
+
+## 1.0.13
+
+### Patch Changes
+
+- @velum-labs/routekit-eval-contracts@1.0.13
+- @velum-labs/routekit-runtime@1.0.13
+
+## 1.0.12
+
+### Patch Changes
+
+- @velum-labs/routekit-eval-contracts@1.0.12
+- @velum-labs/routekit-runtime@1.0.12
+
+## 1.0.11
+
+### Patch Changes
+
+- Updated dependencies [a148a71]
+  - @velum-labs/routekit-runtime@1.0.11
+  - @velum-labs/routekit-eval-contracts@1.0.11
+
 ## 1.0.10
 
 ### Patch Changes

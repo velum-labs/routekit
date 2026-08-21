@@ -248,7 +248,7 @@ const acquireGatewayGeneration = Effect.fn("GatewayGeneration.acquire")(function
     )
   );
   for (const kind of requiredKinds) {
-    if ((accountSets[kind]?.size ?? 0) === 0) {
+    if ((accountSets[kind]?.enrolledSize ?? 0) === 0) {
       return yield* new RouteKitFailure({
         message:
           `provider "${kind}" requires an enrolled account; ` +

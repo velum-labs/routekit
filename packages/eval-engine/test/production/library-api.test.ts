@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +7,7 @@ import { test } from "node:test";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
 import type { EvalComparisonRequest } from "@velum-labs/routekit-eval-contracts";
-import { Effect, Exit, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import {
   evalExecutionModels,
@@ -114,11 +114,16 @@ test("validation dry-loads top level while never executing test bodies", async (
   const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-dry-load-"));
   const topLevelMarker = path.join(root, "top-level.txt");
   const bodyMarker = path.join(root, "body.txt");
+  await mkdir(path.join(root, "node_modules"));
   await writeFile(
     path.join(root, "support.eval.ts"),
     [
-      'import { writeFileSync } from "node:fs";',
+      'import { readdirSync, writeFileSync } from "node:fs";',
       'import { test } from "node:test";',
+      'const sdkPackages = new Set(readdirSync(new URL("./node_modules", import.meta.url)));',
+      'if (!sdkPackages.has("routekit") || !sdkPackages.has("ori")) {',
+      '  throw new Error("generated suite SDK packages were empty before dry-load");',
+      "}",
       `writeFileSync(${JSON.stringify(topLevelMarker)}, "loaded");`,
       'import { setupAgent } from "routekit/eval";',
       'test("must not execute", async () => {',
@@ -174,6 +179,62 @@ test("validation reports a typed dry-load failure for top-level errors", async (
   assert.equal(Exit.isFailure(exit), true);
   if (Exit.isFailure(exit)) {
     assert.match(String(exit.cause), new RegExp(EvalEngineDryLoadError.name));
+  }
+});
+
+test("validation persists bounded node:test output when the selected runtime exits 9", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-dry-output-"));
+  const executable = path.join(root, "node-exit-9");
+  await writeFile(
+    executable,
+    [
+      `#!${process.execPath}`,
+      'process.stdout.write("x".repeat(20 * 1024));',
+      'process.stderr.write("unsupported node:test option\\n");',
+      "process.exit(9);"
+    ].join("\n")
+  );
+  await chmod(executable, 0o755);
+  await mkdir(path.join(root, "suite", "node_modules"), { recursive: true });
+  await writeFile(
+    path.join(root, "suite", "valid.eval.ts"),
+    [
+      'import { test } from "node:test";',
+      'import { setupAgent } from "routekit/eval";',
+      'test("valid generated case", async () => {',
+      '  await setupAgent({ model: "openai/never-call" }).run("must not infer");',
+      "});"
+    ].join("\n")
+  );
+
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const engine = yield* EvalEngine;
+      return yield* engine.validate(path.join(root, "suite"));
+    }).pipe(
+      Effect.provide(
+        makeEvalEngineLayer({
+          nodeTestExecPath: executable,
+          execute: () => Stream.die(new Error("execution port must not run"))
+        })
+      ),
+      Effect.provide(NodeServicesLayer),
+      Effect.exit
+    )
+  );
+
+  assert.equal(Exit.isFailure(exit), true);
+  if (Exit.isFailure(exit)) {
+    const failure = Cause.findErrorOption(exit.cause);
+    assert.equal(Option.isSome(failure), true);
+    if (Option.isSome(failure)) {
+      assert.ok(failure.value instanceof EvalEngineDryLoadError);
+      assert.match(failure.value.stderr ?? "", /unsupported node:test option/u);
+      assert.match(failure.value.stdout ?? "", /\[output truncated\]/u);
+      assert.ok((failure.value.stdout?.length ?? Number.POSITIVE_INFINITY) < 17 * 1024);
+      assert.match(String(failure.value.cause), /node:test exited with code 9/u);
+      assert.match(String(failure.value.cause), /unsupported node:test option/u);
+    }
   }
 });
 

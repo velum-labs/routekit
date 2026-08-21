@@ -48,6 +48,57 @@ import {
   withMockNativeDiscovery
 } from "./daemon-fixtures.js";
 
+test("broken optional subscription credentials do not block a healthy API provider", async () => {
+  const root = mkdtempSync(join(tmpdir(), "routekit-daemon-broken-subscription-"));
+  const stateHome = join(root, "state");
+  const configPath = join(root, "router.yaml");
+  const accountsDirectory = join(stateHome, "subscriptions", "codex");
+  mkdirSync(accountsDirectory, { recursive: true, mode: 0o700 });
+  writeFileSync(join(accountsDirectory, "broken.json"), "{not-json", { mode: 0o600 });
+  writeFileSync(
+    configPath,
+    [
+      "providers:",
+      "  openai: {}",
+      "  codex: {}",
+      "defaultModel: openai/mock-model",
+      ""
+    ].join("\n")
+  );
+  const upstream = await mockProvider();
+  let daemon: Awaited<ReturnType<typeof startRouteKitDaemon>> | undefined;
+  try {
+    daemon = await startRouteKitDaemon({
+      packageVersion: "1.2.3",
+      stateHome,
+      configPath,
+      port: 0,
+      portless: false,
+      env: {
+        HOME: root,
+        ROUTEKIT_HOME: stateHome,
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: upstream.url,
+        ROUTEKIT_PORTLESS: "0"
+      }
+    });
+    const dataToken = readFileSync(daemon.record.authTokenFile!, "utf8").trim();
+    const models = (await (
+      await fetch(`${daemon.dataUrl}/v1/models`, {
+        headers: { authorization: `Bearer ${dataToken}` }
+      })
+    ).json()) as { data: Array<{ id: string }> };
+    assert.deepEqual(
+      models.data.map((model) => model.id),
+      ["openai/mock-model"]
+    );
+  } finally {
+    if (daemon !== undefined) await daemon.close();
+    await upstream.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("this-checkout daemon routes model auto only from dimension-matrix evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-daemon-eval-auto-"));
   const stateHome = join(root, "state");

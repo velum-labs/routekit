@@ -17,7 +17,10 @@ export {
   EvalServiceSpendLimitError,
   EvalServiceValidationError
 } from "./errors.js";
-export type { RouteKitEvalServiceOptions } from "./production-runner.js";
+export type {
+  RouteKitEvalGatewayCallEvent,
+  RouteKitEvalServiceOptions
+} from "./production-runner.js";
 export {
   EvalServiceCredentialError,
   makeRouteKitEvalServiceLayer

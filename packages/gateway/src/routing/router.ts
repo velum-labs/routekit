@@ -246,21 +246,51 @@ export class RoutingBackend implements Backend {
                 )
               );
             }
-            const discovered = yield* source.discovery.discoverModels(options.signal).pipe(
-              Effect.mapError(
-                (error) =>
-                  new RouteKitFailure({
+            const discovery = yield* source.discovery.discoverModels(options.signal).pipe(
+              Effect.matchEffect({
+                onFailure: (error) => {
+                  const failure = new RouteKitFailure({
                     message: `provider "${provider}" discovery failed: ${
                       error instanceof Error ? error.message : String(error)
                     }`,
                     cause: error
-                  })
-              )
+                  });
+                  if (!isSubscriptionProvider(provider)) return Effect.fail(failure);
+                  return Effect.logWarning(
+                    "subscription provider discovery failed; continuing without its models"
+                  ).pipe(
+                    Effect.annotateLogs({
+                      provider,
+                      stage: "model_discovery",
+                      error: failure.message
+                    }),
+                    Effect.as({
+                      models: [] as readonly DiscoveredModel[],
+                      failed: true
+                    })
+                  );
+                },
+                onSuccess: (models) => Effect.succeed({ models, failed: false })
+              })
             );
+            const discovered = discovery.models;
             if (discovered.length === 0) {
-              return yield* new RouteKitFailure({
-                message: `provider "${provider}" discovery returned no models`
-              });
+              if (isSubscriptionProvider(provider)) {
+                if (!discovery.failed) {
+                  yield* Effect.logWarning(
+                    "subscription provider discovery returned no models; continuing"
+                  ).pipe(
+                    Effect.annotateLogs({
+                      provider,
+                      stage: "model_discovery"
+                    })
+                  );
+                }
+              } else {
+                return yield* new RouteKitFailure({
+                  message: `provider "${provider}" discovery returned no models`
+                });
+              }
             }
             for (const model of discovered) {
               const publicId = namespaced(provider, model.id);
@@ -332,7 +362,11 @@ export class RoutingBackend implements Backend {
                   message: "model policy excludes all discovered models"
                 });
               }
-              if (configuredProviderIds(config).length > 0) {
+              if (
+                configuredProviderIds(config).some(
+                  (provider) => !isSubscriptionProvider(provider)
+                )
+              ) {
                 throw new RouteKitFailure({
                   message: "configured providers discovered no models"
                 });

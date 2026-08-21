@@ -126,6 +126,13 @@ export const evalExecutionModels = (output: EvalExecutionOutput): EvalExecutionM
 });
 
 export interface EvalExecutionPortService {
+  /**
+   * Node executable used by both validation dry-load and concrete execution.
+   *
+   * Keeping one runtime prevents validation from inheriting an older launcher
+   * Node while paid execution is configured for RouteKit's supported runtime.
+   */
+  readonly nodeTestExecPath?: string;
   readonly execute: (input: {
     readonly comparisonId: string;
     readonly discovery: EvalEngineDiscovery;
@@ -322,13 +329,13 @@ const portableOffences = Effect.fn("EvalEngine.portableOffences")(function* (
   )).flat();
 });
 
-const validate = Effect.fn("EvalEngine.validate")(function* (target: string) {
+const validate = Effect.fn("EvalEngine.validate")(function* (target: string, execPath: string) {
   const discovered = yield* discover(target);
   const offences = yield* portableOffences(discovered.files);
   if (offences.length > 0) {
     return yield* new EvalEnginePortableImportError({ offences });
   }
-  yield* dryLoadEvals(discovered);
+  yield* dryLoadEvals(discovered, execPath);
   const fs = yield* FileSystem.FileSystem;
   const hash = createHash("sha256");
   for (const file of discovered.files) {
@@ -610,7 +617,8 @@ export const normalizeEvalComparisonEvidence = (
 export const makeEvalEngine = (execution: EvalExecutionPortService): EvalEngineService =>
   EvalEngine.of({
     discover: (target) => provideNode(discover(target)),
-    validate: (target) => provideNode(validate(target)),
+    validate: (target) =>
+      provideNode(validate(target, execution.nodeTestExecPath ?? globalThis.process.execPath)),
     runComparison: (request) =>
       provideNode(
         Effect.gen(function* () {
@@ -627,7 +635,10 @@ export const makeEvalEngine = (execution: EvalExecutionPortService): EvalEngineS
                 })
             )
           );
-          const discovery = yield* validate(request.suitePath);
+          const discovery = yield* validate(
+            request.suitePath,
+            execution.nodeTestExecPath ?? globalThis.process.execPath
+          );
           const observed: EvalResultLine[] = [];
           const events = execution
             .execute({ comparisonId, discovery, request })
