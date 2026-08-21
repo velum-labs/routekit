@@ -13,7 +13,7 @@ import {
   toRouteKitFailure,
   withAbortSignal
 } from "@velum-labs/routekit-runtime/effect";
-import { Deferred, Effect, Fiber } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 import { AccountCatalogService } from "./account-set/catalog-service.js";
 import { ResetCreditService } from "./account-set/reset-credits.js";
 import { AccountSetStatusService } from "./account-set/status-service.js";
@@ -91,6 +91,12 @@ import type {
 
 type PoolMember = SubscriptionPoolMember;
 
+type CredentialLoadFailure = {
+  label: string;
+  sourcePath: string;
+  error: RouteKitFailure;
+};
+
 const DEFAULT_SWITCH_THRESHOLD = 0.9;
 const DEFAULT_REFRESH_SKEW_SECONDS = 300;
 const DEFAULT_FALLBACK_COOLDOWN_SECONDS = 300;
@@ -115,8 +121,42 @@ function ownAuthResource(
   return resource;
 }
 
+function credentialLoadFailure(
+  mode: SubscriptionMode,
+  label: string,
+  sourcePath: string,
+  cause: unknown
+): CredentialLoadFailure {
+  const error = routeKitError(cause);
+  return {
+    label,
+    sourcePath,
+    error: new RouteKitFailure({
+      message:
+        `provider "${mode}" account "${label}" credential load failed ` +
+        `(${sourcePath}): ${error.message}`,
+      cause: error
+    })
+  };
+}
+
+function aggregateCredentialLoadFailures(
+  mode: SubscriptionMode,
+  failures: readonly CredentialLoadFailure[]
+): Error {
+  if (failures.length === 1) return failures[0]!.error;
+  return new AggregateError(
+    failures.map((failure) => failure.error),
+    `provider "${mode}" account credential loading failed: ${failures
+      .map((failure) => failure.error.message)
+      .join("; ")}`
+  );
+}
+
 export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMode> {
   readonly #provider: SubscriptionProvider<M>;
+  readonly #enrolledSize: number;
+  readonly #credentialLoadFailures: readonly CredentialLoadFailure[];
   readonly #options: Required<
     Pick<
       SubscriptionAccountSetOptions,
@@ -140,6 +180,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   #usageProbe: Deferred.Deferred<void, Error> | undefined;
   #lastUsageProbeAt: number | undefined;
   #catalogReady = false;
+  #credentialLoadFailuresReported = false;
   #probeFiber: Fiber.Fiber<never, never> | undefined;
   #closed = false;
 
@@ -147,9 +188,13 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     provider: SubscriptionProvider<M>,
     options: SubscriptionAccountSetOptions,
     members: PoolMember[],
-    tracker: RateLimitTracker
+    tracker: RateLimitTracker,
+    enrolledSize: number,
+    credentialLoadFailures: readonly CredentialLoadFailure[]
   ) {
     this.#provider = provider;
+    this.#enrolledSize = enrolledSize;
+    this.#credentialLoadFailures = credentialLoadFailures;
     this.#options = {
       ...options,
       strategy: options.strategy ?? "sticky",
@@ -161,6 +206,7 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     this.#tracker = tracker;
     this.#resetCredits = new ResetCreditService(provider, tracker);
     this.#catalog = new AccountCatalogService(
+      provider.mode,
       members,
       this.#metadata,
       this.#selectionSignals,
@@ -244,16 +290,17 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
               : resources.borrow(options.authHealth.resource);
         const authHealth = accountAuthService(authHealthResource);
         const members: PoolMember[] = [];
+        const credentialLoadFailures: CredentialLoadFailure[] = [];
         for (const sourcePath of accounts.paths) {
-          const credential = yield* provider
-            .loadCredential(sourcePath)
-            .pipe(Effect.orElseSucceed(() => undefined));
-          if (credential === undefined) {
-            // A broken member remains visible on disk for `proxy status`, but is
-            // excluded from serving until the operator re-enrolls it.
+          const id = subscriptionCredentialLabel(sourcePath);
+          const loaded = yield* Effect.exit(provider.loadCredential(sourcePath));
+          if (Exit.isFailure(loaded)) {
+            credentialLoadFailures.push(
+              credentialLoadFailure(provider.mode, id, sourcePath, Cause.squash(loaded.cause))
+            );
             continue;
           }
-          const id = subscriptionCredentialLabel(sourcePath);
+          const credential = loaded.value;
           const credentialFingerprint = subscriptionCredentialFingerprint(sourcePath);
           authHealth.register(
             subscriptionAccountIdentity(provider.mode, id),
@@ -283,7 +330,9 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
             authHealth: { resource: authHealth, ownership: "borrowed" }
           },
           members,
-          tracker
+          tracker,
+          accounts.paths.length,
+          credentialLoadFailures
         );
         resources.transferTo(accountSet.#resources);
         yield* accountSet.#startProbe();
@@ -307,6 +356,10 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
     return this.#members.length;
   }
 
+  get enrolledSize(): number {
+    return this.#enrolledSize;
+  }
+
   snapshot(): SubscriptionAccountSetSnapshot {
     return this.#status.snapshot();
   }
@@ -316,7 +369,30 @@ export class SubscriptionAccountSet<M extends SubscriptionMode = SubscriptionMod
   }
 
   discoverModels(signal?: AbortSignal) {
-    return this.#catalog.discoverModels(signal);
+    const self = this;
+    return Effect.gen(function* () {
+      if (!self.#credentialLoadFailuresReported && self.#members.length > 0) {
+        self.#credentialLoadFailuresReported = true;
+        for (const failure of self.#credentialLoadFailures) {
+          yield* Effect.logWarning("subscription account credential load failed").pipe(
+            Effect.annotateLogs({
+              provider: self.mode,
+              account: failure.label,
+              sourcePath: failure.sourcePath,
+              stage: "credential_load",
+              error: failure.error.message
+            })
+          );
+        }
+      }
+      if (self.#members.length === 0 && self.#credentialLoadFailures.length > 0) {
+        self.#credentialLoadFailuresReported = true;
+        return yield* Effect.fail(
+          aggregateCredentialLoadFailures(self.mode, self.#credentialLoadFailures)
+        );
+      }
+      return yield* self.#catalog.discoverModels(signal);
+    });
   }
 
   listModelIds(): readonly string[] {

@@ -73,6 +73,79 @@ test("discovery re-mints a credential the provider stopped honoring", async () =
   }
 });
 
+test("credential load failures remain observable instead of becoming an empty pool", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-invalid-credential-"));
+  writeFileSync(join(directory, "broken.json"), "{not-json", { mode: 0o600 });
+  const pool = await openAccountSet(fakeProvider({ refreshes: 0 }), {
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    assert.equal(pool.enrolledSize, 1);
+    assert.equal(pool.size, 0);
+    await assert.rejects(
+      runRouteKitEffect(pool.discoverModels()),
+      /provider "codex" account "broken" credential load failed/
+    );
+  } finally {
+    await runRouteKitEffect(pool.close());
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a broken credential does not hide models from loadable accounts", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-partial-credential-"));
+  writeFileSync(join(directory, "broken.json"), "{not-json", { mode: 0o600 });
+  writeMember(directory, "healthy", { accessToken: "token-healthy" });
+  const pool = await openAccountSet(fakeProvider({ refreshes: 0 }), {
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    assert.equal(pool.enrolledSize, 2);
+    assert.equal(pool.size, 1);
+    assert.deepEqual(await runRouteKitEffect(pool.discoverModels()), ["gpt-5.3-codex"]);
+  } finally {
+    await runRouteKitEffect(pool.close());
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("cold-start discovery preserves the underlying account failure", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-cold-failure-"));
+  writeMember(directory, "work", { accessToken: "token-work" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.discoverModels = () =>
+    Effect.fail(new RouteKitFailure({ message: "model discovery returned HTTP 503" }));
+  const pool = await openAccountSet(provider, {
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    await assert.rejects(
+      runRouteKitEffect(pool.discoverModels()),
+      /provider "codex" account "work" model discovery failed .*model discovery returned HTTP 503/
+    );
+  } finally {
+    await runRouteKitEffect(pool.close());
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a successful empty subscription catalog remains a successful discovery", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "routekit-pool-empty-catalog-"));
+  writeMember(directory, "work", { accessToken: "token-work" });
+  const provider = fakeProvider({ refreshes: 0 });
+  provider.discoverModels = () => Effect.succeed([]);
+  const pool = await openAccountSet(provider, {
+    source: { kind: "directory", path: directory }
+  });
+  try {
+    assert.deepEqual(await runRouteKitEffect(pool.discoverModels()), []);
+    assert.equal(pool.statusSnapshot().members[0]?.poolEligible, false);
+  } finally {
+    await runRouteKitEffect(pool.close());
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("a failed discovery keeps the last known catalog instead of darkening the pool", async () => {
   const directory = mkdtempSync(join(tmpdir(), "routekit-pool-retain-"));
   // No refresh token, so the failure survives the one re-mint attempt.
