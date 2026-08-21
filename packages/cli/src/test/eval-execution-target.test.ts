@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -8,9 +16,10 @@ import { test } from "node:test";
 
 import { immutableCliRuntime, processCliRuntime } from "@velum-labs/routekit-cli-core";
 import { EVAL_ATTRIBUTION_HEADER } from "@velum-labs/routekit-eval-contracts";
+import { EvalService, makeRouteKitEvalServiceLayer } from "@velum-labs/routekit-eval-service";
 import type { EvalExecutionPlan } from "@velum-labs/routekit-eval-setup";
 import { Effect, Redacted, Ref } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { HttpClient } from "effect/unstable/http";
 
 import { CliSession, runCliEffect, runWithCliSession } from "../cli-session.js";
 import {
@@ -18,15 +27,31 @@ import {
   observeQualificationCalls,
   withQualificationTarget
 } from "../effect/eval-execution-target.js";
+import { removeStaleQualificationSdkLinks } from "../effect/eval-cli.js";
 import { setTargetSelection } from "../target.js";
 
-const candidateModels = Array.from(
-  { length: 15 },
-  (_, index) => `openai/candidate-${String(index + 1)}`
-);
-const classifierModel = "openai/classifier";
-const judgeModel = "openai/judge";
-const allowedModels = [classifierModel, judgeModel, ...candidateModels];
+const candidateModels = [
+  "openai/gpt-5.6-luna",
+  "openai/gpt-5.6-sol",
+  "openai/gpt-5.6-terra",
+  "anthropic/claude-opus-5",
+  "anthropic/claude-sonnet-5",
+  "bedrock/global.anthropic.claude-fable-5",
+  "bedrock/global.anthropic.claude-sonnet-5",
+  "bedrock/global.anthropic.claude-opus-5",
+  "bedrock/openai.gpt-5.6-sol",
+  "bedrock/openai.gpt-5.6-terra",
+  "bedrock/openai.gpt-5.6-luna",
+  "codex/gpt-5.6-sol",
+  "codex/gpt-5.6-terra",
+  "codex/gpt-5.6-luna",
+  "claude-code/claude-opus-5",
+  "claude-code/claude-sonnet-5",
+  "claude-code/claude-fable-5"
+] as const;
+const classifierModel = "openai/gpt-5.6-luna";
+const judgeModel = "bedrock/openai.gpt-5.6-sol";
+const allowedModels = [...new Set([classifierModel, judgeModel, ...candidateModels])];
 
 const plan: EvalExecutionPlan = {
   version: 1,
@@ -55,28 +80,111 @@ const plan: EvalExecutionPlan = {
   expectedCallCount: candidateModels.length * 2
 };
 
-test("selected remote qualification reaches an observed data call after one SSH catalog preflight", async () => {
+test("published CLI qualification repairs stale suite SDK links after remote session open", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-eval-remote-target-"));
   const home = join(root, "home");
   const bin = join(root, "bin");
   const transcript = join(root, "control.jsonl");
   mkdirSync(bin, { recursive: true });
+  writeFileSync(
+    join(root, "package.json"),
+    `${JSON.stringify({ name: "routekit-checkout", private: true })}\n`
+  );
+  const suiteRoot = join(
+    root,
+    ".routekit",
+    "evals",
+    "plans",
+    plan.planId,
+    "dimensions",
+    "provider-protocol-translation"
+  );
+  mkdirSync(join(suiteRoot, "data"), { recursive: true });
+  const suitePath = join(suiteRoot, "provider-protocol-translation.eval.ts");
+  writeFileSync(
+    suitePath,
+    [
+      'import { test } from "node:test";',
+      'import { setupAgent, setupJudge } from "routekit/eval";',
+      'import cases from "./data/cases.json" with { type: "json" };',
+      'import manifest from "./routekit.eval-manifest.json" with { type: "json" };',
+      "const judge = setupJudge({ agent: setupAgent({ model: manifest.judgeModel }) });",
+      "for (const model of manifest.candidateModels) {",
+      "  for (const testCase of cases) {",
+      "    test(`${model} / ${testCase.id}`, async () => {",
+      "      const run = await setupAgent({ model }).run({",
+      "        prompt: testCase.prompt,",
+      "        caseId: testCase.id",
+      "      });",
+      "      run.toComplete();",
+      "      await judge.autoEvals({",
+      "        criteria: testCase.rubric,",
+      "        prompt: testCase.prompt,",
+      "        run",
+      "      });",
+      "    });",
+      "  }",
+      "}"
+    ].join("\n")
+  );
+  writeFileSync(
+    join(suiteRoot, "data", "cases.json"),
+    `${JSON.stringify([{ id: "case-1", prompt: "Help", rubric: "Helpful" }])}\n`
+  );
+  writeFileSync(
+    join(suiteRoot, "routekit.eval-manifest.json"),
+    `${JSON.stringify({
+      version: 1,
+      profileId: "provider-protocol-translation",
+      candidateModels,
+      judgeModel,
+      caseCount: 1,
+      caseIds: ["case-1"],
+      maxOutputTokens: 1_024,
+      expectedCallCount: candidateModels.length * 2
+    })}\n`
+  );
+  mkdirSync(join(suiteRoot, "node_modules"), { recursive: true });
+  symlinkSync(
+    join(root, "removed-published-cli-sdk", "routekit"),
+    join(suiteRoot, "node_modules", "routekit")
+  );
+  symlinkSync(
+    join(root, "removed-published-cli-sdk", "ori"),
+    join(suiteRoot, "node_modules", "ori")
+  );
 
   const gatewayRequests: Array<{ authorization?: string; attribution?: string }> = [];
   const gateway = createServer((request, response) => {
-    gatewayRequests.push({
-      ...(request.headers.authorization === undefined
-        ? {}
-        : { authorization: request.headers.authorization }),
-      ...(request.headers[EVAL_ATTRIBUTION_HEADER] === undefined
-        ? {}
-        : { attribution: String(request.headers[EVAL_ATTRIBUTION_HEADER]) })
-    });
-    response.writeHead(200, {
-      "content-type": "application/json",
-      "x-routekit-model-call-id": "model_call_live_remote"
-    });
-    response.end("{}");
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        readonly model: string;
+      };
+      gatewayRequests.push({
+        ...(request.headers.authorization === undefined
+          ? {}
+          : { authorization: request.headers.authorization }),
+        ...(request.headers[EVAL_ATTRIBUTION_HEADER] === undefined
+          ? {}
+          : { attribution: String(request.headers[EVAL_ATTRIBUTION_HEADER]) })
+      });
+      const content =
+        body.model === judgeModel
+          ? JSON.stringify({ pass: true, reason: "helpful", score: 0.9 })
+          : "Helpful answer";
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "x-routekit-model-call-id": `model_call_live_remote_${String(gatewayRequests.length)}`
+      });
+      response.end(
+        JSON.stringify({
+          model: body.model,
+          choices: [{ message: { role: "assistant", content } }]
+        })
+      );
+    })();
   });
   await new Promise<void>((resolve) => gateway.listen(0, "127.0.0.1", resolve));
   const address = gateway.address() as AddressInfo;
@@ -141,26 +249,41 @@ test("selected remote qualification reaches an observed data call after one SSH 
             readonly { readonly callId?: string; readonly role: "candidate" | "judge" }[]
           >([]);
           const httpClient = observeQualificationCalls(yield* HttpClient.HttpClient, observed);
-          const response = yield* withQualificationTarget(
+          const comparison = yield* withQualificationTarget(
             { operationId: "eval-run-live-remote", plan },
             cleanup,
             (target) =>
-              httpClient.execute(
-                HttpClientRequest.post(`${target.gatewayUrl}/v1/chat/completions`, {
-                  headers: {
-                    authorization: `Bearer ${Redacted.value(target.bearerCredential)}`,
-                    [EVAL_ATTRIBUTION_HEADER]: JSON.stringify({
-                      purpose: "eval",
-                      role: "candidate",
-                      runId: "run-live-remote",
-                      caseId: "case-1"
-                    })
-                  }
-                })
+              Effect.gen(function* () {
+                yield* removeStaleQualificationSdkLinks(suitePath);
+                const service = yield* EvalService;
+                return yield* service.runComparison(
+                  {
+                    version: 1,
+                    profileId: "provider-protocol-translation",
+                    suitePath,
+                    candidateModels,
+                    judgeModel,
+                    gatewayUrl: target.gatewayUrl,
+                    timeoutMs: 15_000
+                  },
+                  "full"
+                );
+              }).pipe(
+                Effect.provide(
+                  makeRouteKitEvalServiceLayer(
+                    {},
+                    {
+                      bearerCredential: Redacted.value(target.bearerCredential),
+                      isolateExecutionFromProjectSdk: true,
+                      timeoutMs: 15_000
+                    }
+                  )
+                ),
+                Effect.provideService(HttpClient.HttpClient, httpClient)
               )
           );
           return {
-            status: response.status,
+            comparison,
             cleanup: yield* Ref.get(cleanup),
             observed: yield* Ref.get(observed)
           };
@@ -179,25 +302,21 @@ test("selected remote qualification reaches an observed data call after one SSH 
           }
       );
 
-    assert.equal(result.status, 200);
+    assert.equal(result.comparison.models.length, candidateModels.length);
     assert.deepEqual(
       controlCalls.map(({ method }) => method),
       ["models.list", "evalSession.open", "evalSession.close"]
     );
     assert.deepEqual(controlCalls[1]?.params.allowedModels, allowedModels);
     assert.deepEqual(result.cleanup, { sessionOpened: true, sessionClosed: true });
-    assert.deepEqual(result.observed, [{ callId: "model_call_live_remote", role: "candidate" }]);
-    assert.deepEqual(gatewayRequests, [
-      {
-        authorization: "Bearer eval-secret",
-        attribution: JSON.stringify({
-          purpose: "eval",
-          role: "candidate",
-          runId: "run-live-remote",
-          caseId: "case-1"
-        })
-      }
-    ]);
+    assert.equal(result.observed.length, candidateModels.length * 2);
+    assert.deepEqual(result.observed[0], {
+      callId: "model_call_live_remote_1",
+      role: "candidate"
+    });
+    assert.equal(gatewayRequests.length, candidateModels.length * 2);
+    assert.equal(gatewayRequests[0]?.authorization, "Bearer eval-secret");
+    assert.match(gatewayRequests[0]?.attribution ?? "", /"role":"candidate"/u);
   } finally {
     await session.dispose();
     await new Promise<void>((resolve, reject) =>

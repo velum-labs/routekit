@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { CliError } from "@velum-labs/routekit-cli-core";
 import {
@@ -46,7 +46,7 @@ import {
   type RouteKitPlatform
 } from "@velum-labs/routekit-runtime/effect";
 import { trimTrailingSlashes } from "@velum-labs/routekit-runtime/network";
-import { Cause, Effect, Exit, FileSystem, Layer, Redacted, Ref, Schema } from "effect";
+import { Cause, Effect, Exit, FileSystem, Layer, Option, Redacted, Ref, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
 import { routekitClient } from "../client.js";
@@ -86,6 +86,34 @@ export const qualificationComparisonRequest = (input: {
   judgeModel: input.judgeModel,
   gatewayUrl: input.gatewayUrl,
   timeoutMs: input.timeoutMs ?? DEFAULT_QUALIFICATION_TEST_TIMEOUT_MS
+});
+
+const QUALIFICATION_SDK_PACKAGES = ["routekit", "ori"] as const;
+
+/**
+ * Generated suites may retain SDK links when an earlier CLI process is
+ * interrupted after materialization. A later published CLI cannot replace an
+ * existing broken link, and Node ESM ignores the fallback NODE_PATH, so
+ * dry-load exits before the first candidate request.
+ */
+export const removeStaleQualificationSdkLinks = Effect.fn(
+  "EvalCli.removeStaleQualificationSdkLinks"
+)(function* (suitePath: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const suiteRoot = dirname(resolve(suitePath));
+  for (const packageName of QUALIFICATION_SDK_PACKAGES) {
+    const linkPath = join(suiteRoot, "node_modules", packageName);
+    const destination = yield* fs.readLink(linkPath).pipe(Effect.option);
+    if (Option.isNone(destination)) continue;
+    const target = resolve(dirname(linkPath), destination.value);
+    const targetExists = yield* fs.stat(target).pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false)
+    );
+    if (!targetExists) {
+      yield* fs.remove(linkPath);
+    }
+  }
 });
 
 const detailOf = (cause: unknown): string =>
@@ -460,6 +488,7 @@ export function evalRunCommand(
             Effect.gen(function* () {
               yield* Ref.set(activeComparison, { dimensionId, timeoutMs });
               yield* Ref.set(observedCalls, []);
+              yield* removeStaleQualificationSdkLinks(suitePath);
               const comparison = yield* evalService.runComparison(
                 qualificationComparisonRequest({
                   candidateModels: started.plan.candidateModels,
