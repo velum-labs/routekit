@@ -17,7 +17,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { type NativeCredentialLocation, nativeCredentialLocation } from "../adapters/native-credentials.js";
+import {
+  type NativeCredentialLocation,
+  nativeCredentialLocation
+} from "../adapters/native-credentials.js";
 
 const execFileAsync = promisify(execFile);
 const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.js");
@@ -332,9 +335,13 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     codexCatalog.models.map((model) => model.slug),
     ["openai/mock-model", "openai/mock-secondary"]
   );
-  const codexSkillPath = join(codexHome, "skills", "setup-eval-routing", "SKILL.md");
+  const codexSkillPath = join(codexHome, "skills", "routekit", "SKILL.md");
   assert.equal(existsSync(codexSkillPath), true);
-  assert.match(readFileSync(codexSkillPath, "utf8"), /name: setup-eval-routing/);
+  assert.match(readFileSync(codexSkillPath, "utf8"), /name: routekit/u);
+  assert.equal(
+    existsSync(join(codexHome, "skills", "routekit", "references", "eval-routing.md")),
+    true
+  );
 
   const daemon = JSON.parse((await run(["status", "--json"], project, env)).stdout) as {
     daemon?: { dataUrl?: string };
@@ -460,9 +467,13 @@ test("native installs issue scoped tokens without persisting plaintext and revok
     "anthropic.routekit.openai/mock-secondary"
   ]);
   assert.equal(parsedClaudeSettings.enforceAvailableModels, true);
-  const claudeSkillPath = join(claudeConfig, "skills", "setup-eval-routing", "SKILL.md");
+  const claudeSkillPath = join(claudeConfig, "skills", "routekit", "SKILL.md");
   assert.equal(existsSync(claudeSkillPath), true);
-  assert.match(readFileSync(claudeSkillPath, "utf8"), /name: setup-eval-routing/);
+  assert.match(readFileSync(claudeSkillPath, "utf8"), /name: routekit/u);
+  assert.equal(
+    existsSync(join(claudeConfig, "skills", "routekit", "references", "eval-routing.md")),
+    true
+  );
   const claudePicker = await fetch(`${dataUrl}/v1/models`, {
     headers: {
       authorization: `Bearer ${claudeToken}`,

@@ -97,6 +97,12 @@ Claude Code gets RouteKit-owned gateway settings and native `availableModels`
 entries. Existing configuration, MCPs, skills, plugins, and history remain
 owned by the native client.
 
+Both installs also add the product-owned `routekit` skill. It gives the coding
+agent one workflow for RouteKit onboarding, configuration, recovery, and
+compositional eval routing. Reinstall updates an unchanged RouteKit-managed
+copy. RouteKit refuses to overwrite a user-owned or edited skill with the same
+name.
+
 Each install issues a dedicated gateway token and stores it in macOS Keychain,
 or in a private `0600` RouteKit secret file on other platforms. Codex and Claude
 retrieve it on demand through their native credential helper settings, so

@@ -1,13 +1,3 @@
----
-name: setup-eval-routing
-description: >-
-  Onboard or maintain a repository's compositional RouteKit eval routing through
-  the public routekit eval CLI. Use when the user wants to define a routing
-  basis, review workload dimensions, author or approve evaluations, validate or
-  estimate a billed plan, run model evidence, inspect results, activate
-  model:auto routing, or resume an interrupted eval project.
----
-
 # Set Up Eval Routing
 
 Use the public `routekit eval` CLI as the product boundary. Do not substitute
@@ -20,7 +10,33 @@ Inside the RouteKit source checkout, build first and use:
 node packages/cli/dist/index.js
 ```
 
-For an installed release, use `routekit`. Refer to either form as `$ROUTEKIT`.
+For an installed release, use `routekit`. `$ROUTEKIT` denotes the resolved
+`routekitArgv` from `SKILL.md`; do not use it as a shell variable or pass the
+literal token.
+
+## Resolve eval parameters
+
+Before advancing the project, resolve:
+
+- `repositoryRoot`: the repository whose durable state lives under
+  `.routekit/evals`;
+- `targetArgs`: the configured local or named remote target, or an explicitly
+  requested external qualification target;
+- `candidateModels`, `classifierModel`, `authorModel`, and `judgeModel`: exact
+  `provider/model` IDs selected through the setup workflow;
+- `evalScope`: `pilot` or `full`;
+- `planId` and `runId`: identifiers returned by the CLI, never reconstructed;
+  and
+- `spendApproved` and `publishApproved`: separate explicit user decisions.
+
+Record the source of every resolved value. Keep candidate models as an ordered,
+deduplicated argv list. Treat `planId` and `runId` as opaque strings. Treat
+approvals as false unless the user explicitly grants the corresponding action
+for the current repository, target, artifact digest, scope, and plan.
+
+Do not carry model IDs, targets, plan IDs, run IDs, or approvals from another
+repository or eval project. Never execute a command with an unresolved
+placeholder.
 
 ## Discover the available interface
 
@@ -33,6 +49,10 @@ Normal model-backed commands use RouteKit's standard target resolution:
 1. an explicit global `--remote <name>` or `--local` selection;
 2. the active remote, when configured; otherwise
 3. the local daemon.
+
+Apply the resolved global target arguments consistently to model-backed
+authoring and execution commands. The optional `--repository` argument must
+resolve to `repositoryRoot` when commands are run outside that root.
 
 Do not ask for a gateway URL or credential when that configured target works.
 An explicitly supported external gateway mode may use `--gateway-url` and one
@@ -149,8 +169,9 @@ Run `eval publish` only when all of these are true:
 
 Publication installs already-measured evidence atomically; it must not perform
 another billed run. After publication, check `eval status`, then verify an
-ordinary headerless `model: auto` request. Use `routekit calls inspect <call-id>`
-to inspect sanitized routing provenance when needed.
+ordinary headerless `model: auto` request. Use
+`$ROUTEKIT calls inspect <call-id>` to inspect sanitized routing provenance
+when needed.
 
 ## Safety
 
