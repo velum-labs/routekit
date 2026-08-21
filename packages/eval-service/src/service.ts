@@ -304,26 +304,54 @@ const enforceSpendLimit = (
   return Effect.void;
 };
 
+const EXECUTION_MANIFEST_NAME = "routekit.eval-manifest.json";
+
+const discoverExecutionManifests = Effect.fnUntraced(function* (root: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const paths = yield* Path.Path;
+  const directories = [root];
+  const manifests: string[] = [];
+
+  while (directories.length > 0) {
+    const directory = directories.pop()!;
+    const entries = yield* fs.readDirectory(directory);
+    for (const entry of entries) {
+      const entryPath = paths.join(directory, entry);
+      if (entry === EXECUTION_MANIFEST_NAME) {
+        manifests.push(entryPath);
+        continue;
+      }
+      const isSymbolicLink = yield* fs.readLink(entryPath).pipe(
+        Effect.match({
+          onFailure: () => false,
+          onSuccess: () => true
+        })
+      );
+      if (isSymbolicLink) continue;
+      const info = yield* fs.stat(entryPath);
+      if (info.type === "Directory") directories.push(entryPath);
+    }
+  }
+
+  return manifests;
+});
+
 const loadExecutionManifest = Effect.fn("EvalService.loadExecutionManifest")(function* (
   validation: EvalEngineValidation,
   request: EvalComparisonRequest
 ) {
   const fs = yield* FileSystem.FileSystem;
   const paths = yield* Path.Path;
-  const manifests = yield* fs
-    .glob("**/routekit.eval-manifest.json", {
-      root: validation.workingDirectory
-    })
-    .pipe(
-      Effect.mapError(
-        (cause) =>
-          new EvalServiceValidationError({
-            operation: "discover the comparison manifest",
-            detail: detailOf(cause),
-            cause
-          })
-      )
-    );
+  const manifests = yield* discoverExecutionManifests(validation.workingDirectory).pipe(
+    Effect.mapError(
+      (cause) =>
+        new EvalServiceValidationError({
+          operation: "discover the comparison manifest",
+          detail: detailOf(cause),
+          cause
+        })
+    )
+  );
   if (manifests.length !== 1 || manifests[0] === undefined) {
     return yield* new EvalServiceValidationError({
       operation: "discover the comparison manifest",
