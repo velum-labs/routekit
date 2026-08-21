@@ -709,6 +709,89 @@ test("run lifecycle retains complete sanitized evidence and activates only after
   assert.equal((await stat(reportPath)).mode & 0o777, 0o600);
 });
 
+test("failed runs preserve plan revisions for retry while mismatched plans remain stale", async () => {
+  const root = await makeRepository();
+  const plan = await createPlan(root, "full");
+  const mismatchedPlans: readonly EvalExecutionPlan[] = [
+    {
+      ...plan,
+      planId: `${plan.planId}-project`,
+      projectId: "different-project-id"
+    },
+    {
+      ...plan,
+      planId: `${plan.planId}-evaluation`,
+      evaluationDigest: "different-evaluation-digest"
+    },
+    {
+      ...plan,
+      planId: `${plan.planId}-models`,
+      candidateModels: [...plan.candidateModels].reverse()
+    }
+  ];
+  await Promise.all(
+    mismatchedPlans.map((mismatchedPlan) =>
+      writeFile(
+        path.join(root, ".routekit", "evals", "plans", `${mismatchedPlan.planId}.json`),
+        JSON.stringify(mismatchedPlan)
+      )
+    )
+  );
+
+  const rerun = await Effect.runPromise(
+    Effect.gen(function* () {
+      const workflow = yield* EvalProjectWorkflow;
+      for (const mismatchedPlan of mismatchedPlans) {
+        const mismatch = yield* Effect.exit(workflow.startRun(root, mismatchedPlan.planId));
+        assert.equal(mismatch._tag, "Failure");
+        if (mismatch._tag === "Failure") {
+          assert.match(String(mismatch.cause), /execution plan is stale/u);
+        }
+      }
+      const first = yield* workflow.startRun(root, plan.planId);
+      const running = yield* workflow.status(root);
+      const ready = yield* workflow.failRun(root, {
+        version: 1,
+        status: "failed",
+        runId: first.runId,
+        planId: plan.planId,
+        projectId: running!.state.projectId,
+        startedAt: "2026-08-21T03:47:27.000Z",
+        finishedAt: "2026-08-21T03:47:48.000Z",
+        basisDigest: plan.basisDigest,
+        evaluationDigest: plan.evaluationDigest,
+        target: {
+          kind: "configured",
+          identity: "routekit-generation:48",
+          publishAllowed: true
+        },
+        cleanup: { sessionOpened: true, sessionClosed: true },
+        comparisons: [],
+        ledger: {
+          expectedCalls: plan.expectedCallCount,
+          observedCalls: 0,
+          observedCandidateRows: 0,
+          knownInputTokens: 0,
+          knownOutputTokens: 0,
+          unknownTokenMeasurements: 0,
+          knownPricedSubtotalUsd: 0,
+          unpricedCalls: 0
+        },
+        failure: "qualification timed out before observing any calls",
+        errors: []
+      });
+      const second = yield* workflow.startRun(root, plan.planId);
+      return { ready, second };
+    }).pipe(Effect.provide(ProjectWorkflowTestLive))
+  );
+
+  assert.equal(rerun.ready.state.stage, "ready");
+  assert.equal(rerun.ready.state.revision, plan.projectRevision);
+  assert.equal(rerun.ready.state.basisDigest, plan.basisDigest);
+  assert.equal(rerun.ready.state.evaluationDigest, plan.evaluationDigest);
+  assert.equal(rerun.second.plan.planId, plan.planId);
+});
+
 test("failed run reports persist the nested qualification error chain", async () => {
   const root = await makeRepository();
   const plan = await createPlan(root, "full");
