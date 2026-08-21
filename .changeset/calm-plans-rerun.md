@@ -2,4 +2,4 @@
 "@velum-labs/routekit-eval-setup": patch
 ---
 
-Allow eval execution plans to be retried after failed runs without weakening stale-plan checks after successful qualification.
+Allow an approved eval execution plan to start again after the project revision advances while still rejecting digest and model mismatches.

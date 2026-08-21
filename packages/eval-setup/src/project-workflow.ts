@@ -1139,7 +1139,6 @@ export const makeEvalProjectWorkflow = Effect.gen(function* () {
       }
       if (
         plan.projectId !== state.projectId ||
-        plan.projectRevision !== state.revision ||
         plan.basisDigest !== state.basisDigest ||
         plan.evaluationDigest !== state.evaluationDigest ||
         !sameStrings(plan.candidateModels, state.configuration.candidateModels) ||
@@ -1157,7 +1156,7 @@ export const makeEvalProjectWorkflow = Effect.gen(function* () {
       const next: EvalProjectState = {
         version: state.version,
         projectId: state.projectId,
-        revision: state.revision,
+        revision: state.revision + 1,
         createdAt: state.createdAt,
         updatedAt: now,
         sourceInventory: state.sourceInventory,
@@ -1280,7 +1279,7 @@ export const makeEvalProjectWorkflow = Effect.gen(function* () {
       const next: EvalProjectState = {
         version: state.version,
         projectId: state.projectId,
-        revision: state.revision,
+        revision: state.revision + 1,
         createdAt: state.createdAt,
         updatedAt: report.finishedAt,
         sourceInventory: state.sourceInventory,
