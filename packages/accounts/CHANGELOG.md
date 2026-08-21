@@ -1,5 +1,13 @@
 # @velum-labs/routekit-accounts
 
+## 1.0.20
+
+### Patch Changes
+
+- @velum-labs/routekit-contracts@1.0.20
+- @velum-labs/routekit-registry@1.0.20
+- @velum-labs/routekit-runtime@1.0.20
+
 ## 1.0.19
 
 ### Patch Changes

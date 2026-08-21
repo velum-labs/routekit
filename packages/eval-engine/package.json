@@ -1,6 +1,6 @@
 {
   "name": "@velum-labs/routekit-eval-engine",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "private": false,
   "license": "Apache-2.0",
   "type": "module",

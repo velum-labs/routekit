@@ -1,5 +1,15 @@
 # @velum-labs/routekit-eval-service
 
+## 1.0.20
+
+### Patch Changes
+
+- fd9adde: Discover evaluation manifests without relying on the Node 22-only `node:fs.glob` API.
+  - @velum-labs/routekit-eval-contracts@1.0.20
+  - @velum-labs/routekit-eval-engine@1.0.20
+  - @velum-labs/routekit-eval-store@1.0.20
+  - @velum-labs/routekit-registry@1.0.20
+
 ## 1.0.19
 
 ### Patch Changes
