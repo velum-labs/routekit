@@ -1,6 +1,20 @@
 import type {
   NodeTestExecutionOptions
 } from "@velum-labs/routekit-eval-engine";
+import type { Effect } from "effect";
+
+export type RouteKitEvalGatewayCallEvent =
+  | {
+      readonly observationId: string;
+      readonly phase: "issued";
+      readonly role: "candidate" | "judge";
+    }
+  | {
+      readonly callId?: string;
+      readonly observationId: string;
+      readonly phase: "completed";
+      readonly role: "candidate" | "judge";
+    };
 
 export type RouteKitEvalServiceOptions = Omit<NodeTestExecutionOptions, "bridgeOrigin"> & {
   /**
@@ -18,6 +32,12 @@ export type RouteKitEvalServiceOptions = Omit<NodeTestExecutionOptions, "bridgeO
    * stale or missing timeout.
    */
   readonly timeoutMs?: number;
+  /**
+   * Observe the exact parent-owned HTTP client used by the child gateway
+   * bridge. The callback runs when an attributed request is issued and again
+   * when a model call id is available from its response.
+   */
+  readonly observeGatewayCall?: (event: RouteKitEvalGatewayCallEvent) => Effect.Effect<void>;
   /**
    * Run the node:test child from a temporary copy of the reviewed suite.
    *

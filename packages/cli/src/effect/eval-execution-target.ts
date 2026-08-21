@@ -1,6 +1,7 @@
 import { lstat } from "node:fs/promises";
 
 import { EVAL_ATTRIBUTION_HEADER } from "@velum-labs/routekit-eval-contracts";
+import type { RouteKitEvalGatewayCallEvent } from "@velum-labs/routekit-eval-service";
 import type {
   EvalClassifierObservation,
   EvalExecutionPlan,
@@ -30,6 +31,31 @@ export type QualificationObservedCall = {
   readonly callId?: string;
   readonly role: "candidate" | "judge";
   readonly measurement?: EvalClassifierObservation["measurement"];
+};
+
+export const qualificationGatewayCallObserver = (
+  observed: Ref.Ref<readonly QualificationObservedCall[]>
+): ((event: RouteKitEvalGatewayCallEvent) => Effect.Effect<void>) => {
+  const pending = new Map<string, QualificationObservedCall>();
+  return (event) => {
+    if (event.phase === "issued") {
+      const call = { role: event.role } satisfies QualificationObservedCall;
+      pending.set(event.observationId, call);
+      return Ref.update(observed, (current) => [...current, call]);
+    }
+    const call = pending.get(event.observationId);
+    pending.delete(event.observationId);
+    if (call === undefined || event.callId === undefined) return Effect.void;
+    return Ref.update(observed, (current) => {
+      const pendingIndex = current.indexOf(call);
+      if (pendingIndex === -1 || current.some((entry) => entry.callId === event.callId)) {
+        return current;
+      }
+      const updated = [...current];
+      updated[pendingIndex] = { callId: event.callId, role: event.role };
+      return updated;
+    });
+  };
 };
 
 const qualificationRole = (
