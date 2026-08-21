@@ -74,6 +74,7 @@ const makeProductionExecutionPort = (
     const bearerCredential = options.bearerCredential?.trim();
     if (bearerCredential === undefined || bearerCredential.length === 0) {
       return EvalExecutionPort.of({
+        nodeTestExecPath: options.execPath ?? globalThis.process.execPath,
         execute: () =>
           Stream.fail(
             new EvalEngineExecutionError({
@@ -104,6 +105,7 @@ const makeProductionExecutionPort = (
       httpClient
     );
     return EvalExecutionPort.of({
+      nodeTestExecPath: execution.nodeTestExecPath,
       execute: (input) => {
         const deadlineInput =
           options.timeoutMs === undefined

@@ -297,23 +297,29 @@ const executeNodeTests = (input: {
  */
 export const makeNodeTestExecutionPort = (
   options: NodeTestExecutionOptions
-): EvalExecutionPortService => ({
-  execute: ({ comparisonId, discovery, request }) =>
-    Stream.unwrap(
-      Effect.gen(function* () {
-        const bridgeOrigin = yield* validateBridgeOrigin(options.bridgeOrigin);
-        const childEnvironment = yield* validateChildEnvironment(options.childEnvironment ?? {});
-        return executeNodeTests({
-          bridgeOrigin,
-          childEnvironment,
-          comparisonId,
-          concurrency: request.concurrency,
-          discovery,
-          execPath: options.execPath ?? globalThis.process.execPath,
-          timeoutMs: request.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS
-        });
-      })
-    ).pipe(
-      Stream.mapError((cause) => executionError("RouteKit Eval could not execute node:test.", cause))
-    )
-});
+): EvalExecutionPortService => {
+  const execPath = options.execPath ?? globalThis.process.execPath;
+  return {
+    nodeTestExecPath: execPath,
+    execute: ({ comparisonId, discovery, request }) =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const bridgeOrigin = yield* validateBridgeOrigin(options.bridgeOrigin);
+          const childEnvironment = yield* validateChildEnvironment(options.childEnvironment ?? {});
+          return executeNodeTests({
+            bridgeOrigin,
+            childEnvironment,
+            comparisonId,
+            concurrency: request.concurrency,
+            discovery,
+            execPath,
+            timeoutMs: request.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS
+          });
+        })
+      ).pipe(
+        Stream.mapError((cause) =>
+          executionError("RouteKit Eval could not execute node:test.", cause)
+        )
+      )
+  };
+};

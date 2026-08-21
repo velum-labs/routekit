@@ -27,6 +27,7 @@ export const makeRouteKitEvalExecutionPortService = (
   options: RouteKitEvalExecutionOptions,
   client: HttpClient.HttpClient
 ): EvalExecutionPortService => ({
+  nodeTestExecPath: options.execPath ?? globalThis.process.execPath,
   execute: ({ comparisonId, discovery, request }) =>
     Stream.unwrap(
       Effect.gen(function* () {
