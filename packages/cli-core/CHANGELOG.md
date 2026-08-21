@@ -1,5 +1,11 @@
 # @velum-labs/routekit-cli-core
 
+## 1.0.18
+
+### Patch Changes
+
+- @velum-labs/routekit-cli-ui@1.0.18
+
 ## 1.0.17
 
 ### Patch Changes

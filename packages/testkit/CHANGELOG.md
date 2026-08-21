@@ -1,5 +1,21 @@
 # @velum-labs/routekit-testkit
 
+## 1.0.18
+
+### Patch Changes
+
+- Updated dependencies [280e4f7]
+  - @velum-labs/routekit-eval-service@1.0.18
+  - @velum-labs/routekit-config@1.0.18
+  - @velum-labs/routekit-daemon@1.0.18
+  - @velum-labs/routekit-eval-contracts@1.0.18
+  - @velum-labs/routekit-eval-core@1.0.18
+  - @velum-labs/routekit-eval-setup@1.0.18
+  - @velum-labs/routekit-eval-store@1.0.18
+  - @velum-labs/routekit-gateway@1.0.18
+  - @velum-labs/routekit-registry@1.0.18
+  - @velum-labs/routekit-runtime@1.0.18
+
 ## 1.0.17
 
 ### Patch Changes
