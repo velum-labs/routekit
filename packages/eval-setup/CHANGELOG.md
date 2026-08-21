@@ -1,5 +1,13 @@
 # @velum-labs/routekit-eval-setup
 
+## 1.0.21
+
+### Patch Changes
+
+- 88774bb: Allow eval execution plans to be retried after failed runs without weakening stale-plan checks after successful qualification.
+  - @velum-labs/routekit-eval-contracts@1.0.21
+  - @velum-labs/routekit-runtime@1.0.21
+
 ## 1.0.20
 
 ### Patch Changes

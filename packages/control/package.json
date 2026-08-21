@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit-control",
   "private": false,
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "Typed control protocol for the singleton RouteKit daemon.",
   "repository": {
     "type": "git",
