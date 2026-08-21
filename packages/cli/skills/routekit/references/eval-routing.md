@@ -1,13 +1,3 @@
----
-name: setup-eval-routing
-description: >-
-  Onboard or maintain a repository's compositional RouteKit eval routing through
-  the public routekit eval CLI. Use when the user wants to define a routing
-  basis, review workload dimensions, author or approve evaluations, validate or
-  estimate a billed plan, run model evidence, inspect results, activate
-  model:auto routing, or resume an interrupted eval project.
----
-
 # Set Up Eval Routing
 
 Use the public `routekit eval` CLI as the product boundary. Do not substitute
@@ -20,7 +10,33 @@ Inside the RouteKit source checkout, build first and use:
 node packages/cli/dist/index.js
 ```
 
-For an installed release, use `routekit`. Refer to either form as `$ROUTEKIT`.
+For an installed release, use `routekit`. `$ROUTEKIT` denotes the resolved
+`routekitArgv` from `SKILL.md`; do not use it as a shell variable or pass the
+literal token.
+
+## Resolve eval parameters
+
+Enter this workflow only after the required Resolution gate in `SKILL.md` has
+recorded `health = ready`. Reuse its exact `repositoryRoot` and `targetArgs`;
+do not repeat target selection or inherit the active remote here.
+
+Before advancing the project, resolve:
+
+- `candidateModels`, `classifierModel`, `authorModel`, and `judgeModel`: exact
+  `provider/model` IDs selected through the setup workflow;
+- `evalScope`: `pilot` or `full`;
+- `planId` and `runId`: identifiers returned by the CLI, never reconstructed;
+  and
+- `spendApproved` and `publishApproved`: separate explicit user decisions.
+
+Record the source of every resolved value. Keep candidate models as an ordered,
+deduplicated argv list. Treat `planId` and `runId` as opaque strings. Treat
+approvals as false unless the user explicitly grants the corresponding action
+for the current repository, target, artifact digest, scope, and plan.
+
+Do not carry model IDs, targets, plan IDs, run IDs, or approvals from another
+repository or eval project. Never execute a command with an unresolved
+placeholder.
 
 ## Discover the available interface
 
@@ -28,11 +44,9 @@ Run `$ROUTEKIT eval --help` and the relevant subcommand help before acting. Use
 only commands and flags exposed by that CLI version. Prefer `--json` for state,
 plans, estimates, and results.
 
-Normal model-backed commands use RouteKit's standard target resolution:
-
-1. an explicit global `--remote <name>` or `--local` selection;
-2. the active remote, when configured; otherwise
-3. the local daemon.
+Apply the resolved global target arguments consistently to model-backed
+authoring and execution commands. The optional `--repository` argument must
+resolve to `repositoryRoot` when commands are run outside that root.
 
 Do not ask for a gateway URL or credential when that configured target works.
 An explicitly supported external gateway mode may use `--gateway-url` and one
@@ -41,8 +55,11 @@ publish a routing activation.
 
 ## Resume or initialize
 
-1. Run `$ROUTEKIT --json eval status` from the repository root.
-2. If no eval project exists, run `$ROUTEKIT --json eval setup`.
+1. Run
+   `[...routekitArgv, ...targetArgs, "eval", "status", "--json"]` from the
+   repository root.
+2. If no eval project exists, run
+   `[...routekitArgv, ...targetArgs, "eval", "setup", "--json"]`.
 3. Follow `nextAction` and the returned artifact paths. Durable state lives
    under `.routekit/evals`; resume it rather than starting over after an
    interruption.
@@ -69,21 +86,29 @@ Use the CLI workflow in this order, following the current `nextAction`:
 
 Treat proposals as review material, not activation evidence. Approval is bound
 to the exact artifact digest. If an artifact changes, validate and approve the
-new digest rather than reusing an old approval.
+new digest rather than reusing an old approval. Digest approval proves which
+artifact was reviewed; it does not prove that the routing basis is orthogonal,
+unsmeared, or suitable for launch.
 
-A useful routing basis normally contains 5–10 orthogonal workload dimensions.
-Each definition must include positive scope, exclusions, and a contrast pair:
-one request that should receive majority weight on the dimension and one
+Use the following as prompt and manual-review guidance, not as a pipeline
+guarantee. Ask for a routing basis with 5–10 orthogonal workload dimensions.
+Ask each definition to include positive scope, exclusions, and a contrast
+pair: one request that should receive majority weight on the dimension and one
 same-workload near-miss that should route to a sibling dimension or unknown.
-Request-envelope capabilities such as tools, vision, context, and maximum
-output are hard requirements, not semantic workload dimensions.
+Treat request-envelope capabilities such as tools, vision, context, and
+maximum output as hard requirements rather than semantic workload dimensions.
 
-Reject the proposal instead of approving its digest when:
+During manual review, send the proposal back for revision when:
 
 - any dimension lacks an exclusive in-scope request or a distinct near-miss;
 - product-behavior axes are mixed with repository-change/process axes; or
 - a dimension is an implementation, tests/docs/CI/release, eval/classifier, or
   other always-on layer that would receive high weight on almost every ticket.
+
+The current approval step can still bind the digest of a semantically smeared
+basis. Do not describe these review heuristics as validation enforced by
+`eval approve dimensions`, and do not treat dimension approval alone as launch
+evidence.
 
 Unknown weight absorbs the remainder. Do not add catch-all axes to cover it.
 For a gateway product basis, protocol, selection, classification, and quota can
@@ -135,10 +160,17 @@ Use `eval results` to review the decomposition benchmark, every dimension
 suite, the composition benchmark, the complete evidence matrix, accounting,
 and cleanup outcome.
 
+Treat a local run that reports zero model or gateway calls as pipeline
+bring-up, not qualification. A zero-call run is not launch evidence even when
+the command exits successfully, validation passes, and artifact digests were
+approved. Stop before publication, report the missing execution evidence, and
+do not claim `model: auto` is qualified.
+
 Run `eval publish` only when all of these are true:
 
 - dimensions and evaluations were approved at their current digests;
 - validation passed and the immutable plan is still fresh;
+- the run observed the planned nonzero model and gateway calls;
 - every configured candidate has exactly one judged result for every expected
   case in every dimension;
 - the decomposition and composition benchmarks passed;
@@ -149,8 +181,9 @@ Run `eval publish` only when all of these are true:
 
 Publication installs already-measured evidence atomically; it must not perform
 another billed run. After publication, check `eval status`, then verify an
-ordinary headerless `model: auto` request. Use `routekit calls inspect <call-id>`
-to inspect sanitized routing provenance when needed.
+ordinary headerless `model: auto` request. Use
+`$ROUTEKIT calls inspect <call-id>` to inspect sanitized routing provenance
+when needed.
 
 ## Safety
 
@@ -159,5 +192,6 @@ to inspect sanitized routing provenance when needed.
 - Never log, echo, or commit credentials.
 - Never describe unknown cost as zero.
 - Never publish incomplete, stale, mismatched, duplicated, or cutoff evidence.
+- Never publish or claim launch readiness from a zero-call run.
 - Never claim that a passing pilot or classifier-only run is production routing
   qualification.

@@ -1,0 +1,117 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const skillRoot = path.join(packageRoot, "skills", "routekit");
+
+test("RouteKit skill unifies onboarding, configuration, and eval routing", async () => {
+  const skill = await readFile(path.join(skillRoot, "SKILL.md"), "utf8");
+  assert.match(skill, /^name: routekit$/mu);
+  assert.match(skill, /Install, onboard, configure, operate, troubleshoot, and evaluate/u);
+  assert.match(skill, /references\/onboarding\.md/u);
+  assert.match(skill, /references\/configuration\.md/u);
+  assert.match(skill, /references\/eval-routing\.md/u);
+  assert.match(skill, /references\/recovery-and-safety\.md/u);
+  assert.match(skill, /public `routekit` CLI/u);
+  assert.match(skill, /Required Resolution gate/u);
+  assert.ok(
+    skill.indexOf("## Required Resolution gate") < skill.indexOf("## Choose one workflow"),
+    "Resolution gate must precede workflow selection"
+  );
+  for (const parameter of [
+    "routekitArgv",
+    "repositoryRoot",
+    "target",
+    "health",
+    "interaction",
+    "modelId",
+    "evalScope"
+  ]) {
+    assert.match(skill, new RegExp(`\\b${parameter}\\b`, "u"));
+  }
+  assert.match(skill, /Fill this parameter ledger first/u);
+  assert.match(skill, /Exactly `\["--local"\]` or `\["--remote", "<name>"\]`/u);
+  assert.match(skill, /never an empty argv or the implicit active remote/u);
+  assert.match(
+    skill,
+    /\[\.\.\.routekitArgv, "--local", "remote", "list", "--json"\]/u
+  );
+  assert.match(skill, /if a remote is active, show its name and ask whether to use it or local/iu);
+  assert.match(skill, /for eval requests, make local the default/iu);
+  assert.match(skill, /\[\.\.\.routekitArgv, \.\.\.targetArgs, "status", "--json"\]/u);
+  assert.match(
+    skill,
+    /\[\.\.\.routekitArgv, \.\.\.targetArgs, "config", "show", "--json"\]/u
+  );
+  assert.match(skill, /Do not add a parallel health sweep\s+or substitute `doctor`/u);
+  assert.match(skill, /offer exactly one public CLI remediation, and wait/iu);
+  assert.match(skill, /Do not run the remediation, retry the gate, auto-recover/iu);
+  assert.match(skill, /`router_missing` and offer `config init`/u);
+  assert.match(skill, /`daemon_unready` and offer `setup`/u);
+  assert.match(skill, /Never offer a billed eval command as the\s+fix/u);
+  assert.match(skill, /`spendApproved` \/ `publishApproved`/u);
+  assert.match(skill, /Separate explicit decisions; both default to false/u);
+  assert.match(skill, /\[\.\.\.routekitArgv, \.\.\.targetArgs, \.\.\.operationArgs\]/u);
+  assert.match(skill, /working directory set to `repositoryRoot`/u);
+  assert.match(skill, /typed argv value/u);
+  assert.match(skill, /Never execute a displayed template/u);
+  assert.match(skill, /Ask one question per turn/u);
+  assert.doesNotMatch(skill, /\b(?:orbit|lab|ssh)\b/iu);
+  assert.doesNotMatch(skill, /prefix[- ]bump/iu);
+  assert.doesNotMatch(skill, /OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENROUTER_API_KEY/u);
+});
+
+test("RouteKit eval reference preserves approval and activation boundaries", async () => {
+  const skill = await readFile(path.join(skillRoot, "references", "eval-routing.md"), "utf8");
+  assert.match(skill, /one question per turn/iu);
+  assert.match(skill, /Never spend or publish silently/u);
+  assert.match(skill, /public `routekit eval` CLI/u);
+  assert.match(skill, /\$ROUTEKIT eval --help/u);
+  assert.match(skill, /Resolve eval parameters/u);
+  for (const parameter of [
+    "repositoryRoot",
+    "targetArgs",
+    "candidateModels",
+    "planId",
+    "runId",
+    "spendApproved",
+    "publishApproved"
+  ]) {
+    assert.match(skill, new RegExp(`\\b${parameter}\\b`, "u"));
+  }
+  assert.match(skill, /ordered,\s+deduplicated argv list/u);
+  assert.match(skill, /Treat `planId` and `runId` as opaque strings/u);
+  assert.match(skill, /approvals as false unless the user explicitly grants/u);
+  assert.match(skill, /required Resolution gate in `SKILL\.md`/u);
+  assert.match(skill, /Reuse its exact `repositoryRoot` and `targetArgs`/u);
+  assert.match(skill, /do not repeat target selection or inherit the active remote here/u);
+  for (const command of ["setup", "status", "answer", "validate", "estimate", "run", "publish"]) {
+    assert.match(skill, new RegExp(`(?:eval ${command}|"eval", "${command}")`, "u"));
+  }
+  for (const term of [
+    "routing basis",
+    "workload dimension",
+    "request decomposition",
+    "evidence matrix",
+    "routing activation"
+  ]) {
+    assert.match(skill, new RegExp(term, "iu"));
+  }
+  assert.match(skill, /exclusive in-scope request or a distinct near-miss/iu);
+  assert.match(skill, /product-behavior axes are mixed with repository-change\/process axes/iu);
+  assert.match(skill, /high weight on almost every ticket/iu);
+  assert.match(skill, /prompt and manual-review guidance, not as a pipeline\s+guarantee/iu);
+  assert.match(skill, /Digest approval proves which\s+artifact was reviewed; it does not prove/iu);
+  assert.match(skill, /current approval step can still bind the digest of a semantically smeared\s+basis/iu);
+  assert.match(skill, /zero-call run is not launch evidence/iu);
+  assert.match(skill, /planned nonzero model and gateway calls/iu);
+  assert.match(skill, /Unknown weight absorbs the remainder/u);
+  assert.doesNotMatch(skill, /\beval prepare\b/u);
+  assert.doesNotMatch(skill, /\barea catalog\b/iu);
+  assert.doesNotMatch(skill, /Use RouteKit's `EvalSetup` operations/u);
+  assert.doesNotMatch(skill, /test:e2e:eval-routing/u);
+  assert.doesNotMatch(skill, /OPENROUTER_API_KEY/u);
+});

@@ -128,6 +128,11 @@ Codex and Claude retrieve the token on demand through their native credential
 helper settings, so terminal, IDE, and GUI launches need no shell changes.
 Reinstalling the same target preserves the token; use `--rotate-token` to replace
 it.
+
+Each native-client install also installs the product-owned `routekit` skill for
+onboarding, configuration, recovery, and compositional eval routing. An
+unchanged RouteKit-managed copy is updated in place; a user-owned or edited
+skill is never overwritten.
 Claude's `--bare` mode intentionally ignores normal user settings, including
 `apiKeyHelper`; use a normal launch or pass its settings file explicitly.
 `uninstall` removes the RouteKit-owned configuration and revokes its tracked

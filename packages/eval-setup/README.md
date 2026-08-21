@@ -13,8 +13,10 @@ The package provides:
 - explicit candidate, classifier, author, and judge model roles;
 - immutable validation, estimate, qualification, result, and activation stages;
 - typed Effect service contracts for repository, planning, target, run, and
-  activation adapters; and
-- the `setup-eval-routing` coding-agent skill.
+  activation adapters.
+
+The product-wide `routekit` coding-agent skill is published with the RouteKit
+CLI package.
 
 The decomposition classifier is deliberately model-blind: it receives only the
 request and reviewed workload dimensions. Deterministic routing combines its

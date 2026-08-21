@@ -27,10 +27,10 @@ import {
   writeNativeCredential
 } from "../../adapters/native-credentials.js";
 import {
-  assertNativeEvalSkillInstallable,
-  installNativeEvalSkill,
-  uninstallNativeEvalSkill
-} from "../../adapters/native-eval-skill.js";
+  assertNativeRouteKitSkillInstallable,
+  installNativeRouteKitSkill,
+  uninstallNativeRouteKitSkill
+} from "../../adapters/native-routekit-skill.js";
 import {
   deleteNativeIntegration,
   getNativeIntegration,
@@ -243,7 +243,7 @@ export class InstallNativeIntegration {
         input.tool === "codex"
           ? codexIntegrationConfigPath(input.options.codexHome)
           : claudeIntegrationConfigPath(input.options.claudeConfigDir);
-      yield* cliTry(() => assertNativeEvalSkillInstallable(configPath));
+      yield* cliTry(() => assertNativeRouteKitSkillInstallable(configPath));
       const prepared =
         target.kind === "remote"
           ? {
@@ -309,7 +309,7 @@ export class InstallNativeIntegration {
                     : {})
                 })
               );
-        yield* cliTry(() => installNativeEvalSkill(result.configPath));
+        const skill = yield* cliTry(() => installNativeRouteKitSkill(result.configPath));
         if (!noToken) {
           yield* rememberCredential({
             tool: input.tool,
@@ -340,6 +340,11 @@ export class InstallNativeIntegration {
                 "the existing dedicated gateway credential remains in use; pass --rotate-token to issue a replacement"
               );
             }
+          }
+          if (skill.legacySkill === "preserved") {
+            input.context.presenter.note(
+              "the previous setup-eval-routing skill was preserved because it is not an unchanged RouteKit-managed installation"
+            );
           }
         }
       }).pipe(
@@ -389,7 +394,7 @@ export class UninstallNativeIntegration {
                 ...(input.home !== undefined ? { claudeConfigDir: input.home } : {})
               })
             );
-      yield* cliTry(() => uninstallNativeEvalSkill(result.configPath));
+      yield* cliTry(() => uninstallNativeRouteKitSkill(result.configPath));
       yield* cliTryPromise(() => deleteNativeIntegration(input.tool, configPath));
       yield* cliTryPromise(() => deleteNativeCredential(input.tool, configPath));
       return result;

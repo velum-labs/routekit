@@ -1,0 +1,5 @@
+interface:
+  display_name: "RouteKit"
+  short_description: "Set up, operate, and evaluate RouteKit"
+  default_prompt: "Use $routekit to inspect my current setup and safely complete the requested RouteKit workflow."
+

@@ -11,7 +11,7 @@ function getAgentGuideUrl(currentOrigin?: string): string {
 }
 
 function buildSetupPrompt(agentGuideUrl: string): string {
-  return `Help me install and configure RouteKit by following:
+  return `Use the $routekit skill if it is available. Otherwise, help me install and configure RouteKit by following:
 ${agentGuideUrl}
 
 Ask which subscriptions or API providers I want to connect. Never request API keys in chat. Finish by verifying \`routekit status\` and \`routekit models list\`, then show me the shortest command to use one discovered model.`;
@@ -57,15 +57,16 @@ export function AgentSetupPrompt() {
       </div>
       <div className="agent-setup-prompt-body">
         <p>
-          Help me install and configure RouteKit by following:
+          Use the <code>$routekit</code> skill if it is available. Otherwise, help me install and
+          configure RouteKit by following:
           <br />
           <a href={agentGuideUrl}>{agentGuideUrl}</a>
         </p>
         <p>
-          Ask which subscriptions or API providers I want to connect. Never request API
-          keys in chat. Finish by verifying <code>routekit status</code> and{" "}
-          <code>routekit models list</code>, then show me the shortest command to use one
-          discovered model.
+          Ask which subscriptions or API providers I want to connect. Never request API keys in
+          chat. Finish by verifying <code>routekit status</code> and{" "}
+          <code>routekit models list</code>, then show me the shortest command to use one discovered
+          model.
         </p>
       </div>
     </div>
