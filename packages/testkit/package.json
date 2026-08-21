@@ -1,7 +1,7 @@
 {
   "name": "@velum-labs/routekit-testkit",
   "private": true,
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "RouteKit test tooling: provider simulator client, door axis, and process helpers.",
   "license": "Apache-2.0",
   "type": "module",
