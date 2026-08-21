@@ -1,5 +1,30 @@
 # @velum-labs/routekit
 
+## 1.0.16
+
+### Patch Changes
+
+- 7edef2f: Pin the published CLI's Effect platform runtime so npm installs cannot mix
+  incompatible release-candidate versions before eval qualification execution.
+  - @velum-labs/routekit-accounts@1.0.16
+  - @velum-labs/routekit-cli-core@1.0.16
+  - @velum-labs/routekit-cli-ui@1.0.16
+  - @velum-labs/routekit-config@1.0.16
+  - @velum-labs/routekit-contracts@1.0.16
+  - @velum-labs/routekit-control@1.0.16
+  - @velum-labs/routekit-daemon@1.0.16
+  - @velum-labs/routekit-eval-contracts@1.0.16
+  - @velum-labs/routekit-eval-core@1.0.16
+  - @velum-labs/routekit-eval-service@1.0.16
+  - @velum-labs/routekit-eval-setup@1.0.16
+  - @velum-labs/routekit-eval-store@1.0.16
+  - @velum-labs/routekit-gateway@1.0.16
+  - @velum-labs/routekit-registry@1.0.16
+  - @velum-labs/routekit-runtime@1.0.16
+  - @velum-labs/routekit-telemetry-core@1.0.16
+  - @velum-labs/routekit-tool-registry@1.0.16
+  - @velum-labs/routekit-tools@1.0.16
+
 ## 1.0.15
 
 ### Patch Changes
