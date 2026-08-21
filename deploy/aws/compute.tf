@@ -61,6 +61,7 @@ resource "aws_instance" "node" {
     t3_home_volume_id           = each.value.kind == "t3" ? aws_ebs_volume.t3_home[each.key].id : ""
     t3_home_volume_compact      = each.value.kind == "t3" ? replace(aws_ebs_volume.t3_home[each.key].id, "-", "") : ""
     aws_region                  = var.aws_region
+    workload_jwt_parameter      = "/routekit/gateway/production/workload-jwt-config"
     nginx_routekit_location_b64 = base64encode(file("${path.module}/templates/nginx-routekit-tailnet-location.conf"))
   })
 

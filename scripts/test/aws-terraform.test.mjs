@@ -313,8 +313,9 @@ test("fresh gateways fail closed until their exact workload JWT verifier is sync
   const compute = read("deploy/aws/compute.tf");
 
   assert.match(compute, /aws_region\s*=\s*var\.aws_region/);
+  assert.match(compute, /workload_jwt_parameter\s*=\s*"\/routekit\/gateway\/production\/workload-jwt-config"/);
   assert.match(bootstrap, /routekit-workload-jwt-sync/);
-  assert.match(bootstrap, /\/routekit\/gateway\/production\/workload-jwt-config/);
+  assert.match(bootstrap, /Name="\$\{workload_jwt_parameter\}"/);
   assert.match(bootstrap, /boto3\.client\("ssm", region_name="\$\{aws_region\}"\)/);
   assert.match(bootstrap, /python3-boto3/);
   assert.match(bootstrap, /workload JWT config is missing/);
@@ -342,8 +343,9 @@ test("failover is mutexed, fences the old writer, verifies inference, and update
   assert.match(script, /v1\/responses/);
   assert.match(script, /response\.output_text\.delta/);
   assert.match(script, /ROUTEKIT_FAILOVER_OK/);
-  assert.match(script, /serve drain svc:routekit-gateway/);
-  assert.match(script, /--service=svc:routekit-gateway/);
+  assert.match(script, /gateway_service="\$\{ROUTEKIT_GATEWAY_SERVICE:-svc:routekit-gateway\}"/);
+  assert.match(script, /serve drain "\$gateway_service"/);
+  assert.match(script, /--service="\$gateway_service"/);
   assert.ok(
     script.lastIndexOf('put-parameter --name "$active_parameter"') >
       script.lastIndexOf("routekit --json remote add")
@@ -355,6 +357,9 @@ test("gateway runtime deployment reloads the workload verifier into active gatew
   assert.match(script, /systemctl daemon-reload/);
   assert.match(script, /systemctl restart routekit-workload-broker\.service/);
   assert.doesNotMatch(script, /8082\/health && exit 0/);
+  assert.match(script, /--jwt-parameter/);
+  assert.match(script, /jwt_parameter='\/routekit\/gateway\/production\/workload-jwt-config'/);
+  assert.match(script, /Name=\\"\$\{jwt_parameter\}\\"/);
   assert.match(
     script,
     /if systemctl is-active --quiet routekit-gateway\.service; then systemctl restart routekit-gateway\.service; fi/
