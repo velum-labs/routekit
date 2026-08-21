@@ -20,8 +20,8 @@ Before advancing the project, resolve:
 
 - `repositoryRoot`: the repository whose durable state lives under
   `.routekit/evals`;
-- `targetArgs`: the configured local or named remote target, or an explicitly
-  requested external qualification target;
+- `targetArgs`: `["--local"]` unless the user explicitly requested a named
+  remote, in which case use `["--remote", "<name>"]`;
 - `candidateModels`, `classifierModel`, `authorModel`, and `judgeModel`: exact
   `provider/model` IDs selected through the setup workflow;
 - `evalScope`: `pilot` or `full`;
@@ -44,11 +44,10 @@ Run `$ROUTEKIT eval --help` and the relevant subcommand help before acting. Use
 only commands and flags exposed by that CLI version. Prefer `--json` for state,
 plans, estimates, and results.
 
-Normal model-backed commands use RouteKit's standard target resolution:
-
-1. an explicit global `--remote <name>` or `--local` selection;
-2. the active remote, when configured; otherwise
-3. the local daemon.
+Do not let eval qualification inherit RouteKit's active-remote fallback. Use
+`--local` unless the user explicitly asked to qualify on a named remote. An
+already-active remote is not an eval target request. If the user did request a
+remote, use the exact `--remote <name>` selection they supplied or approved.
 
 Apply the resolved global target arguments consistently to model-backed
 authoring and execution commands. The optional `--repository` argument must
@@ -89,21 +88,29 @@ Use the CLI workflow in this order, following the current `nextAction`:
 
 Treat proposals as review material, not activation evidence. Approval is bound
 to the exact artifact digest. If an artifact changes, validate and approve the
-new digest rather than reusing an old approval.
+new digest rather than reusing an old approval. Digest approval proves which
+artifact was reviewed; it does not prove that the routing basis is orthogonal,
+unsmeared, or suitable for launch.
 
-A useful routing basis normally contains 5–10 orthogonal workload dimensions.
-Each definition must include positive scope, exclusions, and a contrast pair:
-one request that should receive majority weight on the dimension and one
+Use the following as prompt and manual-review guidance, not as a pipeline
+guarantee. Ask for a routing basis with 5–10 orthogonal workload dimensions.
+Ask each definition to include positive scope, exclusions, and a contrast
+pair: one request that should receive majority weight on the dimension and one
 same-workload near-miss that should route to a sibling dimension or unknown.
-Request-envelope capabilities such as tools, vision, context, and maximum
-output are hard requirements, not semantic workload dimensions.
+Treat request-envelope capabilities such as tools, vision, context, and
+maximum output as hard requirements rather than semantic workload dimensions.
 
-Reject the proposal instead of approving its digest when:
+During manual review, send the proposal back for revision when:
 
 - any dimension lacks an exclusive in-scope request or a distinct near-miss;
 - product-behavior axes are mixed with repository-change/process axes; or
 - a dimension is an implementation, tests/docs/CI/release, eval/classifier, or
   other always-on layer that would receive high weight on almost every ticket.
+
+The current approval step can still bind the digest of a semantically smeared
+basis. Do not describe these review heuristics as validation enforced by
+`eval approve dimensions`, and do not treat dimension approval alone as launch
+evidence.
 
 Unknown weight absorbs the remainder. Do not add catch-all axes to cover it.
 For a gateway product basis, protocol, selection, classification, and quota can
@@ -155,10 +162,17 @@ Use `eval results` to review the decomposition benchmark, every dimension
 suite, the composition benchmark, the complete evidence matrix, accounting,
 and cleanup outcome.
 
+Treat a local run that reports zero model or gateway calls as pipeline
+bring-up, not qualification. A zero-call run is not launch evidence even when
+the command exits successfully, validation passes, and artifact digests were
+approved. Stop before publication, report the missing execution evidence, and
+do not claim `model: auto` is qualified.
+
 Run `eval publish` only when all of these are true:
 
 - dimensions and evaluations were approved at their current digests;
 - validation passed and the immutable plan is still fresh;
+- the run observed the planned nonzero model and gateway calls;
 - every configured candidate has exactly one judged result for every expected
   case in every dimension;
 - the decomposition and composition benchmarks passed;
@@ -180,5 +194,6 @@ when needed.
 - Never log, echo, or commit credentials.
 - Never describe unknown cost as zero.
 - Never publish incomplete, stale, mismatched, duplicated, or cutoff evidence.
+- Never publish or claim launch readiness from a zero-call run.
 - Never claim that a passing pilot or classifier-only run is production routing
   qualification.

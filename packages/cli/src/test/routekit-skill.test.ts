@@ -29,6 +29,7 @@ test("RouteKit skill unifies onboarding, configuration, and eval routing", async
   }
   assert.match(skill, /per-workflow parameter ledger/u);
   assert.match(skill, /\[\.\.\.routekitArgv, \.\.\.targetArgs, \.\.\.operationArgs\]/u);
+  assert.match(skill, /Eval workflows are stricter: default to\s+`\["--local"\]`/u);
   assert.match(skill, /working directory to `repositoryRoot`/u);
   assert.match(skill, /typed argv value/u);
   assert.match(skill, /Never execute a displayed template/u);
@@ -57,6 +58,8 @@ test("RouteKit eval reference preserves approval and activation boundaries", asy
   assert.match(skill, /ordered,\s+deduplicated argv list/u);
   assert.match(skill, /Treat `planId` and `runId` as opaque strings/u);
   assert.match(skill, /approvals as false unless the user explicitly grants/u);
+  assert.match(skill, /`targetArgs`: `\["--local"\]` unless the user explicitly requested/u);
+  assert.match(skill, /already-active remote is not an eval target request/u);
   for (const command of ["setup", "status", "answer", "validate", "estimate", "run", "publish"]) {
     assert.match(skill, new RegExp(`eval ${command}`, "u"));
   }
@@ -72,6 +75,11 @@ test("RouteKit eval reference preserves approval and activation boundaries", asy
   assert.match(skill, /exclusive in-scope request or a distinct near-miss/iu);
   assert.match(skill, /product-behavior axes are mixed with repository-change\/process axes/iu);
   assert.match(skill, /high weight on almost every ticket/iu);
+  assert.match(skill, /prompt and manual-review guidance, not as a pipeline\s+guarantee/iu);
+  assert.match(skill, /Digest approval proves which\s+artifact was reviewed; it does not prove/iu);
+  assert.match(skill, /current approval step can still bind the digest of a semantically smeared\s+basis/iu);
+  assert.match(skill, /zero-call run is not launch evidence/iu);
+  assert.match(skill, /planned nonzero model and gateway calls/iu);
   assert.match(skill, /Unknown weight absorbs the remainder/u);
   assert.doesNotMatch(skill, /\beval prepare\b/u);
   assert.doesNotMatch(skill, /\barea catalog\b/iu);

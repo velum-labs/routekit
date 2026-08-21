@@ -76,8 +76,11 @@ command log, or committed file.
    onboarding; distinguish it from invalid existing state.
 4. Prefer `--json --no-input` for automation. Use interactive commands only
    when a person is available to answer them.
-5. Resolve `targetArgs` explicitly when needed: global `--remote <name>` or
-   `--local` wins, then the active remote, then the local daemon. Apply target
+5. Resolve `targetArgs` explicitly when needed. For ordinary gateway
+   operations, global `--remote <name>` or `--local` wins, then the active
+   remote, then the local daemon. Eval workflows are stricter: default to
+   `["--local"]` and use a remote only when the user explicitly asks for one;
+   see [references/eval-routing.md](references/eval-routing.md). Apply target
    arguments only to commands whose current help supports that target; setup
    and canonical router-file operations are local-only.
 
