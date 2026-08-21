@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -11,9 +11,9 @@ import type {
   RoutingBasis
 } from "@velum-labs/routekit-eval-contracts";
 import { EvalEngine, type EvalEngineService } from "@velum-labs/routekit-eval-engine";
-import { Effect, Fiber, Layer } from "effect";
+import { Effect, Fiber, FileSystem, Layer, Path } from "effect";
 
-import { EvalService, makeEvalServiceLayer } from "../service.js";
+import { EvalService, makeEvalService, makeEvalServiceLayer } from "../service.js";
 
 const roots: string[] = [];
 after(async () => Promise.all(roots.map((root) => rm(root, { recursive: true, force: true }))));
@@ -131,6 +131,74 @@ const qualification = (root: string) => ({
   objective: { kind: "highest-quality" as const },
   maximumUnknownWeight: 0.2,
   suites: suites(root)
+});
+
+test("manifest discovery does not call FileSystem.glob when Node glob is unavailable", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-manifest-no-glob-"));
+  roots.push(root);
+  const suiteDirectory = path.join(root, "nested", "suite");
+  const suitePath = path.join(suiteDirectory, "nested.eval.ts");
+  await mkdir(suiteDirectory, { recursive: true });
+  await writeFile(suitePath, 'import { test } from "node:test"; test("case", () => {});\n');
+  await symlink(root, path.join(suiteDirectory, "routekit-link"), "dir");
+  await writeFile(
+    path.join(suiteDirectory, "routekit.eval-manifest.json"),
+    `${JSON.stringify({
+      version: 1,
+      profileId: "nested",
+      candidateModels: ["openai/cheap", "anthropic/strong"],
+      judgeModel: "openai/judge",
+      caseCount: 1,
+      caseIds: ["case-1"],
+      maxOutputTokens: 256,
+      expectedCallCount: 4
+    })}\n`
+  );
+
+  let globCalls = 0;
+  const inspection = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const paths = yield* Path.Path;
+      const fileSystemWithoutNodeGlob: FileSystem.FileSystem = {
+        ...fs,
+        glob: () => {
+          globCalls += 1;
+          return Effect.die(new TypeError("Function.prototype.apply was called on undefined"));
+        }
+      };
+      const service = yield* makeEvalService().pipe(
+        Effect.provideService(
+          EvalEngine,
+          EvalEngine.of({
+            discover: () => Effect.die("unexpected discover"),
+            validate: () =>
+              Effect.succeed({
+                searchRoot: suitePath,
+                workingDirectory: root,
+                files: [suitePath],
+                suiteDigest: "suite-nested"
+              }),
+            runComparison: () => Effect.die("unexpected comparison")
+          })
+        ),
+        Effect.provideService(FileSystem.FileSystem, fileSystemWithoutNodeGlob),
+        Effect.provideService(Path.Path, paths)
+      );
+      return yield* service.inspect({
+        version: 1,
+        profileId: "nested",
+        suitePath,
+        candidateModels: ["openai/cheap", "anthropic/strong"],
+        judgeModel: "openai/judge",
+        gatewayUrl: "http://127.0.0.1:8080/v1"
+      });
+    }).pipe(Effect.provide(NodeServicesLayer))
+  );
+
+  assert.equal(inspection.suiteDigest, "suite-nested");
+  assert.equal(inspection.manifest.profileId, "nested");
+  assert.equal(globCalls, 0);
 });
 
 test("dimension matrix qualification inspects every manifest before publishing one activation", async () => {
