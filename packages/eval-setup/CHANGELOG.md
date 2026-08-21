@@ -1,5 +1,13 @@
 # @velum-labs/routekit-eval-setup
 
+## 1.0.19
+
+### Patch Changes
+
+- 7149a05: Require orthogonal eval dimension proposals to include distinct in-scope and neighboring-axis contrast requests, and refuse dimension approval when those proposal sidecars are missing or invalid.
+  - @velum-labs/routekit-eval-contracts@1.0.19
+  - @velum-labs/routekit-runtime@1.0.19
+
 ## 1.0.18
 
 ### Patch Changes
