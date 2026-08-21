@@ -26,6 +26,7 @@ import {
   evalQualificationCliError,
   policyShowCommand,
   qualificationComparisonRequest,
+  qualificationFailureErrors,
   qualificationFailureDetail
 } from "../effect/eval-cli.js";
 import {
@@ -100,7 +101,8 @@ test("failed qualification errors are non-zero and name dimension, timeout, and 
       { callId: "model_call_judge", role: "judge" }
     ]
   });
-  const error = evalQualificationCliError(failure, new Error("test timed out"));
+  const cause = new Error("test timed out");
+  const error = evalQualificationCliError(failure, qualificationFailureErrors(cause), cause);
 
   assert.equal(error.exitCode, 1);
   assert.equal(error.code, "eval_qualification_failed");
@@ -109,6 +111,47 @@ test("failed qualification errors are non-zero and name dimension, timeout, and 
   assert.match(error.message, /model_call_candidate/u);
   assert.match(error.message, /model_call_judge/u);
   assert.match(String((error as Error & { cause?: unknown }).cause), /test timed out/u);
+  assert.match(error.details?.[0] ?? "", /Error: test timed out/u);
+  assert.match(error.details?.[0] ?? "", /eval-cli\.test/u);
+});
+
+test("qualification failures retain the nested bridge or spawn error chain", () => {
+  const inner = new Error("connect ECONNREFUSED 127.0.0.1");
+  inner.name = "LoopbackConnectError";
+  const execution = Object.assign(new Error("node:test child failed"), {
+    name: "EvalEngineExecutionError",
+    cause: inner
+  });
+  const comparison = Object.assign(new Error("comparison failed"), {
+    name: "EvalServiceComparisonError",
+    cause: execution
+  });
+
+  const errors = qualificationFailureErrors(comparison);
+
+  assert.deepEqual(
+    errors.map(({ name, message }) => ({ name, message })),
+    [
+      { name: "EvalServiceComparisonError", message: "comparison failed" },
+      { name: "EvalEngineExecutionError", message: "node:test child failed" },
+      {
+        name: "LoopbackConnectError",
+        message: "connect ECONNREFUSED 127.0.0.1"
+      }
+    ]
+  );
+  assert.match(errors[2]?.stack ?? "", /LoopbackConnectError/u);
+  const failure = qualificationFailureDetail({
+    cause: comparison,
+    cleanupIncomplete: false,
+    comparison: {
+      dimensionId: "provider-protocol-translation",
+      timeoutMs: 600_000
+    },
+    observedCalls: []
+  });
+  assert.match(failure, /timeout 600000ms/u);
+  assert.match(failure, /observed call ids: none/u);
 });
 
 test("failed qualification ledger retains calls observed before interruption", () => {

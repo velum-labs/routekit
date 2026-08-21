@@ -35,6 +35,7 @@ import {
   EvalProjectWorkflow,
   EvalProjectWorkflowLive,
   EvalRepositoryInspectorLive,
+  type EvalRunFailureError,
   type EvalRunReport,
   type EvalRunTarget,
   summarizeEvalRunLedger
@@ -54,7 +55,7 @@ import { withTargetAuthoringSession } from "./eval-authoring-target.js";
 import {
   includeQualificationObservedCalls,
   makeQualificationCleanupRef,
-  observeQualificationCalls,
+  qualificationGatewayCallObserver,
   type QualificationObservedCall,
   type QualificationTarget,
   withQualificationTarget
@@ -119,6 +120,55 @@ export const removeStaleQualificationSdkLinks = Effect.fn(
 const detailOf = (cause: unknown): string =>
   cause instanceof Error && cause.message.length > 0 ? cause.message : String(cause);
 
+const errorRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
+  value !== null && (typeof value === "object" || typeof value === "function")
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+
+const failureErrorName = (
+  value: unknown,
+  record: Readonly<Record<string, unknown>> | undefined
+): string => {
+  const tagged = typeof record?._tag === "string" ? record._tag : undefined;
+  if (value instanceof Error && value.name !== "Error" && value.name.length > 0) {
+    return value.name;
+  }
+  if (tagged !== undefined && tagged.length > 0) return tagged;
+  if (value instanceof Error && value.name.length > 0) return value.name;
+  const constructorName = record?.constructor;
+  return typeof constructorName === "function" && constructorName.name.length > 0
+    ? constructorName.name
+    : "UnknownError";
+};
+
+export const qualificationFailureErrors = (cause: unknown): readonly EvalRunFailureError[] => {
+  const errors: EvalRunFailureError[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = cause;
+  while (current !== undefined && current !== null && errors.length < 12 && !seen.has(current)) {
+    seen.add(current);
+    const record = errorRecord(current);
+    const stack =
+      current instanceof Error && typeof current.stack === "string"
+        ? current.stack.slice(0, 16 * 1024)
+        : undefined;
+    errors.push({
+      name: failureErrorName(current, record),
+      message: detailOf(current),
+      ...(stack === undefined ? {} : { stack })
+    });
+    current = record?.cause;
+  }
+  return errors;
+};
+
+const qualificationErrorDetails = (errors: readonly EvalRunFailureError[]): readonly string[] =>
+  errors.map(
+    (error, index) =>
+      `cause[${String(index)}] ${error.name}: ${error.message}` +
+      (error.stack === undefined ? "" : `\n${error.stack}`)
+  );
+
 export const qualificationFailureDetail = (input: {
   readonly cause: unknown;
   readonly cleanupIncomplete: boolean;
@@ -146,11 +196,16 @@ export const qualificationFailureDetail = (input: {
   ].join("; ");
 };
 
-export const evalQualificationCliError = (failure: string, cause?: unknown): CliError =>
+export const evalQualificationCliError = (
+  failure: string,
+  errors: readonly EvalRunFailureError[] = [],
+  cause?: unknown
+): CliError =>
   Object.assign(
     new CliError({
       code: "eval_qualification_failed",
       message: failure,
+      ...(errors.length === 0 ? {} : { details: qualificationErrorDetails(errors) }),
       exitCode: 1
     }),
     cause === undefined ? {} : { cause }
@@ -479,7 +534,7 @@ export function evalRunCommand(
       },
       cleanup,
       (resolvedTarget) => {
-        const instrumentedHttpClient = observeQualificationCalls(httpClient, observedCalls);
+        const observeGatewayCall = qualificationGatewayCallObserver(observedCalls);
         return Effect.gen(function* () {
           yield* Ref.set(target, resolvedTarget.target);
           yield* Ref.set(inspectObservedCall, resolvedTarget.inspectCall);
@@ -789,11 +844,12 @@ export function evalRunCommand(
               {
                 bearerCredential: Redacted.value(resolvedTarget.bearerCredential),
                 isolateExecutionFromProjectSdk: true,
+                observeGatewayCall,
                 timeoutMs
               }
             )
           ),
-          Effect.provideService(HttpClient.HttpClient, instrumentedHttpClient)
+          Effect.provideService(HttpClient.HttpClient, httpClient)
         );
       }
     );
@@ -849,6 +905,7 @@ export function evalRunCommand(
       return report;
     }
     const cause = Cause.squash(exit.cause);
+    const errors = qualificationFailureErrors(cause);
     const finalActiveComparison = yield* Ref.get(activeComparison);
     const failure = qualificationFailureDetail({
       cause,
@@ -870,10 +927,11 @@ export function evalRunCommand(
       comparisons: completed,
       ledger,
       status: "failed",
-      failure
+      failure,
+      errors
     };
     yield* withWorkflow((workflow) => workflow.failRun(root, report));
-    return yield* Effect.fail(evalQualificationCliError(failure, cause));
+    return yield* Effect.fail(evalQualificationCliError(failure, errors, cause));
   }) as Effect.Effect<EvalRunReport, unknown, RouteKitPlatform>;
 }
 

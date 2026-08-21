@@ -302,6 +302,11 @@ test("production runner executes candidate and judge traffic through the live en
     readonly maxOutputTokens: unknown;
     readonly model: unknown;
   }> = [];
+  const observed: Array<{
+    readonly callId?: string;
+    readonly phase: "issued" | "completed";
+    readonly role: "candidate" | "judge";
+  }> = [];
   const gateway = createServer((incoming, outgoing) => {
     void (async () => {
       const body = JSON.parse(await readBody(incoming)) as Readonly<Record<string, unknown>>;
@@ -314,7 +319,10 @@ test("production runner executes candidate and judge traffic through the live en
         body.model === "openai/judge"
           ? JSON.stringify({ pass: true, reason: "helpful", score: 0.9 })
           : "Helpful answer";
-      outgoing.writeHead(200, { "content-type": "application/json" });
+      outgoing.writeHead(200, {
+        "content-type": "application/json",
+        "x-routekit-model-call-id": `model-call-${String(calls.length)}`
+      });
       outgoing.end(
         JSON.stringify({
           model: body.model,
@@ -329,14 +337,28 @@ test("production runner executes candidate and judge traffic through the live en
 
   try {
     const result = await Effect.runPromise(
-      withEvalService({ bearerCredential: "parent-only-token" }, (service) =>
-        service.runComparison(
-          {
-            ...requestFor(suite, `http://127.0.0.1:${String(address.port)}`),
-            candidateModels: ["openai/cheap"]
-          },
-          "pilot"
-        )
+      withEvalService(
+        {
+          bearerCredential: "parent-only-token",
+          observeGatewayCall: (event) =>
+            Effect.sync(() => {
+              observed.push({
+                phase: event.phase,
+                role: event.role,
+                ...(event.phase === "completed" && event.callId !== undefined
+                  ? { callId: event.callId }
+                  : {})
+              });
+            })
+        },
+        (service) =>
+          service.runComparison(
+            {
+              ...requestFor(suite, `http://127.0.0.1:${String(address.port)}`),
+              candidateModels: ["openai/cheap"]
+            },
+            "pilot"
+          )
       ).pipe(Effect.provide(NodeHttpClient.layerUndici))
     );
 
@@ -352,6 +374,20 @@ test("production runner executes candidate and judge traffic through the live en
       calls.every(({ maxOutputTokens }) => maxOutputTokens === 1_024),
       true
     );
+    assert.deepEqual(observed, [
+      { phase: "issued", role: "candidate" },
+      {
+        callId: "model-call-1",
+        phase: "completed",
+        role: "candidate"
+      },
+      { phase: "issued", role: "judge" },
+      {
+        callId: "model-call-2",
+        phase: "completed",
+        role: "judge"
+      }
+    ]);
     assert.deepEqual(
       result.models.map(({ model }) => model),
       ["openai/cheap"]
@@ -428,6 +464,52 @@ test("production runner applies the host timeout at node:test instead of a stale
     await new Promise<void>((resolve, reject) =>
       gateway.close((error) => (error === undefined ? resolve() : reject(error)))
     );
+  }
+});
+
+test("production runner fails before observation when the comparison child cannot spawn", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "routekit-eval-runner-spawn-failure-"));
+  roots.push(root);
+  const suite = path.join(root, "support.eval.ts");
+  await writeFile(
+    suite,
+    [
+      'import { test } from "node:test";',
+      'import { setupAgent } from "routekit/eval";',
+      'test("support case", async () => {',
+      '  await setupAgent({ model: "openai/cheap" }).run({ prompt: "Help", caseId: "support-case" });',
+      "});"
+    ].join("\n")
+  );
+  await writeManifest(root, ["openai/cheap"], "openai/judge", ["support-case"]);
+  const observed: unknown[] = [];
+
+  const exit = await Effect.runPromise(
+    withEvalService(
+      {
+        bearerCredential: "parent-only-token",
+        execPath: path.join(root, "missing-node"),
+        observeGatewayCall: (event) =>
+          Effect.sync(() => {
+            observed.push(event);
+          }),
+        timeoutMs: 600_000
+      },
+      (service) =>
+        service.runComparison(
+          {
+            ...requestFor(suite),
+            candidateModels: ["openai/cheap"]
+          },
+          "full"
+        )
+    ).pipe(Effect.provide(NodeHttpClient.layerUndici), Effect.exit)
+  );
+
+  assert.equal(Exit.isFailure(exit), true);
+  assert.deepEqual(observed, []);
+  if (Exit.isFailure(exit)) {
+    assert.match(String(exit.cause), /could not execute node:test/iu);
   }
 });
 

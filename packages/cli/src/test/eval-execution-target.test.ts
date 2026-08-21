@@ -24,7 +24,7 @@ import { HttpClient } from "effect/unstable/http";
 import { CliSession, runCliEffect, runWithCliSession } from "../cli-session.js";
 import {
   makeQualificationCleanupRef,
-  observeQualificationCalls,
+  qualificationGatewayCallObserver,
   withQualificationTarget
 } from "../effect/eval-execution-target.js";
 import { removeStaleQualificationSdkLinks } from "../effect/eval-cli.js";
@@ -80,7 +80,7 @@ const plan: EvalExecutionPlan = {
   expectedCallCount: candidateModels.length * 2
 };
 
-test("published CLI qualification repairs stale suite SDK links after remote session open", async () => {
+test("published CLI qualification observes child gateway-bridge calls after remote session open", async () => {
   const root = mkdtempSync(join(tmpdir(), "routekit-eval-remote-target-"));
   const home = join(root, "home");
   const bin = join(root, "bin");
@@ -248,7 +248,8 @@ test("published CLI qualification repairs stale suite SDK links after remote ses
           const observed = yield* Ref.make<
             readonly { readonly callId?: string; readonly role: "candidate" | "judge" }[]
           >([]);
-          const httpClient = observeQualificationCalls(yield* HttpClient.HttpClient, observed);
+          const httpClient = yield* HttpClient.HttpClient;
+          const observeGatewayCall = qualificationGatewayCallObserver(observed);
           const comparison = yield* withQualificationTarget(
             { operationId: "eval-run-live-remote", plan },
             cleanup,
@@ -275,6 +276,7 @@ test("published CLI qualification repairs stale suite SDK links after remote ses
                     {
                       bearerCredential: Redacted.value(target.bearerCredential),
                       isolateExecutionFromProjectSdk: true,
+                      observeGatewayCall,
                       timeoutMs: 15_000
                     }
                   )

@@ -1,4 +1,5 @@
 import { layer as NodeServicesLayer } from "@effect/platform-node/NodeServices";
+import { EVAL_ATTRIBUTION_HEADER } from "@velum-labs/routekit-eval-contracts";
 import {
   EvalEngineExecutionError,
   EvalExecutionPort,
@@ -9,10 +10,10 @@ import {
 import { Data, Effect, FileSystem, Layer, Path, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 
-import type { RouteKitEvalServiceOptions } from "./layer-options.js";
+import type { RouteKitEvalGatewayCallEvent, RouteKitEvalServiceOptions } from "./layer-options.js";
 import { EvalService, type EvalServiceConfiguration, makeEvalServiceLayer } from "./service.js";
 
-export type { RouteKitEvalServiceOptions };
+export type { RouteKitEvalGatewayCallEvent, RouteKitEvalServiceOptions };
 
 export class EvalServiceCredentialError extends Data.TaggedError("EvalServiceCredentialError")<{
   readonly detail: string;
@@ -21,6 +22,45 @@ export class EvalServiceCredentialError extends Data.TaggedError("EvalServiceCre
     return this.detail;
   }
 }
+
+const MODEL_CALL_ID_HEADER = "x-routekit-model-call-id";
+
+const gatewayCallRole = (
+  raw: string | undefined
+): RouteKitEvalGatewayCallEvent["role"] | undefined => {
+  if (raw === undefined) return undefined;
+  try {
+    const decoded = JSON.parse(raw) as { readonly role?: unknown };
+    return decoded.role === "candidate" || decoded.role === "judge" ? decoded.role : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const observeGatewayCalls = (
+  client: HttpClient.HttpClient,
+  observe: NonNullable<RouteKitEvalServiceOptions["observeGatewayCall"]>
+): HttpClient.HttpClient => {
+  let nextObservationId = 0;
+  return HttpClient.transform(client, (responseEffect, request) => {
+    const role = gatewayCallRole(request.headers[EVAL_ATTRIBUTION_HEADER]);
+    if (role === undefined) return responseEffect;
+    return Effect.gen(function* () {
+      nextObservationId += 1;
+      const observationId = `gateway-call-${String(nextObservationId)}`;
+      yield* observe({ observationId, phase: "issued", role });
+      const response = yield* responseEffect;
+      const rawCallId = response.headers[MODEL_CALL_ID_HEADER]?.trim();
+      yield* observe({
+        observationId,
+        phase: "completed",
+        role,
+        ...(rawCallId === undefined || rawCallId.length === 0 ? {} : { callId: rawCallId })
+      });
+      return response;
+    });
+  });
+};
 
 const makeProductionExecutionPort = (
   options: RouteKitEvalServiceOptions
@@ -47,7 +87,11 @@ const makeProductionExecutionPort = (
           )
       });
     }
-    const httpClient = yield* HttpClient.HttpClient;
+    const baseHttpClient = yield* HttpClient.HttpClient;
+    const httpClient =
+      options.observeGatewayCall === undefined
+        ? baseHttpClient
+        : observeGatewayCalls(baseHttpClient, options.observeGatewayCall);
     const paths = yield* Path.Path;
     const execution = makeRouteKitEvalExecutionPortService(
       {

@@ -455,6 +455,13 @@ const EvalRunReportCommon = {
   ledger: EvalRunLedger
 } as const;
 
+export const EvalRunFailureError = Schema.Struct({
+  name: Schema.String,
+  message: Schema.String,
+  stack: Schema.optionalKey(Schema.String)
+});
+export type EvalRunFailureError = typeof EvalRunFailureError.Type;
+
 const QualifiedEvalRunReport = Schema.Struct({
   ...EvalRunReportCommon,
   status: Schema.Literal("passed"),
@@ -470,7 +477,8 @@ const CompletedEvalRunReport = Schema.Struct({
 const FailedEvalRunReport = Schema.Struct({
   ...EvalRunReportCommon,
   status: Schema.Literal("failed"),
-  failure: Schema.String
+  failure: Schema.String,
+  errors: Schema.optionalKey(Schema.Array(EvalRunFailureError))
 });
 
 /**
